@@ -1,0 +1,37 @@
+# S1-F01 真实 ImportRange 与 Excel COM 对拍复验
+
+- 时间：2026-10-27 10:31:51（Asia/Shanghai）
+- 执行者：Codex
+- 工作树/分支：`C:\Users\AZI\Desktop\VibeCode\audit-dev` / `audit-dev`
+- 修改前/后 HEAD：`4297315` / `4297315`；main 的共享修复 `c1a9e38` 已以 `4297315` 同步并推送 `origin/audit-dev`。
+- WIP：开始前保留多个既有未提交 Audit 修改、报告及交接文件；本轮未暂存或提交这些 WIP。
+
+## 目的与修改
+
+按 V2 S1-F01 要求复验真实模板公式复制及 Windows Excel COM 重算。v5 真实对拍发现 Windows 测试脚本错误走 LibreOffice；现已只修改 `audit-core/tests/compare/compare_s1_formula_copy_candidate.py`，Windows 分支改为通过既有 sidecar 分别重算 Python 与 Rust 临时副本，并只记录脱敏失败类别。Linux LibreOffice 分支保持不变。
+
+新增报告：
+
+- `audit-core/probe/reports/s1_f01_openpyxl_semantic_parity_windows_native_20261027_v5_c1a9e38.json`
+- `audit-core/probe/reports/s1_f01_openpyxl_semantic_parity_windows_native_20261027_v6_diagnostic.json`
+- `audit-core/probe/reports/s1_f01_openpyxl_semantic_parity_windows_native_20261027_v7_excel_com.json`
+- `audit-core/probe/reports/s1_f01_formula_copy_candidate_synthetic_com_windows_native_20261027.json`
+
+`audit-core/MIGRATION_INVENTORY.md` 新增本轮真实复验状态。没有删除文件，没有修改旧 Python 项目、真实工作簿、PyTools、main 工作树或共享源码；共享修复仅通过已提交的 main SHA 安全同步。
+
+## 验证
+
+- main 对 `c1a9e38` 提供的测试：Python Worker 16/16、Excel-Core Rust 单测 45/45、Rust→Worker 集成 1/1、格式检查通过。
+- Windows Python 3.12.10 / openpyxl 3.1.5：修改后的对拍脚本 `py -3.12 -m py_compile` 通过。
+- 合成全链路：Rust Worker 生成候选并由 Windows Excel COM sidecar 分别重算 Python/Rust 副本；公式缓存预期值、公式文本和缓存集合均匹配，0 差异；报告状态 `candidate_match_unverified`，不提升生产能力。
+- 真实只读单位贷款样本：Rust 60 操作候选写出；5,487 个复制单元格值/类型差异 0、公式文本差异 0、范围外差异 0。Rust readback 在第 4 张表 I6 拒绝 `imported_style_semantic_mismatch`；复制区总样式差异 1,063，而旧 Python 对照样式含 1,012 个无效字体组件引用，因此当前不能视为保真通过。
+- 真实 Windows Excel COM：Python 对照簿在 `Workbooks.Open` 阶段失败；Rust 候选被 Excel 打开/计算后因公式文本变化而被 sidecar 拒绝，没有发布重算副本。输入文件保持未改。
+- Windows COM 对拍适配错误已修复；`cargo test -p audit-core --test s1_formula_copy_candidate --locked -- --ignored --nocapture` 对真实样本通过候选执行并写出脱敏报告，但产品候选本身未通过保真校验。
+
+## 未完成项与回滚
+
+- S1-F01 公式复制生产路由、真实 Excel COM 重算、完整审核结果合流、旧版逐条输出对拍及 GUI 调用仍未完成；状态维持“受阻”，不得因合成对拍通过或候选文件生成标记验收通过。
+- Rust validator 对 I6 的读回与 openpyxl 同轮输出 XML/语义读取不一致；真实 COM 保存会改变候选公式文本。两项共享边界复现已交 main 复核，Audit 不修改共享 crate/sidecar。
+- 未执行 S1-F01 浏览器人工操作、Linux/WSL、glibc 2.28、deb 或目标机验证。
+- 本轮没有升级业务组件版本（【组件版本】不升级）。
+- 删除清单：无。回滚仅需还原本轮对拍脚本改动、移除上述 4 份报告及本记录，并删除迁移清单新增小节；保留 `4297315` 共享修复，不回退 main 已同步能力。F 盘临时候选输出保留供 main 复核，未清理。

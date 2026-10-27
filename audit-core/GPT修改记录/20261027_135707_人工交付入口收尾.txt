@@ -1,0 +1,16 @@
+时间：2026-10-27 13:57 +08:00；执行者：Codex。
+Git：audit-dev；修改前/后 HEAD 均为 4297315。工作树开始时已有多项 Audit 源码、清单、报告及手测样例 WIP；本轮未暂存、提交、推送或覆盖其他改动。
+
+目的：按当前验收口径交付 Windows 人工测试版本。审核只以值/类型、公式及引用、结构映射、规则与最终结果、文件可打开性为必要门槛；普通字体/填充/边框/对齐/尺寸/打印外观不再阻塞，也不重复全量样式对拍。
+
+改动：
+- `audit-core/frontend/web/index.html`：发现 S3-F05 指标比较拆分按钮调用未注册的 `start_central_forms` API；手测版按钮改为明确禁用，保留布局并提示尚未接通，保护函数不再发起不存在的调用。
+- `audit-core/manual_acceptance/20261027/README.md`：启动命令指向本轮 GUI 二进制和端口 8753。
+- `audit-core/MIGRATION_INVENTORY.md`：更新 Windows 手测版本路径、入口限制与当前验收边界；保留既有样式/业务证据及历史结论。
+- 【组件版本】不升级。
+
+验证：`cargo build --locked --offline -p audit-core --bin open-data-audit-gui` 成功，输出至 `F:\RustBuild\audit_manual_handoff_20261027_final\debug\open-data-audit-gui.exe`；Windows GUI 以合成 S2 配置启动，`http://127.0.0.1:8753/` 返回 HTTP 200，页面含“尚未接通”禁用标签且不再含未注册 API 调用。复用已有 `manual_acceptance/20261027/expected-results.txt` 中 S2-F01、S3-F01、S3-F04、S5-F01 的模拟结果；本轮不重跑业务样例，不做新的 Python/Rust 或样式对拍。
+
+未执行/已知问题：未做浏览器中的业务点击验收、完整 cargo 测试、Linux/deb 验收。S1-F01 公式复制与实际 Office 重算仍未闭环；S3-F05 尚无 GUI/CLI 生产入口并受共享 ExcelModifier 能力阻塞；S2 手测案例的外部比较规则未触发；S5 V_PRE 首版明确不支持。普通样式差异不再作为本阶段阻塞项。
+
+安全与回滚：只用合成手测配置启动 GUI；旧 Python 项目、真实样本与真实配置只读；未修改共享 Excel-Core。若需回滚，仅撤销本轮按钮状态/提示、手测 README 和清单入口状态改动，并移除此记录；不得整文件还原含其他 WIP 的文件。

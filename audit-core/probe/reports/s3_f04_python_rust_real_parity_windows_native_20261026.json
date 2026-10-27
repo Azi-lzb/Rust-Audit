@@ -1,0 +1,46 @@
+{
+  "status": "failed",
+  "current_file_count": 2,
+  "previous_file_count": 1,
+  "config_file_count": 2,
+  "current_record_count": 4212,
+  "previous_record_count": 2586,
+  "configured_rule_count": 183,
+  "enabled_rule_count": 163,
+  "python_result_rows": 214,
+  "rust_result_rows": 214,
+  "python_log_rows": 3,
+  "rust_log_rows": 3,
+  "workbook_mismatches": 80,
+  "mismatch_counts": {
+    "structure": 0,
+    "headers": 0,
+    "row_values": 63,
+    "row_values_by_column": {
+      "���㹫ʽ": 63
+    },
+    "row_value_kinds_by_column": {
+      "���㹫ʽ": {
+        "text_length": 63
+      }
+    },
+    "workbook_features": 0,
+    "column_widths": 17,
+    "header_style": 0,
+    "number_formats": 0,
+    "run_log": 0
+  },
+  "inputs_unchanged": true,
+  "rust_engines": {
+    "config_reader": "calamine",
+    "input_reader": "csv",
+    "writer": "rust_xlsxwriter"
+  },
+  "rust_timings_ms": {
+    "config_read": 97,
+    "input_read": 259,
+    "calculation": 62,
+    "workbook_write": 124,
+    "total": 544
+  }
+}

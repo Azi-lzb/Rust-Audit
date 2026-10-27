@@ -1,0 +1,23 @@
+时间：2026-10-27 03:44:21（Asia/Shanghai）
+执行者：Codex
+工作树：audit-dev；验证前后 HEAD 均为 2922900c2981a5d71e98fdbb810203bb2acb820b
+
+目的
+- 复验 main 已推送的 `9da7878 fix(lo-convert): close Excel COM workbook once` 对 S1-F01 重算链的影响。
+
+同步核实
+- `9da7878` 未作为 audit-dev 的祖先提交，但当前 audit-dev 的 `sidecar/lo-convert/src/main.rs` 已有相同的成功关闭后清空 `$book` 引用逻辑。
+- 对 `9da7878` 执行 cherry-pick 时 Git 判定为空；已用 `git cherry-pick --skip` 结束操作，没有创建空提交，也未改写共享 sidecar 或其他 WIP。
+
+验证
+- `cargo build --offline --locked -p lo-convert`：通过。
+- 设置 `AUDIT_S1_RECALC_TEST_SIDECAR=F:\RustBuild\audit\debug\lo-convert.exe` 后运行 `cargo test --offline --locked -p audit-core --lib explicit_sidecar_recalculates_synthetic_formula_copy_without_changing_input -- --ignored --nocapture`：1 passed。
+- 用例通过 Excel COM 重算合成公式并读回 C1=5，确认源审核副本输入字节不变；失败输出保护亦由用例覆盖。
+
+未验证/限制
+- 只验证 Windows 合成 COM 重算切片；没有执行真实 S1 模板公式复制、完整审核输出对拍或对象保真验证。
+- 真实复制链仍受 openpyxl worker 样式索引越界问题阻塞，S1-F01 整体不得标记完成。
+- 未升级版本，未修改源 Python、真实样本或共享 crates。
+
+回滚
+- 本轮未改业务源代码；若需撤销验证记录，仅删除本记录并还原迁移清单新增的小节，不影响既有工作。

@@ -1,0 +1,67 @@
+{
+  "schema_version": 3,
+  "suite": "audit.s1_formula_copy_candidate",
+  "status": "candidate_unavailable",
+  "sample_kind": "synthetic",
+  "candidate_engine": "openpyxl-worker",
+  "candidate_operation_scope": "range-import-only",
+  "python": {
+    "baseline": "base_audit.native.openpyxl_workbook.copy_formula_ranges_from_template",
+    "elapsed_ms": 19
+  },
+  "rust_candidate": {
+    "status": "candidate_invocation_failed",
+    "production_route_eligible": false,
+    "elapsed_ms_including_test_harness": 5239,
+    "candidate_test_exit_code": 101,
+    "formula_cache_nonempty_count": 0,
+    "output_readback_failed": true,
+    "output_readback_failure_category": "rust_output_missing"
+  },
+  "copy_scope": {
+    "range_count": 4,
+    "formula_cells": 4,
+    "range_comment_count_python": 5
+  },
+  "comparison": {
+    "range_cells": 0,
+    "range_mismatches": 0,
+    "outside_cells": 0,
+    "outside_mismatches": 0,
+    "outside_formula_cache_cells": 0,
+    "outside_formula_cache_mismatches": 0,
+    "outside_formula_cache_nonempty_mismatches": 0,
+    "outside_python_rust_mismatches": 0,
+    "python_vs_rust_workbook_metadata_mismatch_count": 1,
+    "target_vs_rust_workbook_metadata_mismatch_count": 1,
+    "calculation_flags_mismatch_count": 1,
+    "python_calculation_flags": {
+      "full_calc_on_load": "1",
+      "force_full_calc": "1"
+    },
+    "rust_calculation_flags": {
+      "full_calc_on_load": null,
+      "force_full_calc": null
+    },
+    "python_formula_cache_nonempty_count": 0,
+    "presentation_style_comparison": "not performed; ordinary formatting is nonblocking",
+    "style_only_readback_diagnostic_nonblocking": false,
+    "output_readback_failed": true,
+    "mismatch_count": 3
+  },
+  "recalculation": {
+    "status": "not_requested",
+    "mismatch_count": 0
+  },
+  "verification": {
+    "input_workbooks_unchanged": true,
+    "formula_recalculation_performed": false,
+    "capability_status": "unverified",
+    "production_route_eligible": false,
+    "target_linux_validation": "not performed",
+    "scope": "four cross-workbook ImportRange operations only; calculation flags intentionally omitted for diagnostics",
+    "presentation_style_comparison": "not performed; ordinary formatting is nonblocking",
+    "outside_python_rust_mismatches": 0,
+    "outside_formula_caches_compared_to": "original target workbook where formula text matches"
+  }
+}

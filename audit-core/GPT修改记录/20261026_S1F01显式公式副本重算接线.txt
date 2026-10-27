@@ -1,0 +1,27 @@
+时间：2026-10-26（Windows 原生）
+执行者：Codex Audit migration agent
+分支：audit-dev
+
+目的：把现有 `lo-convert recalculate` 作为显式 S1-F01 计算阶段，接入已有公式审核副本到公式结果提取之间；不绕过 Excel-Core 的公式区域复制能力门控。
+
+修改文件：
+- `audit-core/src/s1_recalculation.rs`：封装 sidecar 子进程调用、平台引擎白名单、无覆盖输出发布与文件名生成；移除仅供 COM 路径使用的 Windows `\\?\` 前缀。
+- `audit-core/src/lib.rs`：导出 S1 重算业务模块。
+- `audit-core/src/bin/open-data-audit.rs`：给 `s1-audit-directory` 增加可选 sidecar/输出目录参数；只替换公式副本清单中的审核副本，不修改源文件或原清单副本；排除重算输出目录中的文件，避免被下一轮当成源文件。
+- `audit-core/MIGRATION_INVENTORY.md`：记录当前接线和阻塞状态。
+
+测试与结果：
+- `cargo test --offline --locked -p audit-core --lib s1_recalculation::tests -j 1`：4 passed，1 ignored（真实引擎集成测试需显式启用）。
+- `cargo test --offline --locked -p audit-core --test s1_audit_directory_cli -j 1`：5 passed。
+- `cargo build --offline --locked -p audit-core --bin open-data-audit -j 1`：通过；`s1-audit-directory --help` 显示新增选项。
+- 显式运行 ignored Windows 合成 `SUM(A1:B1)` sidecar 测试：失败，`lo-convert` exit 2，PowerShell 在关闭后再次调用 `$book.Close($false)` 时报告 `RPC_E_DISCONNECTED`。测试在传播该失败前已断言输入字节未变、输出未发布；临时副本目录由测试清理。
+- 第一次实跑暴露扩展路径被 Excel COM 拒绝；Audit 调用侧已转换成普通 Windows 路径，复跑仍因共享 sidecar COM 生命周期失败。
+- 未执行真实 S1 业务样本、Python/Rust 真实业务对拍、公式复制/完整 S1-F01 链、Linux 计算验收。
+
+共享协作：
+- 已给 main 发送最小复现与修复请求：Windows `lo-convert recalculate` 的 COM workbook 关闭/Quit 生命周期及 `SUM(A1:B1)=5` 验证；Audit 不修改 sidecar 或共享 crates。
+- 公式复制仍受共享 worker 样式越界问题 #5 和关系校验问题 #8 等既有能力门控，未调整路由。
+
+输入数据、源 Python、真实配置与工作簿：均只读；本轮只在系统临时目录生成合成工作簿，失败测试没有留下已发布输出。
+Git：由于实际 sidecar 集成测试失败，本轮修改保持未提交、未推送；待 main 修复后复验再决定是否提交。
+回滚：若不再采用此接线，回滚新增模块、CLI 参数、库导出、清单段落和本记录；不得影响现有 formula-manifest 路径。

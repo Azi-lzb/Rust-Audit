@@ -1,0 +1,26 @@
+时间：2026-10-27 03:40:17（Asia/Shanghai）
+执行者：Codex
+审计基线：audit-dev HEAD 2922900c2981a5d71e98fdbb810203bb2acb820b
+
+工作树现状
+- 保留既有未提交修改：MIGRATION_INVENTORY.md 中 S3-F01 工作记录、s1_history.rs 及所有原有未跟踪文件。
+- 本次仅修改 audit-core 的 S3 指标拆分规划代码和 S3-F05 清单行；未触及共享 Excel-Core、旧 Python、PyTools 或 main。
+
+目标与实现
+- 对应最终需求文档中的 S3-F3（旧迁移清单标识 S3-F05）。增加 Rust `s3_indicator_split`，读取已有 S3-F01 比较结果与 3.3 内嵌表单配置，并生成每机构的业务编辑计划。
+- 比较键保留业务类、指标代码、数据属性、币种、频度、批次；同指标不同频度/批次不再折叠。配置未限定频度或批次且匹配多条时明确报错。
+- 复用现有 S3 颜色配置和 VBA 色板解析，不引入新的 Excel 引擎。
+
+验证
+- `cargo check --offline --locked -p audit-core --lib`：通过。
+- `cargo test --offline --locked -p audit-core s3_indicator_split::tests:: --lib`：3 项合成测试通过。
+- 设置只读真实样本路径后执行同一筛选并含 ignored 测试：5/5 通过；真实比较文件解析 2,610 行，真实 3.3 配置没有启用表单，三个真实输入哈希前后相同。
+- 未生成真实金融表单输出，未执行 Python 文件级对拍或 GUI 点击验收；以上结果不代表 S3-F3 真实验收通过。
+
+未完成/已知阻塞
+- shared `ExcelModifier` 尚缺本功能要求的 `DeleteColumns`、`SetRowHidden`、`SetSheetVisibility`、`SetCellNumberFormat` 等整批编辑操作。Audit 不在共享 crates 内自行实现 Excel 引擎，故本轮只交付业务映射规划层。
+- 真实 3.3 配置当前所有表单写入标志为空/未启用，需要可用且获准读取的启用表单配置或脱敏副本，才能进行真实输出对拍。
+- 未接 CLI/GUI；真实输出及模板保真仍未验证。
+
+回滚
+- 如需撤回本次切片，删除 `audit-core/src/s3_indicator_split.rs`、撤销 `audit-core/src/lib.rs` 的模块导出，并撤销 `s3_execution_compare.rs` 中本次新增的警戒色读取辅助；只还原 MIGRATION_INVENTORY.md 中 S3-F05 行，不覆盖文件中的 S3-F01 既有工作。

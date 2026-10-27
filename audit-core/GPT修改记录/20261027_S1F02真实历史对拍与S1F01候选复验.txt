@@ -1,0 +1,12 @@
+# 2026-10-27 S1-F02 / S1-F01 增量记录
+
+## 修改目的
+更新 Audit 迁移状态与真实验证证据，不改业务实现。
+
+## 验证
+- S1-F02：7 个只读源工作簿、27 张工作表、41 行；Rust 与 Python/Excel COM 的值和已比较结构/样式属性差异为 0；自动列宽最大差 1.57421875 字符。定向测试 5 + 6 通过；原 GUI HTTP API 同批真实样本执行成功并产出 3 表/41 行，Python/Rust 对拍通过但列宽仍有最大 1.57421875 字符差异。
+- S1-F01：真实样本候选包含 4 个 ImportRange、55 个 SetComment 和计算属性，共 60 项。worker 写出临时副本；Rust 样式读回失败（H10，隐式行/列样式语义），因此没有生产 capability，也没有执行重算。旧 Python 源码只复制显式 `has_style`，该格与 Python 语义一致的可能性尚待文件级对拍确认。
+- 共享提交 `7fce332` cherry-pick 为 `4d2ca59` 并推送 `origin/audit-dev`；编辑器筛选集成测试 3/3、openpyxl worker 测试 11/11 通过。该提交仅增加样式/筛选校验，不代表 S1-F01 通过。
+
+## 未执行/限制
+未运行 Linux/WSL/deb；未完成 GUI 人工验收；未验证真实 S1-F01 公式复制 + Excel COM/LibreOffice 重算完整链。Python 项目、配置和业务工作簿均只读，候选输出仅在 Temp。未升级版本。

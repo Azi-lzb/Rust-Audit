@@ -1,0 +1,20 @@
+时间：2026-10-27 17:24（Asia/Shanghai）
+执行者：Codex
+修改前/后 commit：054bb4721422b32989b31db31ea687ae3b592d1e（未提交）
+WIP：工作树已有多项 Audit 未提交修改；本次只调整 s1_history.rs 中一个被忽略的诊断候选测试，没有暂存、提交或覆盖其他文件。
+
+目的：记录 S1 历史结果工作簿 Umya 候选在允许托管表关系变化后仍出现工作表范围外 OOXML 关系差异；保持严格失败，不把部分读回报为通过。
+
+修改文件：
+- audit-core/src/s1_history.rs：诊断测试保留 `Relationships` 要求及托管表的 scoped `drop_allowed`，并断言候选因允许范围外的关系变化被校验器拒绝；后续仍核对候选表值、表序、打印区域及输入不变。
+- audit-core/GPT修改记录/20261027_172450_S1F01历史关系诊断断言.txt：本记录。
+
+业务/配置/VBA：未更改业务规则、配置格式、生产路由或 VBA。
+组件版本：不升级（仅候选诊断测试调整）。
+
+测试：`cargo test --offline --locked -p audit-core --lib s1_history::tests::history_workbook_umya_row_replacement_preserves_page_settings_and_print_area_candidate --target-dir F:\RustBuild\audit_s1_history_candidate_20261027 -- --ignored --nocapture`，1 passed。测试打印：`candidate_full_plan=blocked reason=openpyxl changed OOXML relationships outside explicitly allowed worksheet relationship changes`；合成输出中的业务表值/表序/打印区域核对通过，输入未变。
+
+未执行：真实 S1 模板写回、Office 重算、S1-F01 完整 GUI/CLI 闭环、Linux/deb 验证；未登记 Umya 生产能力。
+已知问题：Umya 候选仍不满足工作簿关系保留要求；S1-F01 整体状态不变，不能接入生产路由。Audit #8 保持未解决。
+删除清单：无。
+回滚提示：若撤回本次测试契约调整，仅恢复该诊断测试的原关系断言；不要改动工作树中的其他 S1 或共享 Excel-Core 内容。修复候选前不得删除该关系失败证据。

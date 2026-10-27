@@ -1,0 +1,23 @@
+时间：2026-10-27 16:20（Asia/Shanghai）
+执行者：Codex
+分支：audit-dev
+修改前/后 HEAD：5b5ab39（未创建提交）
+WIP：工作树已有大量 Audit 代码、样例和报告未提交。本次仅在现有手测生成器、样例说明和迁移清单上按需增量；未暂存、覆盖或清理其他成果。
+
+目的：为已接通 CLI/Web 的 S3-F02 提供可直接操作的正常与多地区边界样例，弥补现有手测包缺少该功能输入的空缺。
+
+修改文件：
+- audit-core/examples/manual_acceptance_samples.rs：增加 `--s3-f02` 输入/配置生成器及 Calamine 输出读回验证。
+- audit-core/manual_acceptance/20261027/s3_f02/：生成比较结果输入、3.0 机构地区参照配置，以及 CLI 实际输出。
+- audit-core/manual_acceptance/20261027/README.md、expected-results.txt：增加 GUI/CLI 操作指引和独立预期。
+- audit-core/MIGRATION_INVENTORY.md：将 S3-F02 标为“已实现，待 Windows 真实验收”，记录两例样品及尚未执行的 GUI/Python 对拍。
+- 本记录。
+
+验证：`cargo run --offline --locked -p audit-core --example manual_acceptance_samples -- --s3-f02 audit-core/manual_acceptance/20261027/s3_f02` 编译成功并生成样品。Windows `open-data-audit s3-export-explanations` 两例均完成，reader=calamine、writer=rust_xlsxwriter：普通输入选中 1 行；多地区输入选中 2 行。`cargo run --offline --locked -p audit-core --example manual_acceptance_samples -- --verify-s3-f02 ...` 编译成功，由 Calamine 读回并核对输出行数、机构代码、地区映射名称、数据值及变动原因，通过。预期独立来自输入标记、机构映射配置和业务规则。未运行完整 Rust 测试套件。`rustfmt --check` 检查整份已有生成器时提示其他既存函数格式差异；本次新增函数按 Rust 格式手动调整，未对既有 S1-F02/S5 代码做批量格式化。
+
+未执行/已知问题：未做 Python/Rust 文件级重对拍、GUI 人工点击、真实业务样本、XLSM、Linux/deb 验收。样例仅用于 Windows 人工操作，不将样例通过提升为 S3-F02 验收通过。
+
+【组件版本】不升级（新增人工测试夹具，不改变产品业务逻辑）。
+
+删除清单：无。
+回滚提示：只移除 `s3_f02/` 新增样例、生成器中 S3-F02 增量、对应 README/expected/inventory 文字和本记录；保留其余手测资产及工作树 WIP。

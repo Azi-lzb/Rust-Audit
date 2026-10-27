@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "suite": "audit.s5_run_outputs_parity",
+  "status": "mismatch",
+  "sample_scope": {
+    "business": "单位贷款",
+    "current_source_count": 2,
+    "additional_current_sources_count": 1,
+    "run_id": "PARITYRUN",
+    "files_copied_to_temporary": true,
+    "template_path_supplied": false,
+    "template_dir_supplied": true,
+    "python_writer_engine": "openpyxl (styling baseline)",
+    "rust_entry": "s5-audit-run CLI"
+  },
+  "comparison": {
+    "diff_count": 36,
+    "diff_paths_sample": [
+      "ledger.status_counts",
+      "workbook.审核结果.cells: length 16 vs 18",
+      "workbook.审核结果.cells[10].format",
+      "workbook.审核结果.cells[10].ref",
+      "workbook.审核结果.cells[10].value",
+      "workbook.审核结果.cells[11].link",
+      "workbook.审核结果.cells[11].ref",
+      "workbook.审核结果.cells[11].value",
+      "workbook.审核结果.cells[12].ref",
+      "workbook.审核结果.cells[12].value",
+      "workbook.审核结果.cells[13].link",
+      "workbook.审核结果.cells[13].ref",
+      "workbook.审核结果.cells[13].value",
+      "workbook.审核结果.cells[14].ref",
+      "workbook.审核结果.cells[14].value",
+      "workbook.审核结果.cells[15].align",
+      "workbook.审核结果.cells[15].format",
+      "workbook.审核结果.cells[15].ref",
+      "workbook.审核结果.cells[15].type",
+      "workbook.审核结果.cells[15].value"
+    ],
+    "cell_value_differences": [
+      {
+        "sheet": "审核结果",
+        "cell": "F2",
+        "python_type": "missing",
+        "rust_type": "s"
+      },
+      {
+        "sheet": "审核结果",
+        "cell": "G2",
+        "python_type": "s",
+        "rust_type": "s"
+      },
+      {
+        "sheet": "审核结果",
+        "cell": "I2",
+        "python_type": "s",
+        "rust_type": "s"
+      },
+      {
+        "sheet": "审核结果",
+        "cell": "J2",
+        "python_type": "missing",
+        "rust_type": "n"
+      }
+    ]
+  },
+  "verification": {
+    "rust_runner": "open-data-audit s5-audit-run CLI",
+    "python_baseline": "s1audit_configured.engine.run(output_dir=...) with AUDIT3_WRITER_ENGINE=openpyxl",
+    "python_baseline_version": "3.12.10",
+    "inputs_unchanged": true,
+    "raw_values_persisted": false,
+    "capability_status": "unverified",
+    "production_route_eligible": false
+  },
+  "limitations": [
+    "Conditional-format and data-quality tables are compared empty; their populated paths belong to the S1 conditional-format bridge.",
+    "Structure snapshots and hash-integrity downgrade are out of scope.",
+    "Colors compare modulo the 8-digit alpha prefix and fitToWidth=1 compares equal to an omitted attribute under fitToPage: both are rust_xlsxwriter/openpyxl serializer representation deltas with identical Excel semantics."
+  ]
+}

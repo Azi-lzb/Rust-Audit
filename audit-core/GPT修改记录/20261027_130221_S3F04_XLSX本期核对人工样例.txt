@@ -1,0 +1,25 @@
+时间：2026-10-27 13:02（Asia/Shanghai）
+执行者：Codex
+分支：audit-dev
+修改前/后 HEAD：4297315068eb968dec55a4037b9246c39ddcc3a6（未创建提交）
+WIP：工作树已有大量未提交业务代码、报告和人工验收资产。本轮仅增加 S3-F04 的独立合成 XLSX 人工样例、说明和库存证据，未暂存、覆盖或清理其他 WIP。
+
+目的：为已接通的 S3-F04 `s3-check-current-values` 提供本期 XLSX 正常/异常 CLI 手测样例，覆盖同一机构、指标、频度的批次区分以及异常结果输出。
+
+修改文件：
+- audit-core/examples/manual_acceptance_samples.rs：新增 `--s3-f04 <new-output-directory>` 生成器；配置按旧版旗标语义将未启用的取反/逻辑/禁用项留空。
+- audit-core/manual_acceptance/20261027/README.md：增加配置、输入和 CLI 操作说明；标记早期错误旗标目录 `s3_f04/` 为诊断样例，不用于验收。
+- audit-core/manual_acceptance/20261027/expected-results.txt：记录独立推导预期和 Rust 实跑结果。
+- audit-core/manual_acceptance/20261027/s3_f04_corrected/：新增 3.0/3.2 配置、正常/异常本期 XLSX 及结果和运行日志工作簿。
+- audit-core/MIGRATION_INVENTORY.md：追加合成 XLSX 本期-only 烟测证据，S3-F04 仍标记迁移中。
+- audit-core/GPT修改记录/20261027_130221_S3F04_XLSX本期核对人工样例.txt：本记录。
+
+验证：`cargo run --offline --locked -p audit-core --example manual_acceptance_samples -- --s3-f04 ...` 编译成功并生成纠正后的夹具。Windows CLI 两例均 COMPLETED，reader=Calamine，writer=rust_xlsxwriter：正常配置读入 2 条记录、输出 0 行；异常配置读入 2 条记录、输出 1 行。输出读回核验：左值 120、右值 100、差异 20、差异幅度 16.666666666666664，异常提示存在。输入文件未被写入。未重跑已有全量测试或 Linux/deb 验收。
+
+根因注记：第一次试运行的初始夹具把“取反标识”填作“否”，但旧版 Python 与 Rust 均将任何非空文本视为启用。该夹具结果方向相反，已作为非验收诊断留在 `manual_acceptance/20261027/s3_f04/`，README 明确要求不要使用；正式验收只使用 `s3_f04_corrected/`。自动审批策略拒绝了删除该自动生成诊断目录的请求，故保留并标注，不影响纠正夹具。
+
+未执行/已知问题：此合成案例只证明 Rust 入口的最小 XLSX 正常/异常路径，不替代真实 S3-F04 配置对拍、GUI 人工操作或 Linux/deb 验收。S3-F04 整体仍未验收。
+
+【组件版本】不升级（新增合成验收资产，不改变产品实现）。
+
+删除/回滚提示：无源代码删除。回滚只移除本轮新增 S3-F04 夹具/输出、本记录，以及 README、expected-results、迁移清单和生成器中的对应增量；保留原有 S3-F01/S5 人工样例及所有历史 WIP。

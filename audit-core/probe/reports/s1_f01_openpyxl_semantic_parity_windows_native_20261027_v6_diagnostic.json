@@ -1,0 +1,190 @@
+{
+  "schema_version": 3,
+  "suite": "audit.s1_formula_copy_candidate",
+  "status": "comparison_incomplete",
+  "sample_kind": "real_named_formula_ranges",
+  "candidate_engine": "openpyxl-worker",
+  "candidate_operation_scope": "full-s1",
+  "python": {
+    "baseline": "base_audit.native.openpyxl_workbook.copy_formula_ranges_from_template",
+    "elapsed_ms": 951
+  },
+  "rust_candidate": {
+    "apply_failure_category": null,
+    "apply_failure_kind": null,
+    "calculation_properties_operation_present": true,
+    "capability_status": "unverified",
+    "elapsed_ms": 12080,
+    "engine": "openpyxl-worker",
+    "formula_recalculation_performed": false,
+    "legacy_empty_author_compat_count": 2,
+    "operation_count": 60,
+    "output_created": true,
+    "output_readback_diagnostic": {
+      "cell": "I6",
+      "diagnostic_status": "style_signatures_available",
+      "kind": "imported_style_semantic_mismatch",
+      "rust_actual_style": "Style { font: Some(Font { font_name: FontName { val: StringValue { value: Some(\"宋体\") } }, font_size: FontSize { val: DoubleValue { value: Some(12.0) } }, font_family_numbering: FontFamilyNumbering { val: Int32Value { value: None } }, font_bold: Bold { val: BooleanValue { value: None } }, font_italic: Italic { val: BooleanValue { value: None } }, font_underline: Underline { val: EnumValue { value: None, value_default: Single } }, font_strike: Strike { val: BooleanValue { value: None } }, color: Color { automatic: None, indexed: None, theme_index: None, argb: None, tint: None }, font_char_set: FontCharSet { val: Int32Value { value: Some(134) } }, font_scheme: FontScheme { val: EnumValue { value: None, value_default: None } }, vertical_text_alignment: VerticalTextAlignment { val: EnumValue { value: None, value_default: Baseline } } }), fill: Some(Fill { pattern_fill: Some(PatternFill { pattern_type: EnumValue { value: Some(Solid), value_default: None }, foreground_color: Some(Color { automatic: None, indexed: Some(55), theme_index: None, argb: None, tint: None }), background_color: Some(Color { automatic: None, indexed: Some(64), theme_index: None, argb: None, tint: None }) }), gradient_fill: None }), borders: Some(Borders { data: [Border { color: None, style: EnumValue { value: None, value_default: None } }, Border { color: None, style: EnumValue { value: None, value_default: None } }, Border { color: None, style: EnumValue { value: None, value_default: None } }, Border { color: None, style: EnumValue { value: None, value_default: None } }, Border { color: None, style: EnumValue { value: None, value_default: None } }, Border { color: None, style: EnumValue { value: None, value_default: None } }, Border { color: None, style: EnumValue { value: None, value_default: None } }], diagonal_down: BooleanValue { value: None }, diagonal_up: BooleanValue { value: None } }), alignment: Some(Alignment { horizontal: EnumValue { value: None, value_default: General }, vertical: EnumValue { value: Some(Center), value_default: Bottom }, wrap_text: BooleanValue { value: None }, text_rotation: UInt32Value { value: None }, indent: UInt32Value { value: None } }), numbering_format: Some(NumberingFormat { number_format_id: 0, format_code: \"General\", is_build_in: true }), format_id: UInt32Value { value: Some(0) }, protection: None }",
+      "rust_expected_style": "Style { font: Some(Font { font_name: FontName { val: StringValue { value: Some(\"宋体\") } }, font_size: FontSize { val: DoubleValue { value: Some(12.0) } }, font_family_numbering: FontFamilyNumbering { val: Int32Value { value: None } }, font_bold: Bold { val: BooleanValue { value: None } }, font_italic: Italic { val: BooleanValue { value: None } }, font_underline: Underline { val: EnumValue { value: None, value_default: Single } }, font_strike: Strike { val: BooleanValue { value: None } }, color: Color { automatic: None, indexed: None, theme_index: None, argb: None, tint: None }, font_char_set: FontCharSet { val: Int32Value { value: Some(134) } }, font_scheme: FontScheme { val: EnumValue { value: None, value_default: None } }, vertical_text_alignment: VerticalTextAlignment { val: EnumValue { value: None, value_default: Baseline } } }), fill: Some(Fill { pattern_fill: Some(PatternFill { pattern_type: EnumValue { value: Some(Solid), value_default: None }, foreground_color: Some(Color { automatic: None, indexed: Some(55), theme_index: None, argb: None, tint: None }), background_color: Some(Color { automatic: None, indexed: Some(64), theme_index: None, argb: None, tint: None }) }), gradient_fill: None }), borders: Some(Borders { data: [Border { color: None, style: EnumValue { value: None, value_default: None } }, Border { color: None, style: EnumValue { value: None, value_default: None } }, Border { color: None, style: EnumValue { value: None, value_default: None } }, Border { color: None, style: EnumValue { value: None, value_default: None } }, Border { color: None, style: EnumValue { value: None, value_default: None } }, Border { color: None, style: EnumValue { value: None, value_default: None } }, Border { color: None, style: EnumValue { value: None, value_default: None } }], diagonal_down: BooleanValue { value: None }, diagonal_up: BooleanValue { value: None } }), alignment: Some(Alignment { horizontal: EnumValue { value: None, value_default: General }, vertical: EnumValue { value: None, value_default: Bottom }, wrap_text: BooleanValue { value: None }, text_rotation: UInt32Value { value: None }, indent: UInt32Value { value: None } }), numbering_format: Some(NumberingFormat { number_format_id: 0, format_code: \"General\", is_build_in: true }), format_id: UInt32Value { value: Some(0) }, protection: Some(Protection { locked: BooleanValue { value: None }, hidden: BooleanValue { value: None } }) }",
+      "sheet_ordinal": 4
+    },
+    "output_readback_failed": true,
+    "output_readback_failure_category": "imported_style_semantic_mismatch",
+    "production_route_eligible": false,
+    "range_import_count": 4,
+    "range_resolution": "rust_s1_template_rule_plan",
+    "set_comment_count": 55,
+    "status": "written_unverified_candidate",
+    "target_inventory_complete": true,
+    "elapsed_ms_including_test_harness": 13396,
+    "candidate_test_exit_code": 0,
+    "formula_cache_nonempty_count": 0
+  },
+  "copy_scope": {
+    "range_count": 4,
+    "formula_cells": 1072,
+    "range_comment_count_python": 55
+  },
+  "comparison": {
+    "range_cells": 5487,
+    "range_value_type_mismatches": 0,
+    "range_formula_text_mismatches": 0,
+    "range_style_mismatches": 1063,
+    "range_style_mismatches_vs_template": 96,
+    "range_template_has_style_cells": 1648,
+    "range_template_has_no_style_cells": 3839,
+    "range_python_style_mismatches_vs_template": 1159,
+    "range_python_style_mismatches_vs_input": 1659,
+    "range_rust_style_mismatches_vs_input": 1623,
+    "range_python_rust_number_format_mismatches": 1012,
+    "range_python_rust_font_mismatches": 1059,
+    "range_python_rust_fill_mismatches": 1026,
+    "range_python_rust_border_mismatches": 1012,
+    "range_python_rust_alignment_mismatches": 1012,
+    "range_python_rust_protection_mismatches": 1012,
+    "range_comment_mismatches": 0,
+    "range_hyperlink_mismatches": 0,
+    "range_mismatches": 1063,
+    "outside_cells": 3047,
+    "outside_value_type_mismatches": 216,
+    "outside_formula_text_mismatches": 0,
+    "outside_style_mismatches": 0,
+    "outside_comment_mismatches": 0,
+    "outside_hyperlink_mismatches": 0,
+    "outside_formula_cache_cells": 0,
+    "outside_formula_cache_mismatches": 0,
+    "outside_formula_cache_nonempty_mismatches": 0,
+    "outside_mismatches": 216,
+    "outside_sheet_mismatches": 0,
+    "outside_python_rust_value_type_mismatches": 0,
+    "outside_python_rust_formula_text_mismatches": 0,
+    "outside_python_rust_style_mismatches": 0,
+    "outside_python_rust_comment_mismatches": 0,
+    "outside_python_rust_hyperlink_mismatches": 0,
+    "outside_python_rust_mismatches": 0,
+    "python_vs_rust_workbook_metadata_mismatch_count": 0,
+    "target_vs_rust_workbook_metadata_mismatch_count": 0,
+    "calculation_flags_mismatch_count": 0,
+    "python_calculation_flags": {
+      "full_calc_on_load": "1",
+      "force_full_calc": "1"
+    },
+    "rust_calculation_flags": {
+      "full_calc_on_load": "1",
+      "force_full_calc": "1"
+    },
+    "python_formula_cache_nonempty_count": 0,
+    "package_differences_python_vs_rust": {
+      "left_part_count": 27,
+      "right_part_count": 27,
+      "part_name_difference_count": 0,
+      "part_name_difference_category_counts": {},
+      "common_part_byte_difference_count": 5,
+      "common_part_byte_difference_category_counts": {
+        "other": 1,
+        "styles": 1,
+        "worksheets": 3
+      }
+    },
+    "template_style_references": {
+      "cell_xf_count": 47,
+      "cell_style_reference_count": 7106,
+      "invalid_cell_style_reference_count": 0,
+      "max_cell_style_index": 46,
+      "sheets_with_invalid_style_references": 0,
+      "invalid_style_component_reference_counts": {
+        "font": 0,
+        "fill": 0,
+        "border": 0,
+        "custom_number_format": 0
+      }
+    },
+    "target_style_references": {
+      "cell_xf_count": 20,
+      "cell_style_reference_count": 3463,
+      "invalid_cell_style_reference_count": 0,
+      "max_cell_style_index": 19,
+      "sheets_with_invalid_style_references": 0,
+      "invalid_style_component_reference_counts": {
+        "font": 0,
+        "fill": 0,
+        "border": 0,
+        "custom_number_format": 0
+      }
+    },
+    "python_style_references": {
+      "cell_xf_count": 44,
+      "cell_style_reference_count": 4791,
+      "invalid_cell_style_reference_count": 0,
+      "max_cell_style_index": 43,
+      "sheets_with_invalid_style_references": 0,
+      "invalid_style_component_reference_counts": {
+        "font": 1012,
+        "fill": 0,
+        "border": 0,
+        "custom_number_format": 0
+      }
+    },
+    "rust_style_references": {
+      "cell_xf_count": 39,
+      "cell_style_reference_count": 4791,
+      "invalid_cell_style_reference_count": 0,
+      "max_cell_style_index": 38,
+      "sheets_with_invalid_style_references": 0,
+      "invalid_style_component_reference_counts": {
+        "font": 0,
+        "fill": 0,
+        "border": 0,
+        "custom_number_format": 0
+      }
+    },
+    "python_baseline_invalid_style_component_references": {
+      "font": 1012,
+      "fill": 0,
+      "border": 0,
+      "custom_number_format": 0
+    },
+    "invalid_style_reference_count": 0,
+    "python_baseline_invalid_style_reference_count": 0,
+    "output_readback_failed": true,
+    "mismatch_count": 1280
+  },
+  "recalculation": {
+    "status": "not_requested",
+    "mismatch_count": 0
+  },
+  "verification": {
+    "input_workbooks_unchanged": true,
+    "formula_recalculation_performed": false,
+    "capability_status": "unverified",
+    "production_route_eligible": false,
+    "target_linux_validation": "not performed",
+    "scope": "four cross-workbook ImportRange operations plus calculation flags; direct candidate only",
+    "copied_range_styles_compared_to": "Python baseline output using semantic style components",
+    "copied_range_styles_compared_to_template": 96,
+    "other_cell_styles_and_values_compared_to": "original target workbook",
+    "outside_python_rust_mismatches": 0,
+    "outside_formula_caches_compared_to": "original target workbook where formula text matches",
+    "python_baseline_style_integrity": "reported separately; not used as copied-range style oracle when component references are invalid"
+  }
+}

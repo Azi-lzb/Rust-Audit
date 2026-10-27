@@ -1,0 +1,23 @@
+时间：2026-10-27 11:50:11 +08:00
+执行者：Codex
+Git：audit-dev；修改前/后 HEAD 预期均为 4297315068eb968dec55a4037b9246c39ddcc3a6；工作树含大量已有未提交业务代码、手测数据及交接文件，均予保留。
+目的：将 S5 条件格式业务判定接入 CLI 和 GUI 入口，确保触发/不支持/错误结果显式输出，并提供当前 Windows 人工测试版本。
+文件：
+- audit-core/src/s5_conditional_format.rs：封装既有 Rust OOXML 条件规则评估，将真实触发与不支持/错误映射成 S5 结果行。
+- audit-core/src/s5_outputs.rs：将条件格式结果写入现有结果页与运行总账；诊断存在时输出限制状态；增加重新打开结果簿的定向测试。
+- audit-core/src/s5_web.rs、audit-core/src/web_bridge.rs：GUI S5 执行复用同一评估结果并回报诊断状态。
+- audit-core/src/bin/open-data-audit.rs：S5 CLI 执行条件格式求值并输出规则、触发、诊断和耗时摘要。
+- audit-core/manual_acceptance/20261027/README.md：更新 Windows 构建路径、启动端口和最新实跑结果目录。
+- audit-core/MIGRATION_INVENTORY.md：补记测试门槛调整、当前手测状态与未验证项。
+配置/VBA：无；旧 Python 项目及真实业务输入保持只读；未修改 PyTools、共享 crates 或根 Cargo 配置。
+实际验证：
+- `cargo test --offline --locked -p audit-core --lib s5_conditional_format::tests::maps_only_true_rules_as_triggers_and_keeps_unsupported_results_visible -- --nocapture`：1 passed。
+- `cargo test --offline --locked -p audit-core --lib conditional_format_findings_are_written_and_limitations_are_not_hidden -- --nocapture`：1 passed；Rust reader 重开结果工作簿并确认触发 4、UNSUPPORTED 3、ERROR 1，整体状态非成功完成。
+- `cargo build --offline --locked -p audit-core --bin open-data-audit --bin open-data-audit-gui`：通过，独立 `CARGO_TARGET_DIR=F:\RustBuild\audit_manual_ready_20261027`。
+- 当前 Rust CLI 运行 S3-F01 正常/异常案例：各 1 行，动作触发数 0/1；S5-F01 正常/异常：PASSED 1 / TRIGGERED 1、失败 0；四个结果均与 `expected-results.txt` 的独立预期一致，输出保存在 `audit-core/manual_acceptance/20261027/outputs/codex_ready_20261027_114631/`。
+- GUI 新二进制服务启动在 127.0.0.1:8751；HTTP 200，页面包含运行时 bridge 与 S5 入口。未做浏览器人工点击。
+未执行：S1-F01 真实 Excel COM 重算/生产工作簿修改链、真实样本全量对拍、完整 GUI 人工操作、Linux/deb 或目标系统验收、全量格式比较。
+已知问题：S1-F01 仍受真实 COM 重算与候选发布问题阻塞。S3/S5 样例仅覆盖合成案例；S5 条件格式 evaluator 的能力边界仍以其显式诊断为准。S3-F01/S5-F01 保持“已实现，待 Windows 真实验收”，仅限已列模拟路径。
+组件版本：不升级（Workspace 当前未采用旧版 Audit Sx-Fxx 组件版本制度）。
+Git：未提交/未推送。相关 Rust 文件与迁移清单含先前已有 WIP，无法安全按功能整体暂存而不夹带其他工作；不为本次交付提交其他 Agent 的改动。HEAD 与 origin/audit-dev 保持不变。
+删除/回滚：未删除文件或结果。回滚本轮 S5 条件格式接线只需恢复上述业务源文件中对应 S5 条件格式调用及输出改动；人工测试输入、预期与已生成输出保留。

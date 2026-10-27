@@ -1,0 +1,39 @@
+# S5 V_PRE 首版明确不支持
+
+- 时间：2026-10-27 13:29:07
+- 执行者：Codex
+- 修改前 HEAD：4297315068eb968dec55a4037b9246c39ddcc3a6
+- 修改后 HEAD：4297315068eb968dec55a4037b9246c39ddcc3a6（尚未提交）
+- WIP：修改前工作树已有 Audit 业务文件和样例等多项未提交修改；本次只改下列目标文件，没有暂存、覆盖或清理既存工作。
+
+## 目的
+
+落实 V2 首版不实现跨文件 V_PRE 取数的约定。此前 S5 服务会在绑定 previous source 时执行 V_PRE，和“启用规则调用 V_PRE 时明确报告不支持”的需求不符。
+
+## 修改文件及行为
+
+- `audit-core/src/s5_service.rs`：S5 规则调用钩子在取数前拒绝 V_PRE，附带 `FUNCTION_NOT_SUPPORTED` 和函数证据；按规则生成 `UNSUPPORTED` 结果，其他规则继续执行。V_CUR 不变。
+- `audit-core/src/s5_outputs.rs`：把 `UNSUPPORTED` 列入审核结果错误行，错误类型显示“规则不支持”。
+- `audit-core/src/bin/open-data-audit.rs`：修正 `--previous-source` 参数帮助文本，说明该参数不会启用 V_PRE。
+- `audit-core/frontend/web/index.html`：修正 S5 帮助提示，明确首版 V_PRE 跨文件取数不支持，启用规则会显示“规则不支持”。
+- `audit-core/MIGRATION_INVENTORY.md`：记录此边界处理，S5-F01 整体仍为未验证；追加本轮最小手测包覆盖范围与未覆盖项。
+- `audit-core/manual_acceptance/20261027/README.md`、`expected-results.txt`：将 CLI/GUI 启动路径指向本轮新构建的独立 Windows 产物，登记 S2 合成文件的基础与外部数据入口实跑结果，并明确该夹具没有构造外部比较命中，避免把它误当作正常/异常对。
+- `audit-core/manual_acceptance/20261027/s2_f01/`：将仓库既有合成 S2 报表、配置及外部数据复制到独立手测目录；本期/上期只读复制，输出隔离在各自子目录。
+
+## 配置、迁移和验证
+
+- 不修改配置格式、VBA、共享 crates 或 Cargo 依赖。
+- `cargo test --locked -p audit-core --lib unsupported`：5 passed，0 failed；包含 V_PRE 绑定上期文件仍返回 UNSUPPORTED，以及结果错误类型映射测试。
+- `cargo check --locked -p audit-core`：通过；存在既有 deprecation、unused 和 dead-code 警告。
+- `cargo build --offline --locked -p audit-core --bin open-data-audit --bin open-data-audit-gui`：通过，Windows 产物位于 `F:\RustBuild\audit_manual_handoff_20261027\debug\`；新产物的 `--version` / `--help` 入口冒烟通过。
+- 新 GUI 进程以隐藏服务方式启动在 `127.0.0.1:8752`，使用独立合成 S2 配置；HTTP 首页返回 200 且含 S5 入口。未代替用户点击运行功能。
+- `rustfmt --edition 2021 --check`：本次完整文件检查受现有 WIP 格式差异影响；未用 rustfmt 重写整文件。针对新增的 `s5_service.rs` 行已按 rustfmt 输出修正。`git diff --check` 待本记录完成后复核。
+- S2 合成路径各执行一次：基础路径输出 15 条结果/4 条硬性异常；带外部文件路径读取 4 条外部指标、记录 3 条数据提示，输出 18 条结果/7 条异常。没有将“外部规则命中”或 Python/Rust 逐字段一致计为已验证。
+- 已有合成 S3-F01、S3-F04、S5-F01 正常/异常 CLI 输出继续作为手测材料，本轮未重复运行；未执行真实 S5 样本、V_PRE 输出工作簿、Excel COM 重算、浏览器人工点击、完整回归、Linux/deb 或目标平台验收。
+
+## 已知问题及回滚
+
+- `S5Retrieval` 通用层仍保留 V_PRE 原语；Audit S5 业务规则入口拒绝调用它。若未来批准启用 V_PRE，应先更新业务范围和入口测试。
+- 回滚只撤销本次在 `s5_service.rs`、`s5_outputs.rs`、CLI 参数帮助、迁移清单中的对应行、S5 帮助提示及手测说明；不得还原或覆盖文件中的其他既存 WIP。
+- UI 提示和样例 README 路径调整只回退本记录对应行；不影响既有模拟输入、预期和输出。
+- 【组件版本】不升级。

@@ -1,0 +1,21 @@
+时间：2026-10-27 10:57:16 +08:00
+执行者：Codex
+Git：audit-dev；修改前 HEAD 4297315068eb968dec55a4037b9246c39ddcc3a6；origin/audit-dev 同步；保留原有 WIP。
+目的：遵循用户新验收标准，停止普通外观样式的阻塞性全量对拍；提供可运行的 Windows S3-F01、S5-F01 合成手测样例。
+文件：
+- audit-core/examples/manual_acceptance_samples.rs：用现有 Rust excel_writer 生成本轮的 CSV/XLSX 输入与配置，并可用 Rust Calamine reader 重开结果。
+- audit-core/manual_acceptance/20261027/：模拟输入、配置、独立预期、运行说明和本轮实际结果。
+- audit-core/MIGRATION_INVENTORY.md：追加验收标准、局部状态与未解决项。
+配置/VBA：无；未修改 Python 项目、PyTools、共享 crate、根 Cargo 配置或真实样本。
+实际验证：
+- cargo run --locked --target-dir F:\RustBuild\audit -p audit-core --example manual_acceptance_samples -- audit-core\manual_acceptance\20261027：通过。
+- cargo build --locked --target-dir F:\RustBuild\audit -p audit-core --bin open-data-audit：通过。
+- cargo build --locked --target-dir F:\RustBuild\audit -p audit-core --bin open-data-audit-gui：通过。
+- S3-F01 正常/异常 CLI：均 COMPLETED、各输出 1 行；动作触发数分别为 0、1；读取器 Calamine、写入器 rust_xlsxwriter。
+- S5-F01 正常/异常 CLI：均 COMPLETED、失败 0；状态分别 PASSED 1 与 TRIGGERED 1。
+- 4 个结果工作簿由 Rust excel_reader::read_workbook 重开成功。
+未执行：全量样式对拍、真实样本全量比较、S1-F01 新一轮 Excel COM 重算、GUI 浏览器人工验收、Linux/deb。
+已知问题：S1-F01 COM 重算仍失败；候选报告有 216 个范围外输入值/类型差异，Python/Rust 候选一致但空字符串语义未确认。S1-F01 不视作完成。
+组件版本：不升级（仅人工测试样例与状态说明）。
+删除/回滚：不清理用户 WIP；若回滚本项，仅移除此记录、本次追加的 inventory 段、样例目录和生成器文件。已生成的正确输出可保留或按需移除。
+GUI 已以可见窗口启动，PID 16308；只确认进程保持运行，未作浏览器人工操作。中间生成目录 20261027_v2 和 20261027_v3 未纳入正式样例包。

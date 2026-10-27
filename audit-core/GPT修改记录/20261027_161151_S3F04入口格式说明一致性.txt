@@ -1,0 +1,22 @@
+时间：2026-10-27 16:11（Asia/Shanghai）
+执行者：Codex
+分支：audit-dev
+修改前/后 HEAD：5b5ab39（未创建提交）
+WIP：工作树已有 Audit 业务代码、报告、手工样例和交接文件等未提交成果。本次只按行修改 S3-F04 页面入口和对应清单；未暂存、覆盖、清理或提交其他工作。
+
+目的：让本期数值核对 GUI 的静态选择器和操作指南与旧版 Python 行为及现有 Rust 能力一致，支持 CSV/XLSX/XLS。
+
+修改文件：
+- audit-core/frontend/web/index.html：将 S3-F04 文件类型设为 central_data，说明与操作指引列出 CSV/XLSX/XLS。
+- audit-core/src/web_bridge.rs：移除运行时文本替换；增加选择器扩展名测试（接受 CSV/XLSX/XLS，拒绝 XLSM/TXT），调整页面渲染测试验证静态页面原样注入 bridge。
+- audit-core/MIGRATION_INVENTORY.md：同步记录静态页面和文件过滤器现状；不改变 S3-F04 的迁移验收状态。
+- 本记录。
+
+验证：旧 Python GUI `web_app.py` 的 `centralCrossCur` 文件过滤允许 `*.csv *.xlsx *.xls`；Rust `browse_extensions("central_data")` 和 API 校验也允许这三种格式。`cargo test --offline --locked -p audit-core --lib s3_f04_picker_accepts_only_its_supported_input_formats` 通过（1/1）；`cargo test --offline --locked -p audit-core --lib served_page_is_original_markup_plus_runtime_bridge` 通过（1/1）。首次 package-wide 测试尝试因共享 `F:/RustBuild/audit/debug/open-data-audit-gui.exe` 被正在运行的 GUI 占用而失败，未关闭用户进程；改为仅构建 Audit 库测试目标后完成上述验证。
+
+未执行/已知问题：未进行真实 GUI 人工点击；现有 S3-F04 API/业务烟测证据不因此升级为人工验收。S1-F01 共享工作簿编辑/重算阻塞不在本次范围。
+
+【组件版本】不升级（修正既有入口的格式提示与筛选，不改变审核规则或输出）。
+
+删除清单：无。
+回滚提示：仅回滚本次 S3-F04 选择器、指南、页面测试和迁移记录变更；保留其他已有工作树修改及验收资产。

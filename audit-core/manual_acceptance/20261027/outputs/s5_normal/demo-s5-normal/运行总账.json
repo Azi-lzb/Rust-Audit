@@ -1,0 +1,71 @@
+{
+  "audit_copy_manifest": [
+    {
+      "copy_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\audit-dev\\audit-core\\manual_acceptance\\20261027\\outputs\\s5_normal\\demo-s5-normal\\审核副本\\current_CUR_s5_source_normal.xlsx",
+      "matches_snapshot": true,
+      "role": "current",
+      "sha256_after": "2c5ecd402524c999ce0a3bc839b85dc7e181bcb41e374c4593dc6b2e41fab4e9",
+      "sha256_before": "2c5ecd402524c999ce0a3bc839b85dc7e181bcb41e374c4593dc6b2e41fab4e9",
+      "sha256_copy": "2c5ecd402524c999ce0a3bc839b85dc7e181bcb41e374c4593dc6b2e41fab4e9",
+      "source_id": "CUR",
+      "source_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\audit-dev\\audit-core\\manual_acceptance\\20261027\\s5_source_normal.xlsx"
+    },
+    {
+      "copy_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\audit-dev\\audit-core\\manual_acceptance\\20261027\\outputs\\s5_normal\\demo-s5-normal\\审核副本\\配置_s5_config.xlsx",
+      "matches_snapshot": true,
+      "role": "configuration",
+      "sha256_after": "1d278fde783e8216f4250d2b29015f27092f570e4417986d3404dfbeedeb32ea",
+      "sha256_before": "1d278fde783e8216f4250d2b29015f27092f570e4417986d3404dfbeedeb32ea",
+      "sha256_copy": "1d278fde783e8216f4250d2b29015f27092f570e4417986d3404dfbeedeb32ea",
+      "source_id": "configuration",
+      "source_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\audit-dev\\audit-core\\manual_acceptance\\20261027\\s5_config.xlsx"
+    }
+  ],
+  "configuration_integrity": "UNCHANGED",
+  "configuration_sha256": "1d278fde783e8216f4250d2b29015f27092f570e4417986d3404dfbeedeb32ea",
+  "configuration_version": "manual-v1",
+  "data_quality_warnings": [],
+  "input_hashes": {
+    "configuration": {
+      "sha256_after": "1d278fde783e8216f4250d2b29015f27092f570e4417986d3404dfbeedeb32ea",
+      "sha256_before": "1d278fde783e8216f4250d2b29015f27092f570e4417986d3404dfbeedeb32ea"
+    },
+    "current:CUR": {
+      "sha256_after": "2c5ecd402524c999ce0a3bc839b85dc7e181bcb41e374c4593dc6b2e41fab4e9",
+      "sha256_before": "2c5ecd402524c999ce0a3bc839b85dc7e181bcb41e374c4593dc6b2e41fab4e9"
+    }
+  },
+  "input_integrity": "UNCHANGED",
+  "institution_code": "I001",
+  "institution_name": "模拟机构",
+  "output_files": {
+    "audit_copies": "C:\\Users\\AZI\\Desktop\\VibeCode\\audit-dev\\audit-core\\manual_acceptance\\20261027\\outputs\\s5_normal\\demo-s5-normal\\审核副本",
+    "configuration_copy": "C:\\Users\\AZI\\Desktop\\VibeCode\\audit-dev\\audit-core\\manual_acceptance\\20261027\\outputs\\s5_normal\\demo-s5-normal\\审核副本\\配置_s5_config.xlsx",
+    "result_workbook": "C:\\Users\\AZI\\Desktop\\VibeCode\\audit-dev\\audit-core\\manual_acceptance\\20261027\\outputs\\s5_normal\\demo-s5-normal\\审核结果.xlsx",
+    "run_ledger": "C:\\Users\\AZI\\Desktop\\VibeCode\\audit-dev\\audit-core\\manual_acceptance\\20261027\\outputs\\s5_normal\\demo-s5-normal\\运行总账.json"
+  },
+  "period": "2026-08-31",
+  "run_id": "demo-s5-normal",
+  "run_status": "COMPLETED",
+  "status_counts": {
+    "TRIGGERED": 1
+  },
+  "structure_checks": [
+    {
+      "business": "单位贷款",
+      "column_region": "",
+      "configured_column_path_count": 1,
+      "configured_row_path_count": 1,
+      "matched_column_path_count": 1,
+      "matched_row_path_count": 1,
+      "role": "current",
+      "row_header_width": 2,
+      "row_region": "贷款表!A1:D4",
+      "sheet": "贷款表",
+      "snapshot_id": "1c42f7ac7f8df13e99867560f77f5b668160b0f53f613641cd35b8b73dee18f4",
+      "source_id": "CUR",
+      "status": "UNCHANGED",
+      "table_id": "全工作表回退#1"
+    }
+  ]
+}

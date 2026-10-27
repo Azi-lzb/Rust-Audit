@@ -1,0 +1,30 @@
+时间：2026-10-27 11:17:06 +08:00
+执行者：Codex
+分支：audit-dev
+修改前/后 HEAD：4297315 / 4297315（本地提交未创建）
+WIP：保留工作树已有修改；只修改本记录所列文件，不清理或覆盖既有报告、样例和未提交改动。
+
+目的：落实用户新的 S1-F01 对拍标准，移除普通 Excel 外观差异作为阻塞项，同时保留值/类型、公式、必要工作簿结构和文件可读性检查。
+
+修改文件：
+- `audit-core/src/s1_formula_copy.rs`：S1 `ImportRange` 选择 `RangeStyleMode::None`，依旧复制单元格值和公式并单独写入模板批注。普通呈现样式不再属于 S1 审核复制契约。
+- `audit-core/tests/compare/compare_s1_formula_copy_candidate.py`：候选比较不再计算样式组件、样式引用、行列尺寸、冻结/打印属性或整包字节差异；状态判定继续比较 Python 基线下的值/类型、公式文本、批注、超链接、公式缓存、表名/顺序、定义名称、合并、数据验证、条件格式和文件可读性。原始输入未变及真实重算状态仍单独检查。候选仍标为 unverified，脚本不会启用生产路由。
+- `audit-core/MIGRATION_INVENTORY.md`：追加本轮结果和未完成项；S1-F01 保持受阻。
+- 本记录。
+
+测试/证据：
+- `cargo test --offline --locked -p audit-core --lib s1_formula_copy::tests`：7 passed，0 failed。
+- `cargo check --offline --locked -p audit-core`：通过；存在既有废弃 API 与未使用项警告。
+- `rustfmt --edition 2021 --check audit-core/src/s1_formula_copy.rs`：通过。
+- `git diff --check -- audit-core/src/s1_formula_copy.rs audit-core/tests/compare/compare_s1_formula_copy_candidate.py`：通过。
+- 新版合成 worker 冒烟没有完成：Cargo 返回 101，原因是 `F:\RustBuild\audit\debug\open-data-audit-gui.exe` 正在运行且占用目标文件，无法重新链接。未结束该 GUI 进程，未另建 Cargo target 目录。生成的 JSON 记录为 `candidate_unavailable`，不作为产品功能失败或通过证据。
+- 历史真实候选报告仍显示复制范围 5,487 格的值/类型、公式文本与 Python 基线差异为 0；本轮没有重跑真实样本，也没有重跑样式/格式比较。
+
+未执行/已知问题：
+- S1-F01 公式复制 worker 冒烟仍待 GUI 释放后验证；生产路由、GUI 入口和真实样本强制重算链未闭合。
+- 真实 Excel COM 复验中 Python 基线打开失败、Rust 候选因公式文本变化被拒绝；没有可交付重算结果。
+- S1-F01 整体保持受阻；Windows 人工验收与 Linux/deb 未执行。本轮未修改共享 Excel-Core。
+
+回滚：仅将 `s1_formula_copy.rs` 的 `style_mode` 恢复为 `RangeStyleMode::Full`，并撤销比较脚本中本轮“presentation style nonblocking”相关变更；保留该文件在本轮开始前已有的 WIP 修改。
+
+【组件版本】不升级；使用现有 workspace crate 版本，不引入旧版 S1-Fxx 版本体系。

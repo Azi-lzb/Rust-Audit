@@ -1,0 +1,67 @@
+{
+  "audit_copy_manifest": [
+    {
+      "copy_path": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\audit-dev\\audit-core\\manual_acceptance\\20261027\\s5_conditional\\执行结果\\s5-20261027_153043_558\\审核副本\\current_CURRENT_s5_source_normal.xlsx",
+      "matches_snapshot": true,
+      "role": "current",
+      "sha256_after": "dfc8a75b2c305d7042bbbb446e74240b8e625641e514583a5863a98529b0a9c3",
+      "sha256_before": "dfc8a75b2c305d7042bbbb446e74240b8e625641e514583a5863a98529b0a9c3",
+      "sha256_copy": "dfc8a75b2c305d7042bbbb446e74240b8e625641e514583a5863a98529b0a9c3",
+      "source_id": "CURRENT",
+      "source_path": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\audit-dev\\audit-core\\manual_acceptance\\20261027\\s5_conditional\\s5_source_normal.xlsx"
+    },
+    {
+      "copy_path": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\audit-dev\\audit-core\\manual_acceptance\\20261027\\s5_conditional\\执行结果\\s5-20261027_153043_558\\审核副本\\配置_s5_config.xlsx",
+      "matches_snapshot": true,
+      "role": "configuration",
+      "sha256_after": "e6e420834ef3c7707c25d6d2ed461b8dcdf9ad53dc31f5e3d0daf3fc0fec3025",
+      "sha256_before": "e6e420834ef3c7707c25d6d2ed461b8dcdf9ad53dc31f5e3d0daf3fc0fec3025",
+      "sha256_copy": "e6e420834ef3c7707c25d6d2ed461b8dcdf9ad53dc31f5e3d0daf3fc0fec3025",
+      "source_id": "configuration",
+      "source_path": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\audit-dev\\audit-core\\manual_acceptance\\20261027\\s5_conditional\\s5_config.xlsx"
+    }
+  ],
+  "conditional_formatting": {
+    "elapsed_ms": 5,
+    "error_count": 0,
+    "evaluation_time_ms": 0,
+    "read_time_ms": 5,
+    "reader": "calamine+namespace_aware_ooxml",
+    "rules_supported": 1,
+    "rules_total": 1,
+    "scanned_cells": 1,
+    "status": "COMPLETED",
+    "triggered_count": 0,
+    "unsupported_count": 0
+  },
+  "configuration_integrity": "UNCHANGED",
+  "configuration_sha256": "e6e420834ef3c7707c25d6d2ed461b8dcdf9ad53dc31f5e3d0daf3fc0fec3025",
+  "configuration_version": "manual-v1",
+  "data_quality_warnings": [],
+  "input_hashes": {
+    "configuration": {
+      "sha256_after": "e6e420834ef3c7707c25d6d2ed461b8dcdf9ad53dc31f5e3d0daf3fc0fec3025",
+      "sha256_before": "e6e420834ef3c7707c25d6d2ed461b8dcdf9ad53dc31f5e3d0daf3fc0fec3025"
+    },
+    "current:CURRENT": {
+      "sha256_after": "dfc8a75b2c305d7042bbbb446e74240b8e625641e514583a5863a98529b0a9c3",
+      "sha256_before": "dfc8a75b2c305d7042bbbb446e74240b8e625641e514583a5863a98529b0a9c3"
+    }
+  },
+  "input_integrity": "UNCHANGED",
+  "institution_code": "I001",
+  "institution_name": "s5",
+  "output_files": {
+    "audit_copies": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\audit-dev\\audit-core\\manual_acceptance\\20261027\\s5_conditional\\执行结果\\s5-20261027_153043_558\\审核副本",
+    "configuration_copy": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\audit-dev\\audit-core\\manual_acceptance\\20261027\\s5_conditional\\执行结果\\s5-20261027_153043_558\\审核副本\\配置_s5_config.xlsx",
+    "result_workbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\audit-dev\\audit-core\\manual_acceptance\\20261027\\s5_conditional\\执行结果\\s5-20261027_153043_558\\审核结果.xlsx",
+    "run_ledger": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\audit-dev\\audit-core\\manual_acceptance\\20261027\\s5_conditional\\执行结果\\s5-20261027_153043_558\\运行总账.json"
+  },
+  "period": "2026-10-27",
+  "run_id": "s5-20261027_153043_558",
+  "run_status": "COMPLETED",
+  "status_counts": {
+    "RETRIEVAL_FAILED": 1
+  },
+  "structure_checks": []
+}

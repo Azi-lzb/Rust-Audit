@@ -1,0 +1,24 @@
+时间：2026-10-26（Windows 原生）
+执行者：Codex Audit migration agent
+分支：audit-dev
+
+目的：开始 S3-F01 执行比较迁移。沿用 S3-F04 已有 CentralDataset 和 shared Excel reader，新增 3.0/3.1 配置读取、五段/兼容八段规则保留、基础八维两期配对、目标单位舍入及环比警戒基础计算。
+
+修改文件：
+- `audit-core/src/s3_execution_compare.rs`：实现本切片配置读取、规则配置原样保留、指标参照解析、八维键配对、本期/上期单边记录、基础差额/环比/警戒。
+- `audit-core/src/lib.rs`：导出 S3-F01 迁移模块。
+- `audit-core/MIGRATION_INVENTORY.md`：将 S3-F01 记录为迁移中，未将模块/单测声明成完整业务入口。
+
+测试与结果：
+- `cargo test --offline --locked -p audit-core --lib -j 1 s3_execution_compare::tests`：4 passed，真实配置测试默认 ignored。
+- 通过 `AUDIT_S3_F1_COMMON_CONFIG`/`AUDIT_S3_F1_FEATURE_CONFIG` 显式执行真实配置读取测试：13 个环比警戒、1,711 个指标参照、5,082 条规则动作、2,844 条五段/兼容八段表达式均成功读取；输入配置只读。
+- `cargo build --offline --locked -p audit-core --bin open-data-audit -j 1`：通过。
+
+未执行/已知缺项：
+- 尚未接入 CLI/GUI、数据文件加载和结果 XLSX 输出；该切片不能作为 S3-F01 可运行完成声明。
+- 规则动作执行、5/8 段引用语义求值、规则触发与表达式错误传播尚未迁移。
+- 没有可用的两期真实导数，本轮未产出业务比较结果或 Python/Rust 结果对拍；Linux/deb 未执行。
+- S3-F01 整体状态保持未验证，下一步应接现有 S3 CLI 数据读取，完成规则执行及旧版 21 列比较结果输出。
+
+输入与安全：仅只读加载旧版 config-real 的 3.0/3.1 配置；没有修改源 Python、配置或业务数据。
+回滚：移除 `s3_execution_compare` 模块导出及本文件，恢复清单原状态；不触碰现有 S3-F04 或其他工作树。

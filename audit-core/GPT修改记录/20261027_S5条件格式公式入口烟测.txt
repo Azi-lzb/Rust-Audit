@@ -1,0 +1,24 @@
+# S5 条件格式公式 CLI 烟测
+
+修改前 HEAD：4297315068eb968dec55a4037b9246c39ddcc3a6（未创建提交）。
+
+目的：给已接入的 S5 条件格式 Rust 求值链增加一组含实际 OOXML `conditionalFormatting/cfRule` 公式的正常/异常工作簿，使用正式 `s5-audit-run` CLI 验证规则触发进入输出。
+
+修改文件：
+- `audit-core/examples/manual_acceptance_samples.rs`：增加 `--s5-conditional <new-directory>` 生成模式，使用 Audit 现有的 `umya-spreadsheet` dev-dependency 创建公式规则样例，不改根 Cargo.toml、Cargo.lock 或共享 crate。
+- `audit-core/manual_acceptance/20261027/README.md`：加入输入、命令、正式输出位置，并标记旧构建诊断输出不可用于验收。
+- `audit-core/manual_acceptance/20261027/expected-results.txt`：记录根据 `C4>120` 和输入值独立推导的预期及实跑结果。
+- `audit-core/MIGRATION_INVENTORY.md`：补充合成 CLI 烟测证据；S5 整体状态不变。
+
+验证：
+- `cargo run --offline --locked -p audit-core --example manual_acceptance_samples -- --s5-conditional ...`：Windows 原生构建并生成 XLSX 成功。
+- `cargo run --offline --locked -p audit-core --example manual_acceptance_samples -- --verify-s5-conditional ...`：Rust Calamine 重新打开两份实际 CLI 结果；正常样例无触发行，异常样例读回一行，工作表、单元格、值、状态、公式均为预期。
+- Windows Rust `conditional-evaluate`：正常输入 1 条规则、1 条支持、0 触发；异常输入在 `贷款表!C4` 触发 `C4>120`，规则支持数 1，诊断 0。
+- `F:\RustBuild\audit_manual_ready_20261027\debug\open-data-audit.exe s5-audit-run ... --developer-view`：正常结果 COMPLETED、PASSED 1、条件格式触发 0；异常结果 COMPLETED、TRIGGERED 1、条件格式触发 1；两例规则支持数 1、不支持 0、错误 0。
+- 正式手测结果位于 `audit-core/manual_acceptance/20261027/s5_conditional/outputs/s5_conditional_{normal,exception}_ready/`。首次错误地使用较旧的 `F:\RustBuild\audit\debug\open-data-audit.exe` 生成的 `s5_conditional_{normal,exception}/` 输出保留作诊断；它们没有运行条件格式阶段，README 标注为不可验收。
+
+未执行/已知问题：仅为合成规则和 CLI 入口烟测，未做 S5 真实 Python 文件产物对拍、GUI 人工点击或 Linux/deb 验收；S5-F01 整体仍未验收。没有进行外观样式比较。
+
+【组件版本】不升级。
+
+回滚：移除本记录及本轮 S5 条件格式样例/输出，撤回 README、预期结果、库存条目和样例生成器 `--s5-conditional` 增量。

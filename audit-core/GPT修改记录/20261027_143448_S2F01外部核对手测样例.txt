@@ -1,0 +1,30 @@
+时间：2026-10-27 14:34（Asia/Shanghai）
+执行者：Codex
+修改前 HEAD：4297315068eb968dec55a4037b9246c39ddcc3a6
+修改后 HEAD：4297315068eb968dec55a4037b9246c39ddcc3a6（未提交）
+WIP：audit-dev 工作树存在大量既存未提交 Audit 代码、报告和样例。本轮仅补充 S2 样例及局部记录；没有暂存、覆盖、清理、提交或推送其他 WIP。
+
+目的：按用户调整后的内容正确性标准，为 S2-F01 补齐可人工操作的外部核对正常/异常案例。普通外观格式差异不作为本轮阻塞条件。
+
+修改/新增文件：
+- 新增 audit-core/examples/s2_external_manual_sample.rs，使用 Rust excel_writer 生成独立配置与外部数据工作簿，并复制仓库合成报表到新样例目录。
+- 新增 audit-core/manual_acceptance/20261027/s2_external_hit/，包含本期/上期输入、配置、正常/异常外部工作簿、独立预期和两份实际审核输出。
+- 更新 audit-core/manual_acceptance/20261027/README.md、expected-results.txt，加入手测命令及独立预期。
+- 更新 audit-core/MIGRATION_INVENTORY.md，将 S2-F01 标为“已实现，待 Windows 真实验收”，并记录本轮合成案例边界。
+
+逻辑、配置和 VBA：只增加测试样例生成器，不改变产品业务逻辑、产品默认配置、VBA 或 Excel-Core。
+
+测试与结果：
+- Windows Rust：cargo run --offline --locked -p audit-core --example s2_external_manual_sample 成功。
+- Windows 正式 CLI：正常和异常两次 s2 执行均成功，均生成《报表审核清单》；两者各有 17 条结果，异常数分别为 6 和 7。
+- 正常外部值 1,234,567.89 元，规则 MANUAL-EXT-001 外部异常为 0；异常外部值 1,234,500.00 元，差额 67.89 元，产生 1 条硬性外部核对异常。
+- 共享 Rust Calamine probe 成功重开两份输出的 3 张工作表；外部核对页读回报表值、外部值和差异值分别为 1,234,567.89 / 1,234,567.89 / 0 及 1,234,567.89 / 1,234,500 / 67.89。
+- 两份本期/上期输入副本与仓库合成来源文件 SHA-256 一致。
+
+未执行：本轮未重跑 Python/Rust 对拍、真实业务工作簿、浏览器 GUI 手动点击、完整测试套件、Linux/WSL 或 deb 验收。S1-F01 真实 Office 重算仍未验证/受阻。
+
+已知问题：正常案例的总报告仍包含原合成报表配置产生的 6 条其他校验异常；外部核对正常只表示本规则未触发。该样例不代表真实外部文件验收或 Python/Rust 输出对拍通过。
+
+删除清单：无。回滚提示：若需撤销，仅撤回本记录、本生成器、s2_external_hit 样例目录及 README、预期文件、迁移清单中的对应改动；不得使用 reset/clean 或整份文件覆盖。
+
+【组件版本】不升级。仅新增手测生成器和样例，没有变更产品组件。

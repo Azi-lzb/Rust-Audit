@@ -1,0 +1,22 @@
+时间：2026-10-27 03:46:56（Asia/Shanghai）
+执行者：Codex
+工作树：audit-dev；当前 HEAD 2922900c2981a5d71e98fdbb810203bb2acb820b
+
+目的
+- 按现有已提交报告修正 S3-F01 迁移清单中的过期状态；未重复运行大规模对拍。
+
+证据
+- `audit-core/probe/reports/s3_f01_real_parity_windows_native_20261027.json` 已跟踪在 Git 中，记载 Windows 真实 2026.07/2026.08 两期 CSV；本期 2,595 条、上期 2,586 条、结果 2,610 行。
+- 旧版八段式和五段式模式均通过 Python/Rust 对拍：键维度差异 0、数值差异 0（1e-9 容差）、归一化样式差异 0、列宽精确；执行错误 0。
+- `web_bridge.rs` 存在原 GUI `start_central_comparison` 到 Rust 后台服务的实现和合成入口测试；CLI `s3-execution-compare` 已接通。
+
+修改文件
+- `audit-core/MIGRATION_INVENTORY.md`：将 S3-F01 更新为“已实现，待 Windows 真实验收”，保留原 GUI 人工操作和 Linux/deb 尚未验证状态。
+- 本记录。
+
+未执行项
+- 未重复运行 S3-F01 Python/Rust 对拍；未做 GUI 人工验收或 Linux/deb 验证。
+- 未改业务代码、共享 crates、源 Python、真实输入、PyTools 或 main 工作树。
+
+回滚
+- 仅需恢复迁移清单中的 S3-F01 行并删除本记录；保留其余工作树修改。

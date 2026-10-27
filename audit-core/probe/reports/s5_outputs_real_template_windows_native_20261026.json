@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "suite": "audit.s5_run_outputs_parity",
+  "status": "mismatch",
+  "sample_scope": {
+    "business": "单位贷款",
+    "run_id": "PARITYRUN",
+    "files_copied_to_temporary": true,
+    "template_path_supplied": true,
+    "template_dir_supplied": false,
+    "python_writer_engine": "openpyxl (styling baseline)"
+  },
+  "comparison": {
+    "diff_count": 9,
+    "diff_paths_sample": [
+      "copies.set: ['current_CURRENT_source.xlsx', 'layout_LAYOUT_3bdd5ff9cab9_10.基础数据-单位贷款202609.xlsx', '配置_config.xlsx'] vs ['current_CURRENT_source.xlsx', '配置_config.xlsx']",
+      "ledger.manifest: length 3 vs 2",
+      "ledger.manifest[1].copy_name",
+      "ledger.manifest[1].role",
+      "ledger.manifest[1].sha_after",
+      "ledger.manifest[1].sha_before",
+      "ledger.manifest[1].sha_copy",
+      "ledger.manifest[1].source_id",
+      "ledger.manifest[1].source_name"
+    ]
+  },
+  "verification": {
+    "rust_runner": "audit-core/tests/s5_outputs_parity.rs",
+    "python_baseline": "s1audit_configured.engine.run(output_dir=...) with AUDIT3_WRITER_ENGINE=openpyxl",
+    "python_baseline_version": "3.12.10",
+    "inputs_unchanged": true,
+    "raw_values_persisted": false,
+    "capability_status": "unverified",
+    "production_route_eligible": false
+  },
+  "limitations": [
+    "Conditional-format and data-quality tables are compared empty; their populated paths belong to the S1 conditional-format bridge.",
+    "Structure snapshots and hash-integrity downgrade are out of scope.",
+    "Colors compare modulo the 8-digit alpha prefix and fitToWidth=1 compares equal to an omitted attribute under fitToPage: both are rust_xlsxwriter/openpyxl serializer representation deltas with identical Excel semantics."
+  ]
+}
