@@ -25,6 +25,9 @@ zip.workspace = true
 sha2.workspace = true
 tokio.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
+
 [[bin]]
 name = "open-data-audit"
 path = "src/bin/open-data-audit.rs"
