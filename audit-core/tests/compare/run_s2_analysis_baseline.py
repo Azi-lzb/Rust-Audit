@@ -271,9 +271,20 @@ def main() -> int:
     from base_audit.systems.s2_report_collection.rule_engine import RuleEngine
     from base_audit.systems.s2_report_collection.validation import (
         validate_config_warnings,
-        validate_external_warnings,
         validate_import,
     )
+    # 双 API 兼容：旧 Python 有 validate_external_warnings（外部取数告警转为
+    # 软性“校验规则”发现）；当前 Python service.py 明确“外部文件取数提示属于
+    # 运行诊断，不纳入审核发现或异常统计”，该函数已移除。语义选择记录在
+    # 决策清单 AL-10，基线生成器按实际可用的 API 生成并标注所采用的契约。
+    try:
+        from base_audit.systems.s2_report_collection.validation import (
+            validate_external_warnings,
+        )
+        external_warnings_contract = "audit_findings"
+    except ImportError:
+        validate_external_warnings = None
+        external_warnings_contract = "run_diagnostics_only"
 
     fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
     config = config_from_payload(fixture["config"], models)
@@ -316,7 +327,11 @@ def main() -> int:
                 str(key): str(value)
                 for key, value in case["external"].get("external_org_map", {}).items()
             }
-            quality.extend(validate_external_warnings(external.warnings))
+            if validate_external_warnings is not None:
+                quality.extend(validate_external_warnings(external.warnings))
+            else:
+                # 当前 Python 契约：外部取数提示仅为运行诊断，不进入发现集合。
+                pass
             external_findings = ExternalComparisonEngine().run(
                 current, external, external_org_map, config
             )

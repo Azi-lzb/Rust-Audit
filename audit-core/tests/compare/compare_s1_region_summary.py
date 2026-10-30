@@ -78,6 +78,21 @@ def write_source(
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "Data"
+    # Keep the fixture aligned with the template's named header range. The
+    # current Rust entry point performs a 90% structure preflight before timing.
+    template_path = WORKSPACE / "tests" / "fixtures" / "s1_region_summary_template.xlsx"
+    template = load_workbook(template_path, read_only=True, data_only=True)
+    try:
+        template_sheet = template["Data"]
+        for row_number in (2, 3):
+            for column_number in (2, 3):
+                sheet.cell(
+                    row_number,
+                    column_number,
+                    template_sheet.cell(row_number, column_number).value,
+                )
+    finally:
+        template.close()
     sheet["F1"] = local_value
     for row_number, values in rows.items():
         sheet.cell(row_number, 2, values[0])
@@ -316,6 +331,11 @@ def write_history_case(root: Path) -> tuple[Path, Path, Path, Path]:
     source = Workbook()
     source_sheet = source.active
     source_sheet.title = "本地校验结果"
+    for column, header in enumerate(
+        ("批次", "表单名称", "规则编号", "规则类型", "规则描述", "校验字段"),
+        start=2,
+    ):
+        source_sheet.cell(2, column, header)
     source_rows = (
         ("2026-07", "存量单位贷款", 1.0, "阈值", "不应低于", "贷款余额"),
         ("2026-07", "存量单位贷款", 2.0, "阈值", "不应低于", "贷款余额"),

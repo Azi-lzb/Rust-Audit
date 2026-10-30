@@ -393,9 +393,15 @@ fn probes_s1_formula_copy_import_ranges_without_claiming_capability() {
     );
     assert!(!output.exists(), "candidate output path must be new");
     let mapping_config = std::env::var_os("AUDIT_S1_COPY_CANDIDATE_MAPPING").map(PathBuf::from);
-    let prepared =
-        build_s1_formula_copy_edit_plan(&target, &template, &output, mapping_config.as_deref())
-            .expect("build S1 formula-copy business plan from template rules");
+    let external_data = std::env::var_os("AUDIT_S1_COPY_CANDIDATE_EXTERNAL").map(PathBuf::from);
+    let prepared = build_s1_formula_copy_edit_plan(
+        &target,
+        &template,
+        &output,
+        mapping_config.as_deref(),
+        external_data.as_deref(),
+    )
+    .expect("build S1 formula-copy business plan from template rules");
     let template_profile = prepared.template_profile;
     let mut plan = prepared.edit_plan;
     let range_import_count = plan

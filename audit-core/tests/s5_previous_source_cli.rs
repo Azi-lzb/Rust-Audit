@@ -1366,18 +1366,18 @@ fn s5_audit_cli_reads_and_copies_independent_previous_source() {
     let result_sheet = result_workbook
         .sheets
         .iter()
-        .find(|sheet| sheet.name == "审核结果")
+        .find(|sheet| sheet.name == "核查表校验结果")
         .expect("result sheet");
     assert_eq!(
-        CellValue::from_probe_json(&result_sheet.values["J2"]).expect("current value"),
+        CellValue::from_probe_json(&result_sheet.values["H2"]).expect("current value"),
         CellValue::Number(120.0)
     );
     assert_eq!(
-        CellValue::from_probe_json(&result_sheet.values["K2"]).expect("previous value"),
+        CellValue::from_probe_json(&result_sheet.values["I2"]).expect("previous value"),
         CellValue::Number(90.0)
     );
     assert_eq!(
-        CellValue::from_probe_json(&result_sheet.values["L2"]).expect("difference value"),
+        CellValue::from_probe_json(&result_sheet.values["J2"]).expect("difference value"),
         CellValue::Number(30.0)
     );
 
@@ -1482,14 +1482,14 @@ fn s5_audit_cli_selects_multiple_current_sources_by_rule_binding() {
     let result_sheet = result_workbook
         .sheets
         .iter()
-        .find(|sheet| sheet.name == "审核结果")
+        .find(|sheet| sheet.name == "核查表校验结果")
         .expect("result sheet");
     assert_eq!(
-        CellValue::from_probe_json(&result_sheet.values["J2"]).expect("primary source value"),
+        CellValue::from_probe_json(&result_sheet.values["H2"]).expect("primary source value"),
         CellValue::Number(111.0)
     );
     assert_eq!(
-        CellValue::from_probe_json(&result_sheet.values["J3"]).expect("additional source value"),
+        CellValue::from_probe_json(&result_sheet.values["H3"]).expect("additional source value"),
         CellValue::Number(222.0)
     );
 
@@ -1579,10 +1579,10 @@ fn s5_audit_cli_selects_multiple_current_sources_by_rule_binding() {
     let ambiguous_sheet = ambiguous_result
         .sheets
         .iter()
-        .find(|sheet| sheet.name == "审核结果")
+        .find(|sheet| sheet.name == "核查表校验结果")
         .expect("ambiguous result sheet");
     assert_eq!(
-        CellValue::from_probe_json(&ambiguous_sheet.values["I3"])
+        CellValue::from_probe_json(&ambiguous_sheet.values["G3"])
             .expect("ambiguous-source error description"),
         CellValue::Text("业务 单位贷款 对应多个current数据源，请显式选择逻辑来源".to_owned())
     );
@@ -1648,22 +1648,22 @@ fn s5_audit_cli_reads_and_copies_configured_external_source() {
     let result_sheet = result_workbook
         .sheets
         .iter()
-        .find(|sheet| sheet.name == "审核结果")
+        .find(|sheet| sheet.name == "核查表校验结果")
         .expect("result sheet");
     assert_eq!(
-        CellValue::from_probe_json(&result_sheet.values["J2"]).expect("current value"),
+        CellValue::from_probe_json(&result_sheet.values["H2"]).expect("current value"),
         CellValue::Number(1500.0)
     );
     assert_eq!(
-        CellValue::from_probe_json(&result_sheet.values["K2"]).expect("external value"),
+        CellValue::from_probe_json(&result_sheet.values["I2"]).expect("external value"),
         CellValue::Number(1500.0)
     );
     assert_eq!(
-        CellValue::from_probe_json(&result_sheet.values["L2"]).expect("difference value"),
+        CellValue::from_probe_json(&result_sheet.values["J2"]).expect("difference value"),
         CellValue::Number(0.0)
     );
     assert_eq!(
-        CellValue::from_probe_json(&result_sheet.values["I2"]).expect("difference description"),
+        CellValue::from_probe_json(&result_sheet.values["G2"]).expect("difference description"),
         CellValue::Text("差异=0.00".to_owned())
     );
 
@@ -1761,14 +1761,14 @@ fn s5_audit_cli_selects_multiple_external_sources_and_matches_python() {
     let result_sheet = result_workbook
         .sheets
         .iter()
-        .find(|sheet| sheet.name == "审核结果")
+        .find(|sheet| sheet.name == "核查表校验结果")
         .expect("result sheet");
     assert_eq!(
-        CellValue::from_probe_json(&result_sheet.values["K2"]).expect("business A external value"),
+        CellValue::from_probe_json(&result_sheet.values["I2"]).expect("business A external value"),
         CellValue::Number(1500.0)
     );
     assert_eq!(
-        CellValue::from_probe_json(&result_sheet.values["K3"]).expect("business B external value"),
+        CellValue::from_probe_json(&result_sheet.values["I3"]).expect("business B external value"),
         CellValue::Number(2500.0)
     );
     let ledger_path = PathBuf::from(
@@ -1950,18 +1950,18 @@ fn s5_audit_cli_projects_numeric_regions_from_the_selected_template_catalog() {
     let result_sheet = result_workbook
         .sheets
         .iter()
-        .find(|sheet| sheet.name == "审核结果")
+        .find(|sheet| sheet.name == "核查表校验结果")
         .expect("result sheet");
     assert_eq!(
-        CellValue::from_probe_json(&result_sheet.values["J2"]).expect("current value"),
+        CellValue::from_probe_json(&result_sheet.values["H2"]).expect("current value"),
         CellValue::Number(121.0)
     );
     assert_eq!(
-        CellValue::from_probe_json(&result_sheet.values["K2"]).expect("previous value"),
+        CellValue::from_probe_json(&result_sheet.values["I2"]).expect("previous value"),
         CellValue::Number(100.0)
     );
     assert_eq!(
-        CellValue::from_probe_json(&result_sheet.values["F2"]).expect("retrieval location"),
+        CellValue::from_probe_json(&result_sheet.values["C2"]).expect("retrieval location"),
         CellValue::Text("D6".to_owned())
     );
     let events: Vec<Value> = String::from_utf8_lossy(&bound.stderr)
@@ -1970,8 +1970,8 @@ fn s5_audit_cli_projects_numeric_regions_from_the_selected_template_catalog() {
         .collect();
     let template_selections = events
         .iter()
-        .find(|event| event["status"] == "completed")
-        .expect("completed progress event")["numeric_region_templates"]
+        .find(|event| event["step"] == "audit_run" && event["status"] == "completed")
+        .expect("completed audit-run progress event")["numeric_region_templates"]
         .as_array()
         .expect("numeric-region template selections");
     assert_eq!(template_selections.len(), 2);
@@ -2076,14 +2076,14 @@ fn s5_audit_cli_retrieves_ordinary_external_layout_without_contract() {
     let result_sheet = result_workbook
         .sheets
         .iter()
-        .find(|sheet| sheet.name == "审核结果")
+        .find(|sheet| sheet.name == "核查表校验结果")
         .expect("result sheet");
     assert_eq!(
-        CellValue::from_probe_json(&result_sheet.values["K2"]).expect("external value"),
+        CellValue::from_probe_json(&result_sheet.values["I2"]).expect("external value"),
         CellValue::Number(1500.0)
     );
     assert_eq!(
-        CellValue::from_probe_json(&result_sheet.values["L2"]).expect("difference value"),
+        CellValue::from_probe_json(&result_sheet.values["J2"]).expect("difference value"),
         CellValue::Number(0.0)
     );
 
@@ -2172,14 +2172,14 @@ fn s5_audit_cli_retrieves_dynamic_external_time_series_for_current_period() {
     let result_sheet = result_workbook
         .sheets
         .iter()
-        .find(|sheet| sheet.name == "审核结果")
+        .find(|sheet| sheet.name == "核查表校验结果")
         .expect("result sheet");
     assert_eq!(
-        CellValue::from_probe_json(&result_sheet.values["K2"]).expect("selected external value"),
+        CellValue::from_probe_json(&result_sheet.values["I2"]).expect("selected external value"),
         CellValue::Number(1500.0)
     );
     assert_eq!(
-        CellValue::from_probe_json(&result_sheet.values["L2"]).expect("difference value"),
+        CellValue::from_probe_json(&result_sheet.values["J2"]).expect("difference value"),
         CellValue::Number(0.0)
     );
     let warning_sheet = result_workbook
@@ -2234,10 +2234,10 @@ fn s5_audit_cli_uses_dynamic_external_time_series_when_contract_exists() {
     let result_sheet = result_workbook
         .sheets
         .iter()
-        .find(|sheet| sheet.name == "审核结果")
+        .find(|sheet| sheet.name == "核查表校验结果")
         .expect("result sheet");
     assert_eq!(
-        CellValue::from_probe_json(&result_sheet.values["K2"]).expect("selected external value"),
+        CellValue::from_probe_json(&result_sheet.values["I2"]).expect("selected external value"),
         CellValue::Number(1500.0)
     );
     fs::remove_dir_all(directory).expect("remove contract time-series files");
@@ -2268,10 +2268,10 @@ fn s5_audit_cli_reports_missing_current_external_time_series_date() {
     let result_sheet = result_workbook
         .sheets
         .iter()
-        .find(|sheet| sheet.name == "审核结果")
+        .find(|sheet| sheet.name == "核查表校验结果")
         .expect("result sheet");
     assert!(matches!(
-        CellValue::from_probe_json(&result_sheet.values["I2"]).expect("error message"),
+        CellValue::from_probe_json(&result_sheet.values["G2"]).expect("error message"),
         CellValue::Text(message) if message.contains("没有本期日期 2026-08-31 的记录")
     ));
     fs::remove_dir_all(directory).expect("remove missing-date files");
@@ -2302,7 +2302,7 @@ fn s5_audit_cli_uses_zero_and_records_invalid_dynamic_external_numeric_values() 
     let result_sheet = result_workbook
         .sheets
         .iter()
-        .find(|sheet| sheet.name == "审核结果")
+        .find(|sheet| sheet.name == "核查表校验结果")
         .expect("result sheet");
     assert!(!result_sheet.values.contains_key("J2"));
     let warning_sheet = result_workbook

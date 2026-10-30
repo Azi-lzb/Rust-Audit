@@ -173,21 +173,44 @@ fn conditional_audit_batch_cli_merges_issues_and_logs_per_file_engine_timings() 
 }
 
 #[test]
-fn conditional_audit_batch_cli_stops_without_partial_result_on_file_error() {
+fn conditional_audit_batch_cli_keeps_successful_files_when_a_peer_fails() {
     let manifest = failing_manifest();
     let user = run_cli(&manifest, false);
-    assert!(!user.status.success());
-    assert!(user.stdout.is_empty(), "partial JSON must not be returned");
+    assert!(
+        user.status.success(),
+        "a per-file failure should be represented in the batch report: {}",
+        String::from_utf8_lossy(&user.stderr)
+    );
+    let user_report: Value =
+        serde_json::from_slice(&user.stdout).expect("valid partial batch JSON");
+    assert_eq!(user_report["status"], "completed_with_diagnostics");
+    assert_eq!(user_report["files"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        user_report["files"][0]["status"],
+        "completed_with_diagnostics"
+    );
+    assert_eq!(user_report["files"][0]["issue_count"], 4);
+    assert_eq!(user_report["files"][1]["status"], "failed");
+    assert_eq!(user_report["files"][1]["issue_count"], 0);
+    assert_eq!(user_report["issues"].as_array().unwrap().len(), 4);
+    assert!(user_report["files"][1]["error"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("missing-workbook.xlsx"));
     let user_log = String::from_utf8_lossy(&user.stderr);
     assert!(user_log.contains("甲银行_20260731.xlsx"));
     assert!(user_log.contains("乙银行_20260731.xlsx：条件格式检查失败"));
 
     let developer = run_cli(&manifest, true);
-    assert!(!developer.status.success());
+    assert!(developer.status.success());
     assert!(
-        developer.stdout.is_empty(),
-        "partial JSON must not be returned"
+        !developer.stdout.is_empty(),
+        "successful-file results must remain available"
     );
+    let developer_report: Value =
+        serde_json::from_slice(&developer.stdout).expect("valid developer-view batch JSON");
+    assert_eq!(developer_report["status"], "completed_with_diagnostics");
+    assert_eq!(developer_report["issues"].as_array().unwrap().len(), 4);
     let developer_events = String::from_utf8_lossy(&developer.stderr)
         .lines()
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
@@ -200,7 +223,14 @@ fn conditional_audit_batch_cli_stops_without_partial_result_on_file_error() {
     assert!(file_events
         .iter()
         .any(|event| event["file_index"] == 2 && event["status"] == "failed"));
-    assert_eq!(developer_events.last().unwrap()["status"], "failed");
+    assert!(file_events
+        .iter()
+        .any(|event| event["file_index"] == 1 && event["status"] == "completed"));
+    assert_eq!(developer_events.last().unwrap()["status"], "completed");
+    assert_eq!(
+        developer_events.last().unwrap()["result_status"],
+        "completed_with_diagnostics"
+    );
 
     fs::remove_file(manifest).expect("remove temporary failing batch manifest");
 }

@@ -1,6 +1,10 @@
+use audit_core::{
+    excel_route::production_modifier, s1_formula_copy::build_s1_formula_copy_edit_plan,
+};
 use excel_reader::read_workbook;
 use excel_writer::Workbook;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -72,6 +76,45 @@ fn formula_template(path: &Path) {
         .define_name("表结构区域_集成样例", "='S1Conditional'!$A$2:$A$2")
         .expect("define structure area");
     workbook.save(path).expect("save formula template");
+}
+
+fn formula_template_with_runtime_errors(path: &Path) {
+    let mut workbook = Workbook::new();
+    let worksheet = workbook.add_worksheet();
+    worksheet
+        .set_name("S1Conditional")
+        .expect("name runtime-error formula sheet");
+    worksheet
+        .write_string(1, 0, "资产总额")
+        .expect("write structure label");
+    worksheet
+        .write_formula(0, 3, "=1/0")
+        .expect("write division-error formula");
+    // INDEX with a row beyond its reference range calculates to #REF! without
+    // embedding a static #REF! token in the template formula text.
+    worksheet
+        .write_formula(1, 3, "=INDEX(A1:A1,2)")
+        .expect("write runtime reference-error formula");
+    worksheet
+        .write_formula(
+            2,
+            3,
+            "=IF(TRUE,\"错误|数值|模拟指标|独立预期规则异常|10|9|1\",\"\")",
+        )
+        .expect("write ordinary rule-result formula");
+    workbook
+        .define_name("校验区域", "='S1Conditional'!$D$1:$D$3")
+        .expect("define runtime formula range");
+    workbook
+        .define_name("表结构区域_集成样例", "='S1Conditional'!$A$2:$A$2")
+        .expect("define runtime structure range");
+    workbook
+        .save(path)
+        .expect("save runtime-error formula template");
+}
+
+fn sha256_file(path: &Path) -> anyhow::Result<Vec<u8>> {
+    Ok(Sha256::digest(fs::read(path)?).to_vec())
 }
 
 fn formula_template_without_result_rule_or_structure_area(path: &Path) {
@@ -884,11 +927,10 @@ fn production_s1_directory_command_requires_fresh_formula_calculation() {
 }
 
 #[test]
-#[ignore = "requires AUDIT_S1_RECALC_TEST_SIDECAR and Windows Microsoft Excel COM"]
-fn s1_directory_with_excel_sidecar_recalculates_a_copy_before_auditing() -> anyhow::Result<()> {
-    let sidecar = std::env::var_os("AUDIT_S1_RECALC_TEST_SIDECAR")
-        .map(PathBuf::from)
-        .expect("AUDIT_S1_RECALC_TEST_SIDECAR is required for the Excel COM integration test");
+#[ignore = "requires Windows Microsoft Excel COM"]
+fn s1_directory_copies_template_formulas_recalculates_and_combines_real_issues()
+-> anyhow::Result<()> {
+    anyhow::ensure!(cfg!(windows), "native COM integration requires Windows");
     let directory = temporary_directory("excel_sidecar_end_to_end");
     let input = directory.join("input");
     fs::create_dir_all(&input).expect("create S1 input directory");
@@ -902,25 +944,79 @@ fn s1_directory_with_excel_sidecar_recalculates_a_copy_before_auditing() -> anyh
     )
     .expect("copy synthetic source with a triggered conditional format");
     let template = directory.join("template.xlsx");
-    formula_template(&template);
-    let audit_copy = directory.join("audit-copy.xlsx");
-    fs::copy(&template, &audit_copy).expect("create separate formula audit copy");
+    formula_template_with_runtime_errors(&template);
+    let output_root = directory.join("output");
+    let batch_directory = output_root.join("S1-F1_独立审核批次");
+    fs::create_dir_all(&batch_directory).expect("create independent S1 output batch");
+    let audit_copy = batch_directory.join("1001_机构甲_模板公式副本.xlsx");
+    let source_hash_before = sha256_file(&source)?;
+    let template_hash_before = sha256_file(&template)?;
+
+    // Independent expected result, written before launching either the Excel
+    // editor or calculation sidecar: 3 formula issues at D1/D2/D3, plus 1
+    // triggered conditional-format issue at S1Conditional!B2 (source value 5).
+    const EXPECTED_FORMULA_ISSUES: [(&str, &str, &str); 3] = [
+        ("D1", "error", "Div0"),
+        ("D2", "error", "Ref"),
+        ("D3", "string", "错误|数值|模拟指标|独立预期规则异常|10|9|1"),
+    ];
+    const EXPECTED_CONDITIONAL_ISSUE: (&str, &str, f64) = ("S1Conditional", "B2", 5.0);
+    const EXPECTED_RESULT_HEADERS: [&str; 13] = [
+        "工作簿名",
+        "工作表名",
+        "定位单元格",
+        "错误类型",
+        "校验类型",
+        "校验指标",
+        "描述",
+        "当前值",
+        "对比值",
+        "差值",
+        "规则编号",
+        "历史校验说明",
+        "审核意见",
+    ];
+
+    let (modifier, capability) = production_modifier("S1-F1 Excel COM integration test")?;
+    assert!(
+        capability.is_some(),
+        "Windows production Excel-Core evidence is required"
+    );
+    let edit_plan = build_s1_formula_copy_edit_plan(&source, &template, &audit_copy, None, None)?;
+    let edit_report = modifier.execute(&edit_plan.edit_plan)?;
+    assert_eq!(edit_report.output, audit_copy);
+    assert!(audit_copy.starts_with(&batch_directory));
+    let copied = read_workbook(&audit_copy)?;
+    let copied_sheet = copied
+        .sheets
+        .iter()
+        .find(|sheet| sheet.name == "S1Conditional")
+        .expect("copied audit sheet");
+    assert_eq!(
+        copied_sheet.formulas.get("D1").map(String::as_str),
+        Some("1/0")
+    );
+    assert_eq!(
+        copied_sheet.formulas.get("D2").map(String::as_str),
+        Some("INDEX(A1:A1,2)")
+    );
+    assert!(copied_sheet.formulas.contains_key("D3"));
+
     let manifest = directory.join("formula-copies.json");
     fs::write(
         &manifest,
         serde_json::to_vec(&json!({
             "files": [{
                 "source_file": source.file_name().unwrap().to_string_lossy(),
-                "audit_workbook": audit_copy.file_name().unwrap().to_string_lossy()
+                "audit_workbook": audit_copy.to_string_lossy()
             }]
         }))?,
     )
     .expect("write S1 formula-copy manifest");
-    let source_before = fs::read(&source)?;
-    let audit_copy_before = fs::read(&audit_copy)?;
-    let recalculated_dir = directory.join("recalculated");
-    let result_workbook = directory.join("s1-result.xlsx");
-    let history_workbook = directory.join("s1-history.xlsx");
+    let audit_copy_hash_before = sha256_file(&audit_copy)?;
+    let recalculated_dir = batch_directory.join("recalculated");
+    let result_workbook = batch_directory.join("汇总核查表校验.xlsx");
+    let history_workbook = batch_directory.join("历史结果.xlsx");
 
     let output = Command::new(env!("CARGO_BIN_EXE_open-data-audit"))
         .arg("s1-audit-directory")
@@ -936,8 +1032,7 @@ fn s1_directory_with_excel_sidecar_recalculates_a_copy_before_auditing() -> anyh
         .arg("2026-10-27 12:00:00")
         .arg("--template-workbook")
         .arg(&template)
-        .arg("--recalculate-sidecar")
-        .arg(&sidecar)
+        .arg("--recalculate-native-com")
         .arg("--recalculated-copy-dir")
         .arg(&recalculated_dir)
         .arg("--result-workbook")
@@ -956,22 +1051,24 @@ fn s1_directory_with_excel_sidecar_recalculates_a_copy_before_auditing() -> anyh
     assert_eq!(report["status"], "completed");
     assert_eq!(
         report["formula_execution"]["status"],
-        "recalculated_by_sidecar"
+        "recalculated_by_native_engine"
     );
     assert_eq!(report["formula_execution"]["files_recalculated"], 1);
-    assert!(
-        report["formula_summary"]["issues"]
-            .as_u64()
-            .unwrap_or_default()
-            > 0
+    assert_eq!(
+        report["formula_summary"]["issues"],
+        EXPECTED_FORMULA_ISSUES.len()
     );
     assert_eq!(report["conditional_summary"]["issues"], 1);
+    assert_eq!(report["summary"]["new_issues"], 4);
+    assert_eq!(report["issues"].as_array().map(Vec::len), Some(4));
     assert!(report["result_workbook"].is_object());
     assert!(report["history_result_workbook"].is_object());
     assert!(result_workbook.is_file());
     assert!(history_workbook.is_file());
-    assert_eq!(fs::read(&source)?, source_before);
-    assert_eq!(fs::read(&audit_copy)?, audit_copy_before);
+    assert!(result_workbook.starts_with(&batch_directory));
+    assert_eq!(sha256_file(&source)?, source_hash_before);
+    assert_eq!(sha256_file(&template)?, template_hash_before);
+    assert_eq!(sha256_file(&audit_copy)?, audit_copy_hash_before);
 
     let progress = String::from_utf8_lossy(&output.stderr)
         .lines()
@@ -984,23 +1081,67 @@ fn s1_directory_with_excel_sidecar_recalculates_a_copy_before_auditing() -> anyh
         })
         .expect("completed formula-copy recalculation progress event");
     assert_eq!(recalculated["engine"], "Excel.Application");
-    let recalculated_path = PathBuf::from(
+    let recalculated_path = fs::canonicalize(PathBuf::from(
         recalculated["output_audit_copy"]
             .as_str()
             .expect("recalculated audit-copy path"),
-    );
+    ))?;
+    let canonical_batch_directory = fs::canonicalize(&batch_directory)?;
+    let canonical_recalculated_dir = fs::canonicalize(&recalculated_dir)?;
+    assert!(recalculated_path.starts_with(&canonical_batch_directory));
+    assert!(recalculated_path.starts_with(&canonical_recalculated_dir));
+    assert!(recalculated_path.is_file());
     let recalculated_workbook = excel_reader::read_workbook(&recalculated_path)?;
-    assert_eq!(
-        recalculated_workbook.sheets[0].values["A1"]["value"],
-        "错误|复核|存款|低于要求|100|200|100"
-    );
+    let recalculated_sheet = recalculated_workbook
+        .sheets
+        .iter()
+        .find(|sheet| sheet.name == "S1Conditional")
+        .expect("recalculated S1 worksheet");
+    for (cell, expected_type, expected_value) in EXPECTED_FORMULA_ISSUES {
+        assert_eq!(
+            recalculated_sheet.values[cell]["type"].as_str(),
+            Some(expected_type),
+            "actual Excel formula cache type at S1Conditional!{cell}"
+        );
+        assert_eq!(
+            recalculated_sheet.values[cell]["value"].as_str(),
+            Some(expected_value),
+            "actual Excel formula cache at S1Conditional!{cell}"
+        );
+    }
     let result_workbook_read = read_workbook(&result_workbook)?;
-    let result_sheet = &result_workbook_read.sheets[0];
+    let result_sheet = result_workbook_read
+        .sheets
+        .iter()
+        .find(|sheet| sheet.name == "本期审核结果")
+        .expect("reopened 13-column S1 result worksheet");
+    for (index, expected_header) in EXPECTED_RESULT_HEADERS.iter().enumerate() {
+        let column = char::from(b'A' + index as u8);
+        assert_eq!(
+            result_sheet.values[&format!("{column}1")]["value"].as_str(),
+            Some(*expected_header),
+            "S1 result header column {column}"
+        );
+    }
+    assert_eq!(result_sheet.values["C2"]["value"], "D1");
+    assert_eq!(result_sheet.values["C3"]["value"], "D2");
+    assert_eq!(result_sheet.values["C4"]["value"], "D3");
+    assert_eq!(
+        result_sheet.values["C5"]["value"],
+        EXPECTED_CONDITIONAL_ISSUE.1
+    );
     let issues = report["issues"].as_array().expect("combined S1 issues");
     let conditional_issue_index = issues
         .iter()
-        .position(|issue| issue["formula_cell"] == "B2")
+        .position(|issue| {
+            issue["sheet_name"] == EXPECTED_CONDITIONAL_ISSUE.0
+                && issue["formula_cell"] == EXPECTED_CONDITIONAL_ISSUE.1
+        })
         .expect("triggered conditional-format issue");
+    assert_eq!(
+        issues[conditional_issue_index]["target_value"].as_f64(),
+        Some(EXPECTED_CONDITIONAL_ISSUE.2)
+    );
     assert_eq!(
         result_sheet.values[&format!("K{}", conditional_issue_index + 2)]["value"],
         issues[conditional_issue_index]["issue_id"]
@@ -1010,6 +1151,13 @@ fn s1_directory_with_excel_sidecar_recalculates_a_copy_before_auditing() -> anyh
         report["summary"]["new_issues"]
     );
 
-    fs::remove_dir_all(directory).expect("remove S1 Excel sidecar E2E fixtures");
+    if std::env::var_os("AUDIT_S1_RECALC_KEEP_ARTIFACTS").is_some() {
+        eprintln!(
+            "S1 Excel COM integration artifacts: {}",
+            directory.display()
+        );
+    } else {
+        fs::remove_dir_all(directory).expect("remove S1 Excel sidecar E2E fixtures");
+    }
     Ok(())
 }
