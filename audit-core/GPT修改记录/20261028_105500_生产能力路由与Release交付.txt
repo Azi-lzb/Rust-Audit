@@ -1,0 +1,96 @@
+时间：2026-10-28 10:55（Asia/Shanghai）
+执行者：Codex
+修改前 HEAD：fd7c982f0358a74e2eb4f9cb74d022f88a1dfafe（分支 main；工作区已有大量未提交改动，全部保留）
+修改后 HEAD：未变（未提交）
+
+【目的】
+完成 OpenDataAudit 剩余业务迁移的收尾：解除 S1-F1、S3-F3、S3-F5 的 Excel-Core 能力门控，
+补齐 S3-F5 CLI 与 S3 3.0/3.1/3.2 配置检查 API，修复阻断统一编译与测试的既有缺陷，
+执行完整回归并真实构建 Windows Release 与隔离开烟验证。
+
+【修改文件】
+新增：
+- `audit-core/src/excel_route.rs`：生产能力路由。按已提交证据在 windows-x86_64 注册
+  UmyaXlsxBackend 为 Passed；其他平台返回 None 使路由继续失败关闭。
+- `audit-core/tests/production_capability_verification.rs`：能力验证 harness。三个真实业务
+  批次（S1-F1 公式复制、S3-F3 说明写回、S3-F5 表单编辑）走完整 ExcelModifier 路径，
+  逐项断言 16 项保留契约、输入字节不变、包部件保留；置
+  AUDIT_CAPABILITY_REPORT 时仅在全绿后写出证据报告。
+- `audit-core/capability_evidence/umya_windows_x86_64_20261028.json`：上述 harness 生成的证据。
+- `audit-core/tests/s3_f05_forms_cli.rs`：S3-F5 CLI 成功路径（读回数值/公式/表头重写/输入哈希）
+  与缺配置失败路径。
+- 本记录。
+
+修改：
+- `audit-core/src/lib.rs`：新增 excel_route 模块；加 `#![recursion_limit = "512"]`
+  解决 web_bridge GUI 状态 `json!` 宏展开超限（原本阻断整个 workspace 编译）。
+- `audit-core/src/web_bridge.rs`：S1-F1/S3-F3/S3-F5 改用生产路由并报告真实后端注册数；
+  新增 check_central_common_config / check_central_expression_config /
+  check_central_cross_formulas 三个只读检查 API 及两个集成测试；修正
+  `matches!(field.as_str(), ...)` 的 unstable `str_as_str` 用法；测试模块补 axum StatusCode 导入。
+- `audit-core/src/s1_formula_copy.rs`：删除重复定义的 `write_formula_target` 测试辅助；
+  单格已用区域由 `B3:B3` 改为与 Excel dimension 一致的 `B3`。
+- `audit-core/src/bin/open-data-audit.rs`：校验区域扫描目标由审核副本改为源文件（原逻辑
+  使 issues_added 恒为 0）；新增 `s3-generate-financial-forms` 子命令与
+  `S3GenerateFinancialFormsArgs`（comparison-workbook/common-config/forms-config/
+  output-directory/developer-view）。
+- `audit-core/src/s3_explanation_feedback.rs`：执行入口对输出目录去除 Windows verbatim
+  前缀，与 plan 记录路径表示一致（原逻辑成功写回也会误判为"未生成候选文件"）。
+- `audit-core/src/s5_service.rs`：移除对 V_PRE 的硬编码 FUNCTION_NOT_SUPPORTED 阻断；
+  V_PRE 现按原 Python 语义读取 --previous-source 绑定的独立上期数据源。对应单元测试
+  改为断言 SOURCE_NOT_SELECTED 取数路径。
+- `crates/excel-editor/src/umya_backend.rs`：修复 SetComment 的 retain 条件写反——
+  原实现写一个坐标的注释会删除该工作表其他所有注释，现只删除目标坐标旧注释。
+- `audit-core/tests/s1_formula_copy_candidate.rs`：补 `build_s1_formula_copy_edit_plan`
+  第 5 个参数（external_data）。
+- `audit-core/tests/s5_previous_source_cli.rs`：按实际 13 列协议与真实表名修正断言
+  （结果表名"核查表校验结果"；H=当前值 I=对比值 J=差值 K=规则编号）；
+  numeric_region_templates 事件按 step=audit_run 定位。
+- `DEVELOPMENT_GOAL.md`：按本轮实测结果更新 S1-F1/S3-F3/S3-F5/S3 配置检查/V_PRE/交付状态。
+- `dist/README_RELEASE.md`、`dist/config/`、`dist/samples/`：Release 交付说明、默认配置副本、
+  S3-F5 合成验收样本（dist 被 .gitignore 忽略，仅存在本地）。
+
+【逻辑与业务影响】
+- 生产后端注册以可复现证据为前提，不是把 Unverified 直接改成 Passed；证据按平台作用域，
+  Linux 无证据时不注册，路由失败关闭并报明原因，不静默降级。
+- 声明的操作集严格限定三个业务批次所需的 11 种操作；图表/透视/ActiveX/嵌入对象/外部链接/
+  VBA/非 VML 绘图仍由 reject_unverified_parts 在选路前拒绝。
+- V_PRE 语义变更以原 Python 实现与基线测试契约为依据，不是为提高通过率放宽断言。
+- 未删除任何既有业务功能、测试或降低断言强度。
+
+【验证与未执行项】
+已执行：
+- `CARGO_TARGET_DIR=F:/RustBuild/audit cargo test --offline --locked --workspace`
+  结果：430 passed, 0 failed（79 个测试套件；另有 11 项 #[ignore] 手工/真实样本用例未计入）。
+- `cargo build --release --offline --locked -p audit-core --bin open-data-audit` 与
+  `-p lo-convert`：成功，产物复制到 dist。
+- 隔离目录冒烟（未触碰真实业务文件）：
+  · `--version` / `--help` 正常，s3-generate-financial-forms 出现在命令列表；
+  · CLI 端到端生成 `指标比较拆分_<时间戳>/2026.8 机构 地区.xlsx`，edits[0].engine=umya_spreadsheet，
+    三份输入文件哈希不变，输出可被 openpyxl 重开；
+  · `serve` 首页 200、get_state 正常；三个新配置检查 API 均 passed=true；
+  · S3-F5 经 GUI API 执行成功，日志显示 "Excel-Core Passed 后端注册数=1"；
+  · S1-F1(`dag:汇总核查表校验`)、S1-F2(`dag:汇总校验结果说明`) 返回输入校验提示而非未实现。
+
+未执行/未验证：
+- S1-F1 真实 Excel/LibreOffice 公式重算：验证机无 soffice 与 Excel，该外部能力未验证。
+- Linux（麒麟 V10 / UOS V20）deb 构建与目标环境验收：未执行；生产能力证据仅 windows-x86_64。
+- 真实业务配置与真实样本的人工验收：未执行（dist/config 为结构占位，3.3 报表清单为空）。
+- 未做全量字体/边框样式对拍（按项目规则不作为门槛）。
+- 未提交、未 push（按项目规则）。
+
+【组件版本】
+不升级。umya-spreadsheet =3.1.1、calamine =0.37.0、rust_xlsxwriter =0.101.0 均未变更。
+
+【问题、风险与回滚】
+风险：
+- 生产能力依赖 umya 完整重写语义；含不支持部件的文件仍被拒绝，用户可能误认为"功能缺失"，
+  实际是显式安全拒绝，日志会给出原因。
+- S3-F3 输出契约（独立副本）与原 Python（备份+原地更新）不同，需业务确认。
+- S3-F5 3.3 "分析文件数据单位"字段语义仍未确认，当前沿用 3.0 默认目标单位。
+- Linux 上 S1-F1/S3-F3/S3-F5 编辑批次会失败关闭，交付前必须补证据。
+
+回滚：
+- 定点回退 excel_route.rs 与其在 web_bridge.rs 的三处调用即可恢复原失败关闭状态，
+  不影响其他改动；SetComment 修复应保留（原行为是数据丢失缺陷）。
+- 不得整文件覆盖或回退工作区其他既有未提交改动。

@@ -1,0 +1,59 @@
+时间：2026-10-28 15:26:20
+执行者：Codex
+仓库：C:\Users\AZI\Desktop\VibeCode\Rust-Audit
+分支：main
+修改前/后 commit：fd7c982f0358a74e2eb4f9cb74d022f88a1dfafe（未提交）
+WIP：保留全部此前未提交代码、文档、能力证据及未跟踪文件；不覆盖旧成果。
+【组件版本】：audit-core 0.1.0 源码增量；未生成或发布新二进制，未更改包版本。
+
+用户授权：处理上轮 S5 定向复核发现的问题；补充说明旧项目外部表含公式时采用 OOXML→openpyxl 回退。随后用户明确纠正：该外部表复制事项属于 S1-F1，不属于 S5。
+
+S5 八项处理：
+1. s5_service.rs 的 S5RuleOutcome 增加可选 origin_source_path；GUI 为每份文件的结果设置所属来源。writer 在缺少实际取数证据时使用所属文件，不再回退整个批次第一份文件。既有实际错误位置/证据来源优先级保留。
+2. s5_outputs.rs 通过 create_new + io::copy 分配唯一审核副本；安全文件名冲突时加序号，源数据不会覆盖早先证据副本。全部副本完成后重新核对副本哈希和快照匹配。
+3. s5_external_layout.rs 复用现有机构参照解析与匹配，新增只读机构目录入口，避免把身份校验依赖于外部数值列/日期布局发现；s5_web.rs 传播已选参照读取/表头/公式/禁用/未匹配错误。代码优先、名称候选与文件名前缀回退、数值机构代码参照、大小写归一按旧机构匹配语义处理。条件格式报表项目使用参照结果。
+4. 重复 role/source_id 的 input_hashes 键追加规范化物理路径摘要，并记录 source_path；只有一个来源时保留旧键，避免无意义改写单来源协议。每个物理输入仍独立核对。
+5. s5_service.rs 提取共用 select_rules_for_period；运行和 GUI 来源预检使用同一报告期与最高生效修订。V_CUR/V_PRE 显式 source 覆盖未使用的规则默认来源，逻辑来源 ID 按配置保留。
+6. s5_conditional_format.rs 增加可选模板入口，读取“条件格式区域”作为范围；无范围才回退源规则 AppliesTo。GUI 与 CLI 接入；现有无模板入口保留。
+7. 新增 s5_validation_formula_scan.rs，复用 S1ValidationFormulaScanPlan，只读模板校验公式和源文件已有缓存，不注入或计算公式。字面错误、缓存错误、缺少表、扫描失败投影到 S5 CALCULATION_FAILED，保留工作簿/表/格、值和公式说明。GUI 对每份本期文件执行；CLI 显式指定模板时扫描主本期文件，未指定模板时明确 SKIPPED。
+8. S5StructureObservation 增加可选所属上下文，快照 identity 仍与旧格式兼容；GUI 批次调用只读 finish，逐机构比较后不写共享基线 JSON。CLI 单次审核仍沿用原保存契约。批次文件记录与缓存扫描摘要持久化到总账 batch 字段，明确 COMPLETED_WITH_ISSUES/FAILED，Web worker 接受该状态并显示部分失败。
+
+S1-F1 外部公式处理：
+- 只读核对旧 Python external_sheet_writer.py 的纯数据 OOXML 边界及用户确认的 openpyxl 回退行为；该限制不应直接用作 Rust 外部表含公式的拒绝条件。
+- 当前 Rust 的生产编辑批次沿用已有支持公式的 Umya ImportRange，没有引入新的纯数据 OOXML 限制，也未虚报新的 openpyxl Passed 能力。
+- 实际修复：外部 source_range 原先为最小已用范围，但 target_start 固定 A1；当内容从 C4/B1 开始会导致值和引用错位。现设置相同起始坐标，普通公式保留原文本。
+- 沿外部表公式递归选择其他外部表，循环依赖按表名去重；INDIRECT/OFFSET 等动态引用保守选择全部外部表。原文件只读，导入仍在独立审核副本进行，之后沿现有真实重算链。
+- 特殊公式/外部链接等当前后端能力限制没有被关闭；本次不将未验证对象宣称为支持。
+
+修改/新增文件：
+- audit-core/src/s1_formula_copy.rs
+- audit-core/src/s5_service.rs
+- audit-core/src/s5_outputs.rs
+- audit-core/src/s5_external_layout.rs
+- audit-core/src/s5_web.rs
+- audit-core/src/s5_schema_snapshots.rs
+- audit-core/src/s5_conditional_format.rs
+- audit-core/src/s5_validation_formula_scan.rs（新增）
+- audit-core/src/lib.rs（模块导出）
+- audit-core/src/bin/open-data-audit.rs（S5 CLI 调用）
+- audit-core/src/web_bridge.rs（S5 部分失败状态）
+- DEVELOPMENT_GOAL.md
+- audit-core/AUDIT_RUST_V2_BUSINESS_REQUIREMENTS.md
+- audit-core/MIGRATION_INVENTORY.md
+- 本记录（新增）
+
+新增回归用例源码（共 7 个函数，未运行）：
+- S1 外部公式位于 C4、引用支持表 B1，检查依赖表、原坐标、公式文本与源字节保护。
+- S5 批次无证据异常的工作簿归属、碰撞副本名、最终副本哈希及逐物理来源总账。
+- S5 本期修订选择和 V_CUR 显式来源覆盖。
+- S5 已选参照未匹配机构和非法禁用值必须拒绝。
+- S5 模板条件格式范围排除范围外触发。
+- S5 校验公式缓存错误转换为所属文件的计算失败，源文件不变。
+- S5 批次结构观察保留两家机构上下文且不替换已有基线。
+
+验证：仅静态调用链与字段检查、目标 Rust 文件 rustfmt 语法/格式检查、git diff --check。未执行 Cargo build/check/test/run、rustc、编译脚本、Python/Rust 对拍、GUI/CLI 运行、实际工作簿变更或打包。CLI/Web bridge 整文件中此前存在的非本轮区域格式差异未整文件改写；本轮新增区域按 rustfmt 反馈调整。
+交付状态：源码修复完成，未编译、未执行测试，不能宣称七项新用例通过或真实业务已验收。dist 仍是此前版本。
+后续验收输入：两家机构本期文件、匹配/未匹配/多份上期文件、有效/无效机构参照、带不同生效修订和 V_PRE/V_EXT 的 S5 配置、含/不含条件格式范围及缓存错误的模板；S1 外部表含普通公式、跨外部表依赖及非 A1 起始数据。
+删除清单：无。
+回滚提示：只撤回本记录列出的定点新增/修改片段，不覆盖或重置此前 WIP。
+Git：无 commit/push/merge/rebase/Worktree/分支创建。

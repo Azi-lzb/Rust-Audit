@@ -14,7 +14,7 @@ This matches `OpenpyxlWorkerConfig::for_product_binary` for `/usr/bin/<product>`
 Example:
 
 ```sh
-bash packaging/openpyxl/stage-runtime.sh pytools /opt/build/python-runtime deb-staging/pytools
+bash packaging/openpyxl/stage-runtime.sh open-data-audit /opt/build/python-runtime deb-staging/open-data-audit
 ```
 
-No Python 3.8.10 product runtime artifact is committed by this workspace. The worker has only been tested in this development session with Python 3.12.3/openpyxl 3.1.5; that is not a production runtime assertion. Before release, source an offline relocatable Python 3.8.10 runtime containing the pinned wheels, inspect GLIBC symbols for the interpreter and extension modules, and run the staged worker on both glibc 2.28 and glibc 2.31 systems. The current Windows/WSL synthetic tests do not prove relocatability or target Linux compatibility.
+No Python 3.8.10 product runtime artifact is committed by this repository. Historical worker tests used Python 3.12.3/openpyxl 3.1.5; they are not a production runtime assertion. Before release, source an offline relocatable Python 3.8.10 runtime containing the pinned wheels, inspect GLIBC symbols for the interpreter and extension modules, and run the staged worker on both glibc 2.28 and glibc 2.31 systems. Historical Windows/WSL synthetic tests do not prove relocatability or target Linux compatibility. The independent-project staging path fixes have not yet been exercised on Linux.

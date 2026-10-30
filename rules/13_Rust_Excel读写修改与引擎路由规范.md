@@ -1,12 +1,12 @@
 # Rust Workspace Excel 读写、修改与引擎路由规范
 
-> 状态：workspace 级生效规范，2026-10-22 接入；2026-10-23 登记两份独立、限定范围的性能证据。范围：Excel/CSV 读取、新建、修改、转换、页面设置、对拍和性能优化。  
+> 状态：Rust-Audit 独立项目的 Excel 专项规范，保留 2026-10-22/23 的限定范围历史证据。范围：Excel/CSV 读取、新建、修改、转换、页面设置和具体业务所需的验证。
 > 优先级：用户本轮明确要求 > workspace 根 AGENTS.md 的硬约束 > 本规范的 Excel 专项规则 > audit-core/rules/ 下的业务补充与旧项目历史规则。冲突不得静默覆盖业务行为。  
 > 来源：合并 workspace 现行规则、现有 Excel 引擎盘点、Open-Data-Audit 与 py_statistics_tools 的只读规则材料，以及用户提供的建议稿。本文件是执行入口；根目录来源稿保留为输入材料，不是另一份独立规则。
 
 ## 1. 项目目标与已确认边界
 
-本 workspace 将 Open-Data-Audit 与 py_statistics_tools 逐步迁移为 Rust 主导、Go 条件性备选。Rust 负责业务核心、读取、规则计算、新建工作簿及 ExcelEditPlan/ExcelModifier 调度；既有工作簿修改可按能力使用经验证的 OOXML Patch、umya-spreadsheet、Go Excelize worker、隔离 openpyxl worker，或未来 Windows-only 的 Microsoft Excel/WPS COM worker。Python 旧项目继续作为行为对拍基线；生产 Python 仅可用于隔离的 XLSX 修改或经验证的 Windows COM 修改/计算 worker，不承接业务逻辑。公式计算另属独立 ExcelCalculator，不属于 Reader、Writer 或 Modifier。
+本项目独立维护 Open-Data-Audit 和本地 Excel-Core。Rust 负责业务核心、读取、规则计算、新建工作簿及 ExcelEditPlan/ExcelModifier 调度；既有工作簿修改按实际能力使用已有适配器。隔离 openpyxl worker 仅限已有工作簿修改，不承接业务逻辑；其他外部引擎须明确选择并经过其适用范围的验证。旧 Python 项目只作只读行为参考。公式计算不属于 Reader、Writer 或 Modifier。
 
 目标交付为麒麟 V10 x86_64 和统信 UOS V20 x86_64 离线 deb，兼容 glibc 2.28；核心路径不得要求用户预装 Python、Go、Office、WPS、LibreOffice 或 JVM。启用 openpyxl 引擎时可在 deb 内置隔离 Python runtime 与依赖，不得使用系统 Python、用户 PATH 或联网 pip。可选 LibreOffice 计算能力须明确独立运行时来源；Windows COM 不进入 Linux deb 或其必要依赖。ABI 和打包约束见根 AGENTS.md。
 
@@ -27,7 +27,7 @@
 
 已检查模板不含图表、透视表、切片器、图片、工作表保护或 VBA；这仅覆盖已检查模板，不代表未来输入没有这些对象。修改前仍须清点实际文件。
 
-py_statistics_tools 工作表提取以普通无批注版为迁移基线，带批注的 COM 分支不迁移。PyCode 与 NoComPyTools 的其他差异需逐项核实。
+旧工作区曾记录 py_statistics_tools 的模板范围；该项目不属于 Rust-Audit 的开发或同步范围。
 
 打印只写 orientation、fitToPage、fitToWidth、fitToHeight、清除 scale、paperSize、printArea、horizontalCentered、verticalCentered 和页脚页码。旧代码没有写 margins、printTitleRows/Columns、gridLines、headings、blackAndWhite、draft、firstPageNumber；新增属性须另立需求，不得顺手加入。
 
@@ -35,21 +35,19 @@ py_statistics_tools 工作表提取以普通无批注版为迁移基线，带批
 
 延续当前目录，不因接入规范重命名 crate 或复制实现：
 
-    rust-workspace/
+    Rust-Audit/
     ├── Cargo.toml / AGENTS.md / rules/13_Rust_Excel读写修改与引擎路由规范.md
-    ├── crates/{excel-reader,excel-writer,excel-editor,ooxml-patch,probe}
+    ├── crates/{excel-reader,excel-writer,excel-editor,ooxml-patch}
     ├── audit-core/
-    ├── pytools-core/
     ├── sidecar/lo-convert/
     └── GPT修改记录/
 
-- audit-core 与 pytools-core 的 Excel 原语及跨产品复用能力必须经 crates/ 下的共享库提供，二者不得相互依赖；通用第三方依赖统一由 workspace 根 Cargo.toml 管理版本。
-- crates/ 共享库只提供 Excel 原语，不含审核、时序、打印等业务概念。
+- audit-core 使用本项目 crates/ 中独立维护的 Excel 原语；不得依赖 pytools-core 或其他项目路径。通用第三方依赖由本项目根 Cargo.toml 管理版本。
+- crates/ 中的库只提供 Excel 原语，不含审核、时序、打印等业务概念。
 - 业务层只生成与具体引擎无关的请求/ExcelEditPlan，不泄漏 calamine、umya、Excelize 等库类型。
 - 一个文件的一批修改原则上由一个覆盖整批操作和保留项的已验收引擎完成，避免反复打开/保存。
 - sidecar 独立构建和显式子进程调用；业务 crate 不静态依赖或导入 sidecar。
-- 两个产品分别维护业务 fixtures、probe 配置、报告和 deb，不混用，也不单独发布共享 .so。
-- 当前 Workspace 是临时联合迁移环境，不提前拆仓库；Audit、PyTools 业务边界保持独立。完成真实验收后，公共 crates 可拆成独立 Excel-Core Cargo/Git 仓库，两个产品分别成为独立仓库并通过 Cargo 依赖公共能力；各项目必须可独立离线构建。
+- Audit 独立维护业务 fixtures、probe 配置、报告和 deb；不通过 Git 子模块、跨项目路径或自动同步维护本地 Excel-Core。
 
 ## 3. 每项 Excel 功能的操作契约
 
@@ -259,15 +257,15 @@ OOXML 是补丁/缺失元数据层，不是主力完整读写库。必须使用 
 
 ### 9.3 成为默认候选
 
-若要将 Calamine 或 rust_xlsxwriter 设为某个具体功能的默认生产路由，对应功能、数据归属、格式、对象和输出契约的对拍至少 95% 是必要条件，不是充分条件；还须确认适配器、平台、保留项及资源预算均已验收。Calamine 是 §6.2、§6.3 各自登记的同契约范围内 Rust-owned 普通存储值 XLSX reader 候选；§6.3 的 Python JSON 桥接写入数据不构成 Rust-owned writer 路由证据。OOXML 元数据读取必须作为独立对象能力登记，不能拼成通用 fallback 链。rust_xlsxwriter 只对应已验收的 Rust-owned、新建纯数据 XLSX 输出。该门槛属于 workspace 既有验收规则；§6.2、§6.3 的专项 benchmark 不能替代它，也不会自动改变任何现有生产默认路由。原位编辑不设全局默认：每个“格式 + 对象特征 + 整批操作”必须满足保留项且无损坏，才可进入路由。个别操作失败优先评估定点补丁；大面积失败再评估 umya/Excelize。输出不能被目标表格应用正常打开时停止迁移并记录不支持。
+旧工作区曾以对拍比例作为切换默认候选的门槛；它不作为本项目人工测试版本的交付前提。实际变更应按当前功能、格式、对象和平台保留适用证据，未经验证的路由不得宣称已验收。原位编辑须保护保留项并避免损坏；输出无法正常打开时记录问题，不把失败报告为成功。
 
-## 10. 操作盘点与迁移阶段门
+## 10. 旧工作区操作盘点方法（按当前功能选用）
 
-先完成清单和能力矩阵，不要求立即实现所有当前及未来的修改引擎。现有根目录 PYTHON_EXCEL_OPERATION_INVENTORY.md 是静态入口清单，EXCEL_ENGINE_ARCHITECTURE.md 记录 Rust 现状、操作族候选映射和 §4.2 初始能力矩阵。二者都说明调用链/模板验收未完成，不能冒充最终对拍。
+以下方法保留为历史参考；只在当前 Audit 功能需要时核对相应调用链，不要求先完成全项目清单，也不依赖旧工作区的文件。不能将历史模板或调用链记录冒充当前项目验收。
 
-每个 Python openpyxl、Direct OOXML、Python-calamine 和 COM 操作要补齐：
+需要追溯的具体 Excel 操作可按适用范围记录：
 
-1. 菜单/dispatcher → 函数 → helper → 实际读写；PyCode 与 NoComPyTools 差异分列。
+1. 当前 Audit 菜单/入口 → 函数 → helper → 实际读写。
 2. 输入输出、配置、格式、write_pattern、公式口径、保留/丢弃项、前置条件。
 3. 分类为只读、新建、原位编辑、复制、格式转换或文件系统操作；编辑路径形成完整文件级 ExcelEditPlan。
 4. OOXML Patch、umya、Excelize 和 openpyxl 按操作子类登记状态、版本、格式/对象、平台、入口、隔离 runtime、证据和性能。
@@ -276,7 +274,7 @@ OOXML 是补丁/缺失元数据层，不是主力完整读写库。必须使用 
 
 重点确认：缺失合并信息不等于无合并；replace/rebuild 不等于追加；改 sheet/删行列需查公式、名称和其他 part；检查与执行分支分别核实；同名函数不代表两套产品行为相同。
 
-按根 AGENTS.md 第 10 节和 DEVELOPMENT_GOAL.md 第八、九章执行阶段门：阶段一由 Audit/PyTools 在独立 Worktree 并行实现约定业务功能及真实入口；每项先过编译、范围内单测、最小冒烟、入口与文件安全最低门槛。完整 Windows 真实样本对拍和集成回归集中在全部功能可运行后的阶段二；关键 Windows 业务通过后，再集中进行 Linux/glibc 2.28/deb 和麒麟/UOS 验收。迁移期间允许针对明确 Linux 风险做小范围检查，不要求每个功能全量 WSL 验收。遇到公共引擎阻塞时记录证据、最小复现及受影响操作，转 main 协调，同时推进其他独立功能。每轮仍报告操作 ID、实际路由、测试证据、未完成项、风险、性能和回退方案；不得覆盖已有有效证据。
+按根 AGENTS.md 和 DEVELOPMENT_GOAL.md，以实际 Audit 功能为单位实施、静态检查并交付用户人工构建测试；编译、测试及打包需用户明确授权。遇到引擎能力缺口，在本项目记录证据和受影响操作，并按业务需要定点处理，不向旧 Main 同步。Windows 和 Linux/deb 验证分别记状态，不覆盖已有有效证据。
 
 ## 11. 既有规则冲突检查与可复用内容
 

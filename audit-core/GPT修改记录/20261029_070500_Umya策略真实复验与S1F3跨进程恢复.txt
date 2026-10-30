@@ -1,0 +1,56 @@
+时间：2026-10-29（Asia/Shanghai）
+仓库：C:\Users\AZI\Desktop\VibeCode\Rust-Audit
+分支：main
+
+## 范围
+
+按用户最新要求复核“Umya 主引擎 + OOXML Patch 按能力兜底 + Excel COM/LibreOffice 真实重算”策略，并补足 S1-F3 真实 Release 进程退出后恢复任务的验证。旧 Python 项目只读；未改生产 Rust 逻辑、Excel-Core 或 OOXML Patch。
+
+## S1-F1 Umya 真实复制复验
+
+复用之前隔离的只读副本输入：
+
+`F:\RustBuild\audit\s1f1-release-acceptance-20261029-065200\inputs`
+
+`AUDIT_S1_REAL_SOURCE/TEMPLATE/EXTERNAL/MAPPING` 指向其中的真实单位贷款样本、匹配模板、外部数据和映射；`AUDIT_S1_REAL_SIDECAR` 指向当前项目 `dist\lo-convert.exe`。测试输出位于系统临时目录，源、模板、外部数据和映射输入在测试前后逐字节不变。本次未设置 `AUDIT_S1_REAL_PYTHON_BASELINE`，所以不主张本次运行具有完整 Python 逐公式结果对拍结论。
+
+真实探针命令：
+
+`cargo test --offline --locked -p audit-core --test s1_real_umya_copy -- --ignored --nocapture`
+
+结果：3 passed / 0 failed。覆盖纯数据工作簿往返；真实模板和外部表拆分、组合导入；约 210 个 `参照表!D2:D211` VLOOKUP；共同复制的「机构参照表」跨 Sheet 依赖；模板公式文本/位置；Excel COM 独立重算结果、缓存可读性、输出重开和原始输入保护。真实编辑报告确认 S1 ImportRange 由 Umya 唯一执行，未经过 OOXML 或其他未验证引擎。
+
+另外按当前源码复跑：
+
+- `cargo test --offline --locked -p excel-editor --lib --quiet`：48 passed。
+- `cargo test --offline --locked -p excel-editor --test import_range --test formula_copy_translation --quiet`：4 + 1 passed。
+- `cargo test --offline --locked -p audit-core --lib s1_formula_copy --quiet`：15 passed。
+
+## 引擎路由结论
+
+真实 S1-F1 公式 ImportRange 已由 Umya 在业务文件中满足。OOXML Patch 没有同语义、已实现并验证的跨工作簿公式工作表复制能力，因此不新增 OOXML 公式复制，也不把 OOXML 注册为这条 F1 批次的后备引擎。已有 Excel-Core 通用路由测试仍覆盖“仅在后端写入前明确拒绝后，使用干净原件尝试另一项已声明能力”“两端均不支持时失败关闭”“写入/输出验证失败时停止”；这些合成协议测试不能作为 OOXML 支持 S1 ImportRange 的证据。真实 Umya 结果满足要求时，不运行第二轮冗余 OOXML 修改。
+
+## S1-F3 Release 跨进程恢复
+
+隔离验收目录：
+
+`F:\RustBuild\audit\s1f3-process-restart-20261029-065923`
+
+从上一轮隔离副本再复制源、模板、映射及外部数据；持久化状态通过 `AUDIT_STATE_DIR=<隔离目录>\state` 完全隔离。首次以 Release `acceptance-run` 调用正式 S1-F1 worker，并把现有 `open-data-audit.exe` 指定为计算 sidecar，以触发明确的 `unrecognized subcommand 'recalculate'` 失败。此故障注入使 F1 正确保留 1 份含 1,282 个公式的副本和 `WAITING_MANUAL_RECALC` 清单，其他源/模板/配置哈希均未变化。验收运行器整体状态为 `failed`、退出码 2 是该预期注入状态，不代表恢复 worker 失败；JSON 报告仍保留该状态和诊断。
+
+随后执行 `dist\lo-convert.exe recalculate --input <审核副本> --output <新文件> --engine com`。sidecar 返回 `Excel.Application` 成功，报告公式文本保持、1,282/1,282 缓存存在且结果可读。将该独立保存的重算结果复制回隔离审核副本，模拟 Excel 人工重算并保存。
+
+F1 进程退出后，启动全新的 Release `serve --port 18750 --config <默认 S2 配置>` 进程，并继续使用同一 `AUDIT_STATE_DIR`。GUI API `/api/list_s1_f3_tasks` 在新进程中发现原任务，API `/api/start_s1_f3_workflow` 正式启动恢复 worker。恢复完成后：
+
+- 状态为 `COMPLETED`，待恢复任务数为 0。
+- 提取 3 条公式异常、0 条条件格式异常。
+- 生成 `本期审核结果` 工作表，4 行×13 列；Excel COM 只读打开成功，13 个列头符合目标结构。
+- 状态清单、重算副本、结果工作簿均留在隔离验收目录；服务进程在验证完成后停止。
+
+这是 Release 程序跨进程的持久化与 GUI API 恢复实测；计算/保存由 Excel COM sidecar 模拟，不是用户亲自在 GUI 中按键、保存、关闭，再点击 F3。真实 GUI 文件选择和人工重算操作仍待用户验收。
+
+## 本轮结论与剩余项
+
+现有 Umya 路由和 S1-F1 业务复制无新增缺口，故本轮没有修改生产代码。S1-F3 的跨进程恢复与结果发布在隔离真实工作簿上已通过。Rust 测试共 71 项通过（48+5+15+3），本轮未重建 Release，使用前一轮成功构建的主程序及 sidecar；未运行 workspace 全量测试、Debian 打包或提交/push。
+
+仍需用户人工验收：GUI 文件选择与批次状态、Excel/WPS/LibreOffice 实际强制重算并保存/关闭、重启后点击 S1-F3，以及 Kylin/UOS 实机计算与打包。Rust-Audit 总 Goal 保持 active。

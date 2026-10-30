@@ -55,7 +55,7 @@ while IFS= read -r -d '' link; do
     "$temporary/runtime"/*) ;;
     *) fail "runtime symlink escapes the bundled tree: $link -> $resolved_link" ;;
   esac
-done < <(find "$destination/runtime" -type l -print0)
+done < <(find "$temporary/runtime" -type l -print0)
 
 if command -v ldd >/dev/null 2>&1; then
   while IFS= read -r -d '' object; do
@@ -103,6 +103,7 @@ fi
 [[ ! -e "$destination" ]] || fail "destination appeared during staging: $destination"
 mv -T -- "$temporary" "$destination"
 trap - EXIT
+python="$destination/runtime/bin/python3"
 echo "staged openpyxl worker for $product_id at $destination"
 echo "runtime version: $actual_python_version"
 echo "openpyxl version: $("$python" -I -c 'import openpyxl; print(openpyxl.__version__)')"

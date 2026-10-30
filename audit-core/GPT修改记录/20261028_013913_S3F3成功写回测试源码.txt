@@ -1,0 +1,29 @@
+时间：2026-10-28 01:39:13 Asia/Shanghai
+执行者：Codex
+修改前 HEAD：fd7c982f0358a74e2eb4f9cb74d022f88a1dfafe（分支 main；工作区已有未提交改动，全部保留）
+修改后 HEAD：未变。
+
+【目的】
+推进 S3-F3 机构反馈回填的第一阶段迁移工作，补充 Excel-Core 成功写入路径的测试源码；本轮不执行编译或测试。
+
+【修改文件】
+- `audit-core/src/s3_explanation_feedback.rs`：在原有“无 Passed 路由时安全失败”测试之外，新增合成 XLSX 成功回填测试。测试注入仅用于测试的 Passed 能力记录，走 UmyaXlsxBackend 与 UmyaXlsxValidator，断言变动原因写入新输出副本、报告计数正确、目标和反馈输入 SHA-256 不变。
+- `DEVELOPMENT_GOAL.md`：注明成功路径测试源码已补、尚未运行且不构成生产路由验收。
+- 新增本修改记录。
+
+【逻辑与业务影响】
+- 本轮没有修改生产业务逻辑、GUI/Web API、CLI、Excel-Core 后端或配置；S3-F3 生产运行仍因没有匹配的 Passed 后端而失败关闭。
+- 测试覆盖当前确认的安全输出契约：生成独立的反馈结果工作簿，不修改目标说明簿或机构反馈簿。
+- 不修改 Python 源项目、真实配置或业务工作簿；无 VBA 变更。
+
+【验证与未执行项】
+- 定向 `rustfmt --check --edition 2021 audit-core/src/s3_explanation_feedback.rs` 通过；`git diff --check` 通过。未运行 Cargo、编译、测试、产品流程或打包。
+- 成功路径测试及既有安全失败测试均未验证；合成 Passed 能力只为测试路由使用，不是平台能力证据。
+- 仍需后续在获授权的统一测试阶段验证此成功路径，并据结果决定是否可以注册生产编辑路由。
+
+【组件版本】
+不升级；仅补充测试源码与状态说明。
+
+【问题、风险与回滚】
+- 已知生产限制未变化：桌面运行层没有 S3-F3 Passed Excel-Core 写入能力，GUI 有实际回填时仍不发布结果。
+- 回滚仅移除此测试、撤销 `DEVELOPMENT_GOAL.md` 新增说明并移除此记录；其他既有工作区改动保持原样。

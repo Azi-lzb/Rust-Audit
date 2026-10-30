@@ -1,0 +1,150 @@
+{
+  "adapter": "excel-editor 0.1.0 UmyaXlsxBackend",
+  "capabilities": {
+    "operations": [
+      "CreateSheet",
+      "ImportRange",
+      "SetComment",
+      "SetWorkbookCalculationProperties",
+      "SetCellValue",
+      "DeleteSheet",
+      "DeleteColumn",
+      "SetCellNumberFormat",
+      "SetCellFillColor",
+      "SetRowHidden",
+      "SetSheetVisibility"
+    ],
+    "preserved": [
+      "cell_values_and_types",
+      "formula_text",
+      "comments_and_positions",
+      "styles",
+      "merged_ranges",
+      "conditional_formatting",
+      "data_validations",
+      "defined_names",
+      "row_and_column_dimensions",
+      "page_settings",
+      "header_footer_text",
+      "relationships",
+      "unmodified_package_parts",
+      "sheet_identity_and_order",
+      "freeze_panes",
+      "auto_filter"
+    ],
+    "supported_features": [
+      "comments",
+      "conditional_formatting",
+      "data_validations",
+      "merged_cells",
+      "defined_names",
+      "formulas",
+      "relationships",
+      "headers_footers",
+      "freeze_panes",
+      "auto_filter"
+    ]
+  },
+  "engine": "umya-spreadsheet 3.1.1",
+  "harness": "audit-core/tests/production_capability_verification.rs",
+  "platform": "linux-x86_64",
+  "sample_set_id": "audit-production-capability-verification-20261028-linux",
+  "samples": [
+    {
+      "batch": "S3-F05 比较文件→金融表单（删除表/删列/写值/数字格式/填色/隐藏行/隐藏表）",
+      "sample_id": "s3-f05-feature-rich-form-edit",
+      "steps": [
+        {
+          "detail": "eligible backends: 1 of 1",
+          "name": "capability_routes_the_batch"
+        },
+        {
+          "detail": "engine umya_spreadsheet published /tmp/audit_capability_verification_s3_f05_form_5327_1793159366719192039/金融表单_编辑.xlsx",
+          "name": "excel_modifier_execute"
+        },
+        {
+          "detail": "row1 dump: [(\"A\", \"保留 A\"), (\"B\", \"∅\"), (\"C\", \"保留 D\"), (\"D\", \"·\"), (\"E\", \"筛选标题\")]",
+          "name": "values_and_column_shift"
+        },
+        {
+          "detail": "formulas translated after column deletion",
+          "name": "formula_text_translated"
+        },
+        {
+          "detail": "merge B3:C3 and comment C2",
+          "name": "merge_comment_shift"
+        },
+        {
+          "detail": "1 rule group(s) preserved",
+          "name": "conditional_formatting_preserved"
+        },
+        {
+          "detail": "1 validation(s) preserved",
+          "name": "data_validations_preserved"
+        },
+        {
+          "detail": "visibility, row/column dimensions, header/footer and page setup preserved",
+          "name": "sheet_identity_visibility_and_dimensions"
+        },
+        {
+          "detail": "freeze pane frozen at A2 and auto filter A1:C1",
+          "name": "freeze_panes_and_autofilter_preserved"
+        },
+        {
+          "detail": "input hash unchanged; no unintended package part lost",
+          "name": "inputs_unchanged_and_parts_retained"
+        }
+      ]
+    },
+    {
+      "batch": "S1-F01 模板审核（外部维表导入 + 模板公式区域复制 + 注释 + 重算标记）",
+      "sample_id": "s1-f01-formula-copy-with-external-and-template",
+      "steps": [
+        {
+          "detail": "eligible backends: 1 of 1",
+          "name": "capability_routes_the_batch"
+        },
+        {
+          "detail": "engine umya_spreadsheet published /tmp/audit_capability_verification_s1_f01_copy_5327_1793159366859230242/审核副本.xlsx",
+          "name": "excel_modifier_execute"
+        },
+        {
+          "detail": "external lookup values present",
+          "name": "external_sheet_imported"
+        },
+        {
+          "detail": "template formula copy preserves formula text and cached values",
+          "name": "template_formulas_copied"
+        },
+        {
+          "detail": "comment at 检查表!A1",
+          "name": "comment_written"
+        },
+        {
+          "detail": "fullCalcOnLoad and forceFullCalc set",
+          "name": "calculation_flags_patched"
+        },
+        {
+          "detail": "conditional formatting, validation, merge, comment, defined name, freeze pane and header preserved",
+          "name": "target_features_preserved"
+        },
+        {
+          "detail": "all three inputs byte-identical",
+          "name": "inputs_unchanged"
+        }
+      ]
+    },
+    {
+      "batch": "S3-F03 机构说明→说明文件（先备份、目标原地更新 + 失败回滚）",
+      "sample_id": "s3-f03-explanation-writeback",
+      "steps": [
+        {
+          "detail": "target updated in place; byte-identical backup at /tmp/audit_capability_verification_s3_f03_writeback_5327_1793159367023396056/说明文件_导入前备份_20261028_114927_193_1.xlsx; feedback source unchanged",
+          "name": "writeback_values_and_protection"
+        }
+      ]
+    }
+  ],
+  "schema_version": 1,
+  "verified_at": "2026-10-28 11:49:27 +08:00"
+}

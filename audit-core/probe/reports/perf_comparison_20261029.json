@@ -1,0 +1,172 @@
+{
+ "schema_version": 1,
+ "date": "2026-10-29",
+ "platform": "windows-x86_64",
+ "rust_binary": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\dist\\open-data-audit.exe",
+ "rust_startup_ms": 9.5,
+ "python_source": "C:\\Users\\AZI\\Desktop\\VibeCode\\3.open-data-audit",
+ "methodology": {
+  "python": "进程内 perf_counter，不含解释器启动",
+  "rust": "子进程墙钟，含 CLI 进程启动与配置加载",
+  "rounds": 3,
+  "inputs": "两端输入逐字节相同；结果文件仅校验成功产出"
+ },
+ "results": [
+  {
+   "feature": "S3-F1 两期数据→比较文件（10k 行）",
+   "rounds": 3,
+   "python_ms": [
+    1325.2,
+    1183.0,
+    1114.1
+   ],
+   "rust_ms": [
+    1505.4,
+    1503.9,
+    1482.5
+   ],
+   "python_best_ms": 1114.1,
+   "rust_best_ms": 1482.5,
+   "speedup_best": 0.75,
+   "python_extra": {
+    "rows": 10000
+   },
+   "rust_extra": {
+    "schema": "five-segment"
+   }
+  },
+  {
+   "feature": "S3-F4 本期数值核对（10k 行）",
+   "rounds": 3,
+   "python_ms": [
+    6040.4,
+    6165.0,
+    6441.9
+   ],
+   "rust_ms": [
+    957.1,
+    970.8,
+    973.5
+   ],
+   "python_best_ms": 6040.4,
+   "rust_best_ms": 957.1,
+   "speedup_best": 6.31,
+   "python_extra": {},
+   "rust_extra": {}
+  },
+  {
+   "feature": "S3-F5 比较文件→金融表单（30 机构 × 40 指标 × 4 表）",
+   "rounds": 3,
+   "python_ms": [
+    2065.8,
+    2264.0,
+    2021.0
+   ],
+   "rust_ms": [
+    931.4,
+    948.1,
+    887.1
+   ],
+   "python_best_ms": 2021.0,
+   "rust_best_ms": 887.1,
+   "speedup_best": 2.28,
+   "python_extra": {
+    "workbooks": 30
+   },
+   "rust_extra": {
+    "workbooks": 30
+   }
+  },
+  {
+   "feature": "S3-F2 比较文件→说明文件（5000 行 / 1667 选中）",
+   "rounds": 3,
+   "python_ms": [
+    1950.9,
+    1920.0,
+    1986.7
+   ],
+   "rust_ms": [
+    222.6,
+    229.6,
+    222.3
+   ],
+   "python_best_ms": 1920.0,
+   "rust_best_ms": 222.3,
+   "speedup_best": 8.64,
+   "python_extra": {
+    "exported": 1667
+   },
+   "rust_extra": {
+    "exported": 1667
+   }
+  },
+  {
+   "feature": "S1-F1 真实公式重算子步骤（约 7200 个公式；Python=pywin32 进程内，Rust=sidecar 全管线含缓存清理与校验）",
+   "rounds": 2,
+   "python_ms": [
+    6015.7,
+    4658.2
+   ],
+   "rust_ms": [
+    7692.3,
+    6300.0
+   ],
+   "python_best_ms": 4658.2,
+   "rust_best_ms": 6300.0,
+   "speedup_best": 0.74,
+   "python_extra": {},
+   "rust_extra": {}
+  },
+  {
+   "feature": "S5 配置化逐笔统计审核（单文件 + 独立上期）",
+   "rounds": 3,
+   "python_ms": [
+    177.2,
+    22.9,
+    23.9
+   ],
+   "rust_ms": [
+    77.1,
+    59.5,
+    56.9
+   ],
+   "python_best_ms": 22.9,
+   "rust_best_ms": 56.9,
+   "speedup_best": 0.4,
+   "python_extra": {},
+   "rust_extra": {}
+  },
+  {
+   "feature": "S2 报表采集审核（2 份真实夹具报表）",
+   "rounds": 3,
+   "python_ms": [
+    51.8,
+    13.4,
+    12.8
+   ],
+   "rust_ms": [
+    39.4,
+    38.2,
+    41.2
+   ],
+   "python_best_ms": 12.8,
+   "rust_best_ms": 38.2,
+   "speedup_best": 0.33,
+   "python_extra": {
+    "findings": 16
+   },
+   "rust_extra": {}
+  },
+  {
+   "feature": "S1-F2 汇总校验结果说明",
+   "skipped": true,
+   "reason": "Rust CLI 为保存缓存诊断模式（读源文件缓存），Python 流程读取已保存审核结果；两者语义不等价，计时无可比性。已有对拍覆盖见 compare_s1_region_summary.py（夹具待更新）。"
+  }
+ ],
+ "python_startup_ms": 39.5,
+ "notes": [
+  "S3-F1 Rust 较慢：10k 行下 Python 进程内服务有暖机优势且免序列化；Rust 含 CLI 启动与工作簿写入。",
+  "S1-F1 为重算子步骤对比：Python 侧为裸 pywin32 重算（未含旧流程的缓存清理/校验），Rust 侧为 sidecar 全管线（缓存清理+重算+校验+发布）；Excel 本身耗时占主导。",
+  "S5/S2 为小负载：Rust 计时含进程启动与配置加载，绝对差为几十毫秒级。"
+ ]
+}

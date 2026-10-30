@@ -1,0 +1,72 @@
+时间：2026-10-28 15:00:10
+执行者：Codex
+仓库：C:\Users\AZI\Desktop\VibeCode\Rust-Audit
+分支：main
+修改前/后 commit：fd7c982f0358a74e2eb4f9cb74d022f88a1dfafe（未提交）
+WIP：保留现有全部 S1/S2/S3/S5、Excel-Core 与交付相关未提交修改和未跟踪文件。
+【组件版本】：不升级；本轮仅文档状态纠正与静态复核记录。
+
+目的：回答是否可直接人工验收；定向检查本次 S5 GUI 批次及其旧 Python 业务调用链，识别应在人工验收前处理的问题。
+范围：s5_web.rs、s5_outputs.rs、s5_service.rs、s5_schema_snapshots.rs、s5_conditional_format.rs、s5_external_layout.rs 相关函数；旧 Python S5 service/run_batch/institutions/conditional_audit/formula_error_scan。未重新审计整个 Python 项目或 S1/S2/S3。
+
+静态确认的问题（未实跑，优先级表示修复顺序）：
+
+1. [P1] 没有取数证据的批次结果可能归到第一份本期工作簿。
+   Rust：s5_web.rs:547 直接合并每份文件的 current_outcomes；S5RuleOutcome 没有本次主文件来源字段。s5_outputs.rs:225-260 仅从 error_evidence/evidence 找 source_path，缺失时回退 request.source_path（批次第一份本期文件）。
+   触发：第二家机构规则在首次取数前失败，或规则触发但无取数证据，例如缺失 V_PRE 的规则、无效适用范围等。
+   影响：13 列结果的“工作簿名”错误，无法可靠关联机构文件。
+   修复方向：每份文件的结果保留明确主来源，writer 以该来源作缺省，不能以整个批次第一份文件作缺省；已有实际错误位置/证据的来源仍保留。
+
+2. [P1] 审核副本名称碰撞可覆盖前一份证据副本。
+   Rust：s5_outputs.rs:523-530 由 role/source_id/safe_name(file_stem) 构造副本路径后直接 fs::copy；同一批次多文件的 role/source_id 相同。
+   触发：同目录同时存在“甲(1).xlsx”和“甲[1].xlsx”，safe_name 将两者均变成“甲_1”，生成同一 current_ID_甲_1.xlsx。
+   影响：第二次复制覆盖第一次副本；第一条 manifest 已记录的 sha256_copy 和 matches_snapshot 不再对应磁盘中的副本，链接会打开另一份文件。
+   修复方向：对每个物理来源分配不覆盖的唯一副本名，并校验最终副本；保留现有正常单来源命名兼容。
+
+3. [P1] 外部机构参照校验可被静默绕过。
+   Rust：s5_web.rs:1200-1222 用 if let Ok 忽略外部簿读取和 ExternalLayout::discover 失败；当源代码格式有效时，IDENTITY_NOT_MAPPED 也落入 Err(_) => {}。
+   Python：S5 service 先构造 InstitutionCatalog；institutions.py 对重复表头、公式映射、非法禁用值直接报错，存在参照但未匹配时返回 IDENTITY_NOT_MAPPED。
+   触发：本期表有格式有效的信用代码，已选外部参照未登记该机构或参照损坏，而本次规则只使用 V_CUR。
+   影响：Rust 可继续审核，旧版会阻止该机构或拒绝参照，身份保护口径不同。
+   修复方向：区分未选择机构参照与已选参照校验失败；错误须明确保留，机构名称/代码匹配优先级对齐旧服务，避免吞掉发现阶段错误。
+
+4. [P2] 批次总账中同逻辑来源的哈希记录相互覆盖。
+   Rust：s5_outputs.rs:156-168 以 role:source_id 为 input_hashes 键；s5_web.rs:589 起将多份本期文件都登记为同一 current_source_id，上期文件亦同。
+   触发：任意两份同业务的本期/上期批次输入；多个布局模板在 GUI 中也统一使用 TEMPLATE 来源 ID。
+   影响：最终完整性布尔判断仍逐文件比较，但总账每类逻辑来源只剩最后一份文件的 before/after，证据不完整。
+   修复方向：总账键或来源清单按物理路径区分，保留单来源兼容键或明确升级结果协议。
+
+5. [P2] 来源预检未遵守审核引擎的规则修订和生效期选择。
+   Rust：s5_web.rs:887、955、1033 的来源收集遍历该业务全部 enabled 规则；run_rules（s5_service.rs:994 起）先按报告期选最高生效 revision。
+   触发：旧的启用修订使用 CUR_OLD/外部源，当前修订只使用 CUR_NEW/本期源；GUI 会误报多个来源或要求本期实际不需要的外部文件。
+   另一个同类分支：source_id_for_business 始终计入 rule.default_source，即使所有 V_CUR 调用都明确 source=OTHER，可能产生虚假的多个来源冲突；已有 V_PRE 显式来源覆盖修复不能覆盖此分支。
+   修复方向：复用规则选择语义后再收集实际来源，显式 source= 优先于未使用的默认来源。
+
+6. [P2] 未使用模板中的“条件格式区域”可选扫描边界。
+   Rust：s5_web.rs:558 未传模板；s5_conditional_format.rs:60 调用 evaluator 时固定传空 scan_areas，按整个源簿 cfRule AppliesTo 扫描。
+   Python：conditional_audit.py:63 起优先读取选定模板的“条件格式区域”，存在时以该范围约束源文件条件规则，否则才回退源规则 AppliesTo。
+   影响：模板范围外的普通条件格式也可能被当作审核异常，异常数量和位置与旧版不同。
+   修复方向：保留可选模板范围，没有配置范围时继续回退 AppliesTo；无需新增数字区域或追求普通外观样式一致。
+
+7. [P2] 旧 S5-F1 的校验公式缓存错误扫描尚未接入 Rust S5。
+   Python：batch.py:121-185 对模板校验公式的字面错误、源缓存错误、缺少校验表及扫描失败生成 CALCULATION_FAILED 结果。
+   Rust：S5 GUI/CLI 调用链中没有相应扫描；现有 s1_validation_formula_scan.rs 已有只读扫描能力，但没有 S5 结果适配。
+   影响：配置审核规则未直接读取这些格时，原有 #REF!/#DIV/0! 等错误可不出现在 S5 结果中。
+   结论：这是与旧版的实际业务差异，须补齐该保护或形成明确取舍；它只读现有缓存/公式文本，不要求模板公式注入或 Office 重算。
+
+8. [P2] 批次结构快照持久化行为与旧版不同，并存在同键覆盖。
+   Rust：s5_web.rs:683 向汇总 writer 提供可写 schema_snapshot_dir；snapshot_id 只包含 role/source_id/business/sheet/table_id（s5_schema_snapshots.rs:191 起），多家机构产生相同 key；finish 在输入未变时逐条保存，最后一家覆盖前面的基线。
+   Python：batch.py:115 明确调用 engine.run(... persist_schema_snapshots=False)，逐机构比较但不在批次任务中更新共享基线。
+   影响：同批次位置或结构不同的机构共享同一快照 ID，结果缺少机构归属，并可能把最后一家机构的布局写成后续审核基线。
+   修复方向：对齐旧批次的比较/不持久化语义，保留逐文件归属；不必重构整个结构快照模块。
+
+本轮修改：
+- DEVELOPMENT_GOAL.md：将 S5-F1 改为“部分实现，需要继续开发；存在已知问题”，修正“下一步仅人工验收”的表述。
+- MIGRATION_INVENTORY.md：追加本次静态复核结论，保留旧记录的原始时点事实。
+- 新增本记录；无业务代码、配置、工作簿或测试源码修改。
+
+验证：仅静态读取、定位和业务调用链对照；未执行 Cargo build/check/test/run、编译脚本、程序启动、Python/Rust 对拍、测试或真实工作簿修改。上述触发条件来自可定位的代码路径，未宣称运行复现。
+建议顺序：先修复确认的问题；再经用户明确授权执行 S5 定向编译、测试与多机构正常/异常小样；之后让用户用真实配置和输入进行 GUI 人工验收。历史 435 passed 等记录不覆盖本次新增批次代码。
+删除清单：无。
+回滚：仅按新增静态复核结论撤回本轮文档段落；不要覆盖或回退此前业务 WIP。
+Git：无 commit、push、分支或 Worktree 操作。

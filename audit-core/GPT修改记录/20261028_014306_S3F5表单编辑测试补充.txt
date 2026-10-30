@@ -1,0 +1,27 @@
+时间：2026-10-28 01:43:06 Asia/Shanghai
+执行者：Codex
+修改前 HEAD：fd7c982f0358a74e2eb4f9cb74d022f88a1dfafe（分支 main；工作区已有未提交改动，全部保留）
+修改后 HEAD：未变。
+
+【目的】
+推进原 Python S3-F5 金融表单生成的测试准备。现有 Excel-Core 集成测试已覆盖删表、删列、数字格式、隐藏等操作，但未覆盖 S3-F05 实际使用的值写入和警戒填色。
+
+【修改文件】
+- `crates/excel-editor/tests/s3_f3_edit_operations.rs`：保留历史文件名，补充说明该金融表单编辑批次对应原 Python S3-F05；测试名和合成任务标识明确 Python F5。编辑批次加入单元格值写入与填充色设置，并断言输出读回的值和 ARGB 填色。
+- 新增本修改记录。
+
+【逻辑与业务影响】
+- 仅扩展 Excel-Core 编辑测试源码，没有修改生产后端、S3-F5 业务计划、GUI/Web API 或 CLI。
+- 测试仍将 Umya 能力标为 Unverified 并直接调用后端作合成编辑验证；它不提供 Passed 生产路由证据，不改变桌面运行层当前的失败关闭行为。
+- 不改 Python 源项目、真实配置或业务工作簿；无 VBA 变更。
+
+【验证与未执行项】
+- 定向 `rustfmt --check --edition 2021 crates/excel-editor/tests/s3_f3_edit_operations.rs` 通过；`git diff --check` 通过。
+- 未运行 Cargo、编译、测试、产品流程或打包；新增断言未经执行。
+
+【组件版本】
+不升级；仅补充测试源码。
+
+【问题、风险与回滚】
+- F5 仍缺桌面运行层覆盖完整操作批次的 Passed Excel-Core 路由；本测试不能替代该路由能力验证或真实金融表单验收。
+- 回滚仅恢复测试文件到本轮前内容并移除此记录；其他既有工作区改动保持原样。

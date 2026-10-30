@@ -1,0 +1,41 @@
+时间：2026-10-28 12:28（Asia/Shanghai）
+项目：C:\Users\AZI\Desktop\VibeCode\Rust-Audit
+分支：main；HEAD 未变。工作区原有未提交修改全部保留；本轮未 commit、未 push。
+
+【本次目标与边界】
+完成 S1-F1 真实公式重算合成端到端验收、Linux x86_64 能力证据与离线 deb 交付、跨系统验收运行器及 Windows/Linux 包级冒烟。原 Python 项目和工作簿样本仅只读；没有恢复 Main 同步、创建 Worktree 或扩展其他功能。
+
+【已完成业务与状态】
+1. S1-F1 真实端到端：在 Windows Microsoft Excel COM 16.0（EXCEL.EXE 16.0.20527.20088）上显式运行 ignored 集成用例 `s1_directory_copies_template_formulas_recalculates_and_combines_real_issues`，结果 1 passed。独立预期与实际读回一致：`检查表!D1=#DIV/0!` 与 `D2=#REF!` 各 1 条公式异常，`B2` 有 1 条实际触发的条件格式异常；公式与条件格式问题进入 13 列审核结果；结果簿可重开，源文件、模板和预重算审核副本哈希不变。真实业务输入仍待用户验收。
+2. Linux Excel-Core 生产能力：Linux x86_64 `production_capability_verification` 1 passed，写入 `audit-core/capability_evidence/umya_linux_x86_64_20261028.json`。证据覆盖 S1-F1 编辑批次、S3-F3 备份后原地更新与回滚契约、S3-F5 表单编辑；能力路由对未知平台继续失败关闭。
+3. Linux 离线包：`dist/linux-delivery/open-data-audit_0.1.0_amd64.deb`，13,498,066 字节，`x86_64-unknown-linux-musl`，deb 控制包使用 gzip，`Depends` 未声明系统运行时依赖。修复打包压缩后，Debian GLIBC 2.28 / dpkg-deb 1.19.8 等价容器成功读取并安装。静态 ELF 无 PT_INTERP，应用在无 Python/Go/Office/WPS/JVM/LibreOffice 的容器可启动。
+4. Linux 冒烟：`open-data-audit --version`、`acceptance-run --help`、S3-F1 CLI、Web `get_state` API 正常；API HTTP 200 且发现安装包中的 3.0–3.3 配置。无 `soffice` 时，`lo-convert recalculate` 明确返回 `LibreOffice sidecar is unavailable; install soffice to recalculate formulas`。合成业务 CLI：S3-F1 异常样例输出 1 行并触发 1 条动作规则；S3-F2 独立筛选样例输出 1 行；S3-F5 合成表单生成 1 个 XLSX，编辑引擎为 `umya_spreadsheet`。
+5. 验收运行器：新增 `open-data-audit acceptance-run --manifest <JSON> --output-dir <新目录>`，读取 S1/S2/S3/S5 输入并串接已有入口，输出 JSON + Markdown 报告、耗时、退出状态、文件清单、关键计数及输入 SHA-256。合成运行中 S3-F1、F2、S5 均完成，全部输入哈希不变；报告目录为 `F:\RustBuild\audit\acceptance-runner-synthetic-0b813b7c867b4f979e155fccad36f151`。S1 工作流通过现有 GUI worker 入口执行；S3-F3 为保护用户源目标，运行器在其输出目录复制目标后再按生产契约原地更新副本。
+6. Windows Release/ZIP：`build-release.bat` 成功；`package.bat` 成功生成 `dist/open-data-audit-windows-x64-20261028-122102.zip`（11,644,275 字节）。从 ZIP 解压后 `--version`、验收/S3-F1 CLI 帮助、S3 3.0–3.3 配置发现及 `get_state` API 通过。`package.bat` 原 LF 行尾导致 CMD 解析异常，改为 CRLF 后通过。
+
+【测试和构建记录】
+- 完整回归：`CARGO_TARGET_DIR=F:/RustBuild/audit cargo test --offline --locked --workspace -- --quiet`；435 passed、0 failed、28 ignored。完整摘要日志：`F:\RustBuild\audit\workspace-test-final.log`。
+- S1-F1 显式重算：设置 `AUDIT_S1_RECALC_TEST_SIDECAR=C:\Users\AZI\Desktop\VibeCode\Rust-Audit\dist\lo-convert.exe` 后运行 `cargo test --offline --locked -p audit-core --test s1_audit_directory_cli s1_directory_copies_template_formulas_recalculates_and_combines_real_issues -- --ignored --exact --nocapture`；1 passed，完成耗时 8.95 秒。该测试平常保持 ignored，未混入 435 项回归统计。
+- Windows Release：通过 `build-release.bat` 运行 `cargo build --release --offline --locked`，输出复制到项目 `dist/`。
+- Linux：`audit-core/packaging/deb/build.sh` 构建 musl CLI 和 `lo-convert`，使用 `dpkg-deb -Zgzip`。包已在 Debian 10 / GLIBC 2.28 等价容器验证；这不等于麒麟 V10 或 UOS V20 实机验收。
+- 格式与差异检查：`rustfmt --edition 2024 --check audit-core/src/acceptance_runner.rs` 通过；`git diff --check` 通过（仅报告 Git 的 LF/CRLF 工作区转换提示）。
+
+【用户确认的业务口径】
+- S3-F3 必须先备份，再原地更新目标说明文件；实现包含暂存写入和失败回滚。
+- S3-F5 的 3.3「分析文件数据单位」是历史遗留字段，沿用 3.0 默认目标单位，不参与换算。
+
+【新增/本轮收口涉及的文件】
+- `audit-core/src/acceptance_runner.rs`、`audit-core/src/lib.rs`、`audit-core/src/bin/open-data-audit.rs`、`audit-core/src/web_bridge.rs`：验收运行器和现有业务入口连接。
+- `audit-core/manual_acceptance/README_ACCEPTANCE_RUNNER.md`：JSON 清单与操作说明。
+- `audit-core/packaging/deb/build.sh`、`audit-core/packaging/deb/README.md`：musl deb 构建与旧 dpkg gzip 兼容。
+- `audit-core/capability_evidence/umya_linux_x86_64_20261028.json`：Linux 生产能力证据。
+- `DEVELOPMENT_GOAL.md`、`dist/README_RELEASE.md`、`audit-core/MIGRATION_INVENTORY.md`：收口后的当前状态、业务口径和历史证据补充。
+- `package.bat`：仅修正为 CRLF 行尾以保证现有打包命令可执行。
+- 其他跨多轮已有未提交代码继续保留；未对不相关业务功能做回退。
+
+【尚需用户人工验收】
+1. S1-F1：提供真实源 Excel、模板目录、外部数据和映射配置，在 GUI 完整执行；核对模板匹配/结构不符跳过原因、公式和条件格式异常位置/数值、13 列结果与源文件哈希。
+2. S2、S3-F1 至 F5、S5：用真实业务配置和输入核对数据映射、审核结论、输出工作表/字段及 GUI 操作。S3-F3 核对备份和原地更新；S3-F5 按已确认的 3.0 默认目标单位口径验收。
+3. 在麒麟 V10/UOS V20 x86_64 实机安装 deb，核对窗口/浏览器入口、包内配置发现、CLI 和无 Office 引擎时的提示。
+
+没有使用真实敏感工作簿或真实机构配置，也没有声称上述合成运行等于业务验收通过。

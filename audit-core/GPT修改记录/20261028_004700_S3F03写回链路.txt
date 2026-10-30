@@ -1,0 +1,16 @@
+# S3-F03 机构反馈写回链路补齐
+
+时间：2026-10-28 00:47（Asia/Shanghai）
+
+## 修改内容
+
+- `audit-core/src/s3_explanation_feedback.rs`：增加执行层，复用既有只读匹配、冲突规则与 ExcelEditPlan；非冲突更新写入说明文件独立副本，规划及写入阶段复核源/反馈哈希，并用安全发布输出。没有待写入项时复制目标说明工作簿生成独立结果。需编辑时由 Excel-Core 能力门控，无 Passed 路由不会发布结果；冲突报告路径进入错误上下文。
+- `audit-core/src/web_bridge.rs`：接通机构反馈多文件 Web API，并把结果/冲突报告/失败状态记入 GUI 日志；当前运行层没有 Passed S3-F03 编辑能力，因此实际有更新的任务仍会安全失败。
+- 扩展 S3-F03 单测源码，覆盖无 Passed 路由时目标与反馈文件哈希不变、没有回写产物。
+- 更新 `DEVELOPMENT_GOAL.md` 与 `audit-core/MIGRATION_INVENTORY.md`，准确标注新执行器/API 和运行能力缺口。
+
+## 验证状态
+
+- 已对三个相关 Rust 文件运行 `rustfmt` 和定向 `rustfmt --check`；`git diff --check` 通过。
+- 未运行 Cargo 编译或测试，也未运行 GUI 人工流程。
+- 剩余：提供经证据验证的 S3-F03 Excel-Core 能力路由，之后进行真实反馈文件写回和冲突验收。

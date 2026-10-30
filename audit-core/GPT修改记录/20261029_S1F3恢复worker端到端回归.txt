@@ -1,0 +1,23 @@
+S1-F3 恢复 worker 端到端与缓存拒绝回归
+
+实现
+
+- 将 S1-F3 worker 的内部主体改为接收状态存储结果；GUI 生产入口仍获取默认用户状态目录后调用该 worker。
+- 增加一个恢复成功合成测试：先写入待人工重算清单和具有公式缓存的审核副本，再以新建状态存储实例模拟程序重启；运行真实 worker，复用 F1 模板预检、公式/条件格式提取、历史合并和 13 列结果发布。
+- 验证恢复后提取 1 条公式异常、结果文件可重新读取、工作簿表头为 13 列、持久任务改为 COMPLETED 且待处理数归零；源文件、模板与人工副本 SHA-256 不变。
+- 增加缺少公式缓存的拒绝路径测试：用已有 `clear_formula_caches_for_recalculation` 生成缺缓存副本，确认不生成恢复结果，任务保持 `WAITING_MANUAL_RECALC` 并可重试。
+- 成功用例中的缓存值是合成 F3 输入，不是由 Office/LibreOffice 计算所得；它只验证恢复阶段。
+
+验证
+
+- 定向：`CARGO_TARGET_DIR=F:/RustBuild/audit cargo test --offline --locked -p audit-core --lib s1_f3_worker_ -- --nocapture`，2 passed / 0 failed。
+- 全量：`CARGO_TARGET_DIR=F:/RustBuild/audit cargo test --offline --locked --workspace -j 1 -- --quiet`，80 个测试目标，472 passed / 0 failed / 31 ignored；日志 `F:\RustBuild\audit\workspace-test-s1f3-worker-e2e-serial-20261029.log`。
+- 第一次并行全量命令在测试开始前遇到多个 Windows rustc 子进程 `STATUS_STACK_BUFFER_OVERRUN`；串行运行相同工作区回归通过。
+- `rustfmt --edition 2021 --check audit-core/src/web_bridge.rs`、`git diff --check` 通过。
+- `build-release.bat` 成功；`dist/open-data-audit.exe --version` 输出 `open-data-audit 0.1.0`，`dist/lo-convert.exe --help` 输出 convert/recalculate 用法。构建日志：`F:\RustBuild\audit\release-build-s1f3-worker-e2e-20261029.log`。
+
+边界
+
+- S1-F3 真实 GUI 操作、用户在 Excel/WPS/LibreOffice 强制重算保存、关闭后重启再恢复仍待人工验收。
+- S1-F1 真实 GUI 整批审核输出和麒麟 V10/UOS V20 目标机验收仍未完成；该增量不完成或关闭 Rust-Audit 总 Goal。
+- 未执行 Git commit/push，未修改 Python 参考项目，未重新打包 ZIP/deb。

@@ -1,0 +1,15 @@
+【修改时间】2026-10-30 09:45（Asia/Shanghai）
+【修改前 / 后 Commit】fd7c982f0358a74e2eb4f9cb74d022f88a1dfafe / 未提交，HEAD 未变化。
+【既有工作区】保留本轮开始前的全部未提交工作，包括 S1-F1 COM 会话与 S3-F1 写出优化。
+
+【原因】用户询问 PowerShell 的剩余用途及 S1-F2 两端不等价的具体原因。只读核对后发现，2026-10-29 性能报告将 S1-F1 CLI 的保存缓存诊断开关误记为 S1-F2 CLI，不能据此断言 S1-F2 不等价。报告中的 S1-F2 原本没有执行计时。
+
+【修改】
+1. 修正 perf_comparison_20261029.md 的 S1-F2 跳过说明，并明确原 JSON 中该理由属于历史误述；既有计时和 JSON 保留。
+2. 修正 perf_compare_20261029.py 的说明与未来运行时写出的跳过理由，不增加新性能测试。
+3. MIGRATION_INVENTORY.md 增加勘误，并将校验区域扫描的错误编号更正为 S1-F01；DEVELOPMENT_GOAL.md 同步更正编号与 GUI/CLI 当前扫描口径。
+4. 更新 app_settings.rs 和 lo-convert 重算段的过期 PowerShell 注释，仅改说明。
+
+【静态核对结论】Rust S1-F2 使用 s1-region-summary / GUI 同一汇总服务；旧 Python 默认读取已保存的值或缓存。旧版还提供办公软件读取选项；Rust 对消费范围内缺失或错误公式缓存报错。不能凭这些事实替代真实的同输入业务对照。
+【验证】仅读取相关源码与历史报告，执行格式/差异静态检查；未运行 Cargo、Office、业务应用、测试或性能计时。
+【Git】未提交、未推送；未更改 Python 参考项目或 S5 业务代码。

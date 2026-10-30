@@ -1,0 +1,56 @@
+时间：2026-10-29 04:33（Asia/Shanghai）
+仓库：C:\Users\AZI\Desktop\VibeCode\Rust-Audit
+分支：main
+修改前/后 commit：fd7c982f0358a74e2eb4f9cb74d022f88a1dfafe → 相同（未提交）
+WIP：工作区开始时已有大量未提交 Rust、前端、配置、文档和测试改动。本轮只在 S1-F1 公式复制业务模块和状态文档中增量修改；未覆盖或清理既有改动。
+
+【组件版本】
+open-data-audit / Excel-Core 仍为 0.1.0，不升级。
+
+## 目的
+
+落实“Umya 主引擎、OOXML Patch 仅按已验证能力回退、Excel COM/LibreOffice 真实重算”的策略。此前真实 S1-F1 样本已经证明 Umya 能复制普通/跨 Sheet 公式、约 210 条 VLOOKUP 和依赖表；但 GUI 运行路径在复制成功后没有逐项确认公式和外部输入值，结构上能重开不等于业务内容复制正确。本轮在 Audit 的 S1-F1 业务层增加候选校验，不扩展 Excel-Core 或 OOXML 公式工作表复制能力。
+
+## 修改文件
+
+- `audit-core/src/s1_formula_copy.rs`
+- `DEVELOPMENT_GOAL.md`
+- `audit-core/MIGRATION_INVENTORY.md`
+- 新增本修改记录
+
+## 逻辑变化
+
+- `execute_s1_formula_copy_with_manual_recovery` 在 `ExcelModifier` 产生独立候选后、清除公式缓存和调用重算 sidecar 前，运行 S1 专用候选校验。
+- 按源工作簿与完整编辑计划逐步重建预期工作表顺序、公式位置/文本和非公式单元格值；覆盖模板区域及所有外部工作表 ImportRange。公式缓存不作为业务值对比，因为后续必须清除并重新计算。
+- 发现公式缺失/改变、工作表名称或顺序异常、引用表字面值变化时，保留输入不变并停止 S1 链路。错误只列出表/单元格位置，不输出业务单元格内容。
+- Umya 将零长度文本规范化为空白是先前真实样本观察到的差异；比较仅容忍空字符串与缺省空白等价，不容忍空字符串被改成其他非空值。
+- `ImportRange` 跨簿公式复制仍由 Umya 负责。OOXML Patch 没有同语义且已验证的公式工作表复制能力，不配置伪回退；Umya 失败或校验失败时停止。
+- 没有配置、VBA 或 GUI 改动，没有删除功能，没有引入 Python/openpyxl 生产依赖。
+
+## 验证结果
+
+- 定向：`CARGO_TARGET_DIR=F:\RustBuild\audit cargo test --offline --locked -p audit-core --lib s1_formula_copy::tests:: -- --nocapture`，15 passed / 0 failed，日志 `F:\RustBuild\audit\s1f1-runtime-copy-validation-20261029.log`。覆盖真实执行入口的待人工重算副本、公式丢失、额外工作表、外部引用值被改、空字符串规范化和 210 条 VLOOKUP/依赖表复制。
+- 全工作区：`CARGO_TARGET_DIR=F:\RustBuild\audit cargo test --offline --locked --workspace -j 1 -- --quiet`，80 个目标、475 passed / 0 failed / 31 ignored；日志 `F:\RustBuild\audit\workspace-test-s1f1-runtime-copy-validation-serial-20261029.log`。采用 `-j 1`；没有重现此前并行 rustc 崩溃。
+- Windows Release：`build-release.bat` 成功，产物复制至 `dist`。`open-data-audit.exe --version` 输出 `open-data-audit 0.1.0`；`lo-convert.exe --help` 显示 `convert` 与 `recalculate` 命令。
+- `rustfmt --edition 2021 --check audit-core/src/s1_formula_copy.rs` 通过；`git diff --check` 通过。Git 只显示工作区已有文件的 LF/CRLF 提示，没有 whitespace error。
+
+## 未完成与边界
+
+- 本轮进程没有真实 S1 工作簿路径，未重跑旧 Python 项目的真实 210 条 VLOOKUP 样本或真实 GUI/COM 完整链路。之前 3 个真实 Umya/COM 探针是历史证据，覆盖复制/重算结果，但不验证本轮新增的运行时断言。
+- S1-F1 GUI 批次跳过原因、条件格式诊断、Issue 合并和 13 列结果仍需用户真实业务验收。
+- S1-F3 仍需人工从 GUI 发起待重算任务，在 Excel/WPS/LibreOffice 中强制重算、保存并关闭，重启程序后执行恢复并核对结果。Linux 麒麟 V10/UOS V20 目标机也仍待验证。Goal 保持 active。
+
+## 回滚与 Git
+
+- 本轮无删除。仅撤回 `s1_formula_copy.rs` 中本轮新增验证和其测试、以及相应状态记录；保留其余历史工作区变更。
+- 未 commit、未 push、未 merge。
+
+## 后续真实样本复验与 Umya 空白覆盖修复
+
+上文“本轮进程没有真实 S1 工作簿路径”记录的是最初执行状态。随后在旧 Python 参考项目只读目录找回真实输入组并重跑真实探针。新增校验器首先发现了实际 S1 复制问题：源报送表的映射范围存在旧公式，但模板对应位置是空白；Umya `ImportRange` 对未物化的源单元格未写入目标空白，导致旧公式残留。该差异是编辑器缺陷，不是校验器过严。
+
+修正 `crates/excel-editor/src/umya_backend.rs`：`materialize_blank_cells=true` 时，源工作表缺失的区域单元格现在会清除目标旧值/公式。扩展 `crates/excel-editor/tests/import_range.rs`，验证目标旧公式和文本均被空白源单元格覆盖。S1 校验器继续保留公式/值/工作表结构失败关闭检查；没有扩展 OOXML Patch 公式复制，也没有引入 openpyxl 生产依赖。
+
+后续验证：定向 `cargo test --offline --locked -p excel-editor --test import_range -j 1 -- --nocapture` 通过，1 passed。旧 Python 真实工作簿探针 3 passed / 0 failed，日志 `F:\RustBuild\audit\s1f1-real-umya-candidate-validation-20261029.log`；包含新增 S1 候选校验器、约 210 个 VLOOKUP、双依赖表、Excel COM 重算及同机构 Python 基线对比，1,072 个公式结果中 989 个非空、0 差异，输入哈希不变。全工作区最新串行回归 80 个目标，475 passed / 0 failed / 31 ignored，日志 `F:\RustBuild\audit\workspace-test-s1f1-blank-overwrite-serial-20261029.log`；`build-release.bat` 成功，版本和 sidecar 帮助冒烟通过。
+
+真实 GUI 批次、S1-F3 人工重算保存/恢复/重启和 Linux 目标机仍待人工验收；Goal 保持 active。仍未 commit、push 或 merge。

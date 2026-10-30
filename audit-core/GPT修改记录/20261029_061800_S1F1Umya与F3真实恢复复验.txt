@@ -1,0 +1,39 @@
+# S1-F1 Umya 当前样本与 S1-F3 真实恢复复验
+
+时间：2026-10-29 06:18（Asia/Shanghai）  
+执行者：Codex  
+仓库：`C:\Users\AZI\Desktop\VibeCode\Rust-Audit`  
+分支：`main`  
+修改前/后 commit：`fd7c982f0358a74e2eb4f9cb74d022f88a1dfafe`（本轮未提交）  
+WIP：工作区原有多个功能改动，本轮在现有改动上增量添加测试与状态记录；未重置、清理或覆盖其他 WIP。
+
+## 目的与改动
+
+在 S1-F1 的真实 Umya/Excel COM 复制链路基础上，补充真实工作簿进入 S1-F3 持久化恢复 worker 的端到端探针，检验公式副本重算保存后能恢复审核并生成正式结果。确认 Umya 已能完成真实业务复制时，不扩写没有相同语义验证证据的 OOXML 跨工作簿公式复制能力。
+
+- 修改 `audit-core/src/web_bridge.rs`：增加默认 ignored、仅 Windows 编译的 `real_s1_f3_recalculates_and_resumes_a_real_s1_f1_audit_copy` 探针及临时目录清理助手。该探针用生产 Umya modifier 生成真实 S1-F1 隔离副本，Excel COM sidecar 写出独立重算文件，之后仅覆盖临时审核副本以模拟 Excel 保存，并通过新建的持久化状态存储执行 F3 worker。
+- 修改 `DEVELOPMENT_GOAL.md`：更新 S1-F1 当前样本、S1-F3 真实恢复和最新测试计数，明确这不是 GUI 人工验收。
+- 修改 `audit-core/MIGRATION_INVENTORY.md`：追加本轮样本、结果、限制和日志证据。
+- 新增本记录文件。
+
+未修改生产业务计算、Excel-Core 后端、OOXML Patch、配置格式或功能版本；【组件版本】不升级。未删除文件。
+
+## 验证
+
+1. 真实 Windows S1-F3：`real_s1_f3_recalculates_and_resumes_a_real_s1_f1_audit_copy` 单独以 `--ignored --nocapture --exact` 执行，**1 passed / 0 failed**。实际引擎为 `Excel.Application`，副本 1,282 个公式；恢复提取 3 条公式异常、0 条条件格式异常、0 条条件格式诊断，状态 `COMPLETED`；结果工作簿可由 Calamine 重开，具有 13 列目标表头；待恢复任务归零。输入源、模板、外部表和配置哈希不变；恢复执行期间审核副本哈希不变。日志：`F:\RustBuild\audit\s1f3-real-resume-com-20261029.log`。
+2. 真实 Windows S1-F1：纯数据往返和 COM 分段/整本打开各通过。完整公式复制/重算探针在不提供 Python 对照文件时 **1 passed**：约 210 个 VLOOKUP、公式文本/引用、外部表独立 COM 重算基线、缓存节点和 Calamine 结果可读性检查通过。日志：`F:\RustBuild\audit\s1f1-real-formula-copy-current-20261029.log`。
+3. Python 基线限制：同名旧 Python 工作簿只提供 973 个可读公式缓存结果，低于该探针原定 1,000 个比较覆盖阈值；该次对拍不形成一致/不一致结论，本轮没有降低阈值。此前另一个对齐样本的完整 Python 基线比较仍保留在历史证据中。使用 7 月目录另一份同名外部工作簿时，S1 候选非公式值校验拒绝该输入，没有进入重算；换用 `config-real` 外部表后完整公式复制/重算探针通过。
+4. 全 workspace 串行测试：`cargo test --offline --locked --workspace -j 1 -- --quiet`，**80 个测试目标，482 passed / 0 failed / 32 ignored**。新增真实 S1-F3 探针默认 ignored，另行执行，不计入该统计。日志：`F:\RustBuild\audit\workspace-test-s1-real-f3-20261029.log`。
+5. `rustfmt --edition 2021 --check audit-core/src/web_bridge.rs` 通过。`git diff --check` 无空白错误；Git 提示工作区既有 LF/CRLF 转换信息。
+
+## 限制、未执行项与后续
+
+- F3 探针把 Excel COM 的独立重算输出复制回临时审核副本，模拟“打开、计算、保存、关闭”后的数据状态；没有模拟真实用户 GUI 操作，也没有验证 GUI 手动输入快捷键。
+- 真实样本未触发条件格式异常，故真实 F3 只覆盖 0 条条件格式结果；条件格式触发和 13 列合流仍由既有合成 COM E2E 覆盖。
+- Python 结果基线覆盖不足的当前样本需要人工确认旧基线为何有 99 个公式结果缓存不可读；不得将当前无基线探针表述为完成了同样本 Python 逐格对拍。
+- 未重建 Release：本轮仅增加测试与文档，生产代码没有变化；没有进行打包、提交或 Git push。
+- 下一步仍需要用户在 GUI 中执行 S1-F1，并对真实待重算任务手工执行 Excel 全量重算、保存、关闭、重启后用 S1-F3 恢复和核对最终业务结论。总 Goal 保持 active。
+
+## 删除与回滚
+
+无删除项。若需回滚本轮增量，仅撤销本记录列出的新增测试、Goal/迁移记录条目及本记录文件；不触碰同一工作区的其他既有改动。

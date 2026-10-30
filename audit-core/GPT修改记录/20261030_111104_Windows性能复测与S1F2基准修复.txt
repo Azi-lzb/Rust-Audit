@@ -1,0 +1,46 @@
+# Windows 性能复测与 S1-F2 基准修复
+
+- 时间：2026-10-30 11:11（Asia/Shanghai）
+- 执行者：Codex
+- 项目：`C:\Users\AZI\Desktop\VibeCode\Rust-Audit`
+- 分支/提交：`main` / `fd7c982f0358a74e2eb4f9cb74d022f88a1dfafe`；操作前后 HEAD 未变。
+- WIP：工作区已有大量未提交修改，均予以保留；未提交、推送、合并或重置。
+
+## 目的与修改
+
+- 按用户授权验证 Audit 原生 COM 批次热会话，并比较当前 Rust 与只读旧 Python Audit 的已迁移功能耗时。
+- 修复 S1-F2 合成性能夹具：源工作表补齐模板命名区域需要的表头，避免 Rust 的结构预检将测试样本跳过；历史摘要夹具也补齐要求的表头。
+- 新增 2026-10-30 性能驱动，测量 S1-F1 COM 重算子步骤、S2-F1、S3-F1 至 F5、S5，并加入 S3-F3 原地写入/备份核验、S1-F1 逐公式缓存核验、S2 输出结构检查和 Python `CalculateFull` 对照。
+- 汇总 S1-F2 三轮专项对比；记录完整性能报告和机器可读结果；更新 `DEVELOPMENT_GOAL.md`、`audit-core/MIGRATION_INVENTORY.md`。
+- 修复 `audit-core/src/native_office_com.rs` 中的 Windows 编译问题：从 `Win32::System::Ole` 导入 `DISPID_PROPERTYPUT`，并对函数指针字段调用加括号。
+- 未修改旧 Python 源码、未覆盖 `dist`，S5 仅做性能测量，没有恢复 S5 业务开发。
+
+## 文件
+
+- 修改/新增：`audit-core/src/native_office_com.rs`、`audit-core/tests/compare/perf_compare_20261030.py`、`audit-core/tests/compare/compare_s1_region_summary.py`。
+- 报告：`audit-core/probe/reports/perf_comparison_20261030.json`、`audit-core/probe/reports/perf_comparison_20261030.md`、`audit-core/probe/reports/s1f2_perf_comparison_20261030.json`。三份 `s1f2_perf_run*_20261030.json` 为逐轮原始报告。
+- 状态：`DEVELOPMENT_GOAL.md`、`audit-core/MIGRATION_INVENTORY.md`。
+- 新增本记录；没有删除文件。
+
+## 结果摘要
+
+- Windows x86_64，3 轮中位数。倍率为 Python/Rust：S1-F1 COM 重算子步骤（Python `CalculateFull` 对照）0.72x；S1-F2 73.22x；S2-F1 0.77x；S3-F1 0.74x、F2 7.90x、F3 0.95x、F4 6.46x、F5 3.79x；S5 0.34x。
+- S1-F1 Rust COM worker 在两册间复用同一个 Excel 进程；六个输出样本的公式/数值缓存计数均为 7,200/7,200，输入未改。它是重算子步骤微基准，不等于整条 S1-F1 时间。
+- S1-F2 三轮主要结构和值检查通过，输入未改；列宽最大差约 0.54。结果文件明确注明样本为合成小负载。
+- S3-F3 核验导入 1,000 行、更新前目标副本与备份字节一致、反馈输入未变。S2 核验输出可读、表名与维度相同；S3 其他功能未在本轮完成全量单元格对拍。
+- 详情及口径见 `audit-core/probe/reports/perf_comparison_20261030.md`。
+
+## 构建、测试和检查
+
+- 首次授权 Release 构建暴露 `native_office_com.rs` 的两处 Windows 编译错误；修正后以下命令通过：
+  - `$env:CARGO_TARGET_DIR='F:\RustBuild\audit'; cargo build --release --offline --locked -p audit-core --bin open-data-audit --bin open-data-audit-gui`
+- 定向 COM 会话测试通过 1/1：
+  - `$env:CARGO_TARGET_DIR='F:\RustBuild\audit'; cargo test --release --offline --locked -p audit-core --test s1_native_com_session -- --ignored --nocapture`
+- 性能驱动与 S1-F2 专项驱动的 Python AST 检查通过。未运行全量 Cargo 测试、Linux/deb 测试、打包或真实用户文件验收。
+- 对 `audit-core/src/native_office_com.rs` 执行 `rustfmt` 后，`rustfmt --check` 通过；`git diff --check` 通过（Git 另提示工作区多份既有 LF 文件后续可能被 autocrlf 转为 CRLF）。报告 JSON 可解析。
+
+## 版本、风险与回滚
+
+- 【组件版本】不升级；此次主要是性能验证、S1-F2 合成夹具校正、文档和原生 COM 编译修正。
+- 主要限制：多数输入为合成样本；Python 定时不含解释器启动，Rust CLI 墙钟含约 21.8 ms CLI 启动；S1-F1 只计重算子步骤；S3-F1/F2/F4/F5 的性能结果不是业务等价证明；未测 Linux。
+- 没有删除清单。若需撤销，只回退本记录列出的本次变更；必须保留原有工作区 WIP，不要用整目录覆盖或重置。

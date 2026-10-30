@@ -1,0 +1,39 @@
+# S1-F1 Umya 路由与跨工作表依赖复验
+
+时间：2026-10-29 06:49（Asia/Shanghai）  
+执行者：Codex  
+仓库：`C:\Users\AZI\Desktop\VibeCode\Rust-Audit`  
+分支：`main`  
+当前 commit：`fd7c982f0358a74e2eb4f9cb74d022f88a1dfafe`（未提交）  
+WIP：工作区原有大量未提交业务、前端、规则、测试及文档改动。本次仅在现有真实 S1-F1 探针内增加断言，并增补当前目标、迁移清单和本记录；未重置、清理或覆盖其他改动。
+
+## 目的
+
+按用户最新确认落实“Umya 主引擎 + OOXML Patch 按能力兜底 + Excel COM/LibreOffice 真重算”策略，优先以旧 Python 项目真实 S1-F1 文件验证 Umya 实际业务结果。避免把 Umya API 返回成功当成复制成功，也避免为已通过的公式工作表复制开发冗余 OOXML 引擎。
+
+## 修改
+
+- `audit-core/tests/s1_real_umya_copy.rs`：真实完整 F1 探针现在检查编辑报告确实唯一选择 `UmyaSpreadsheet`，只有一个成功编辑尝试；要求真实 `参照表!D2:D211` VLOOKUP 样本包含对「机构参照表」的跨 Sheet 引用。随后仍检查复制公式文本、模板公式、依赖表数据、Excel COM 重算基线、公式缓存可读性、输出重开及输入文件哈希。
+- `DEVELOPMENT_GOAL.md`：记录本次真实 Umya 路由及跨 Sheet 覆盖验证、定向测试结果和 OOXML 不能承担 S1 ImportRange 回退的边界。
+- `audit-core/MIGRATION_INVENTORY.md`：追加本次验证证据和限制。
+- 新增本记录。
+
+生产业务逻辑、Excel-Core 后端实现、OOXML Patch 能力、配置及组件版本均未改变；【组件版本】不升级。
+
+## 验证
+
+测试读取旧 Python 项目只读单位贷款源、匹配的 `config-real` 模板/映射/外部数据；工作簿输出写入系统临时目录。Windows `dist/lo-convert.exe` 通过 Excel COM 重算。
+
+- 真实 S1-F1：`cargo test --offline --locked -p audit-core --test s1_real_umya_copy -- --ignored --nocapture`，**3 passed / 0 failed**。纯数据 Umya 往返、外部与模板区域导入/Excel 打开、完整 F1 重算均通过。完整 F1 报告断言实际引擎是 Umya，公式副本包含 D2:D211 约 210 个 VLOOKUP 及对「机构参照表」的引用；独立外部表 COM 计算结果一致，输出缓存完整，源文件、模板、外部数据和映射哈希未变化。日志：`F:\RustBuild\audit\s1f1-umya-route-cross-sheet-current-20261029.log`。
+- Excel-Core 单元测试：`cargo test --offline --locked -p excel-editor --lib -- --quiet`，**48 passed**。包括能力路由、写入前拒绝时从原始输入重试、两后端均不支持时失败关闭、写入后错误和输出校验失败不回退。
+- 公式坐标/导入测试：`cargo test --offline --locked -p excel-editor --test import_range --test formula_copy_translation -- --quiet`，**5 passed**（4 + 1）。
+- S1 业务公式复制单测：`cargo test --offline --locked -p audit-core --lib s1_formula_copy -- --quiet`，**15 passed**。
+- `rustfmt --edition 2021 --check audit-core/tests/s1_real_umya_copy.rs` 通过；`git diff --check -- audit-core/MIGRATION_INVENTORY.md` 无空白错误，仅提示既有 LF/CRLF 转换。
+
+真实公式复制探针未提供 Python 审核副本，因此本次不形成全部模板公式结果的同次运行 Python 逐格对拍结论；另有此前独立样本 1,072 项对拍记录。当前 Rust 测试 harness 编译为 debug 测试程序；本次未重建主程序 Release，因为生产代码未变。未执行 workspace 全量测试、打包、提交或 Git push。
+
+## 引擎边界与未完成事项
+
+完整 S1-F1 ExcelEditPlan 必须由单个后端覆盖全部操作。该批包含含公式的跨工作簿 `ImportRange`；OOXML Patch 尚无实现并验证通过的同语义能力，所以不向 S1 路由注册伪回退。若 Umya 对该完整操作写入前拒绝，现有路由会失败关闭；只有未来 OOXML 对同一个完整业务操作有可验证能力后才可增加回退。当前 Excel-Core 合成回退测试验证的是通用协议，不宣称 OOXML 已支持 S1 公式工作表复制。
+
+本次未验收真实 GUI 批次、S1-F3 用户手动重算/保存/关闭/重启流程或 Kylin/UOS 目标机。未删除文件。若回滚，仅撤销上述真实探针断言、目标/迁移记录增量及本记录；不触碰其他 WIP。Rust-Audit 总 Goal 保持 active。

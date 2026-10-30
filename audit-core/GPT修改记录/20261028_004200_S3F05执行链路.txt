@@ -1,0 +1,17 @@
+# S3-F05 执行链路补齐
+
+时间：2026-10-28 00:42（Asia/Shanghai）
+
+## 修改内容
+
+- `audit-core/src/s3_indicator_split.rs`：增加业务编辑到 `ExcelEditPlan` 的转换、每机构独立工作簿执行、输出名/路径安全检查、隐藏/删除/数值/格式/填充等操作映射，以及暂存目录全批成功后发布。输出目录名遵循 `指标比较拆分_时间戳`；任何失败均清理暂存并不发布半成品。
+- `audit-core/src/web_bridge.rs`：接入 3.3 配置选择状态、F5 Web API 与后台执行调用，并记录结果/失败和输出路径。当前运行时没有注册覆盖 S3-F05 操作批次的 Passed Excel-Core 后端；API 通过空后端 `ExcelModifier` 走既有能力门控并明确失败，不伪造能力。
+- `audit-core/frontend/web/index.html`：启用 F5 操作入口，补充单独的金融表单输出目录与最近结果路径显示；配置工作簿选择使用 XLSX 配置筛选。
+- `DEVELOPMENT_GOAL.md`、`audit-core/MIGRATION_INVENTORY.md`：更新 F5 的新执行/API 状态和当前 Passed 能力阻塞。
+- 新增测试源码，覆盖业务计划到 Excel-Core 操作转换、无 Passed 路由时不发布输出，以及前端 F5/API 接线声明。
+
+## 验证状态
+
+- 已运行 `rustfmt` 对两个相关 Rust 文件格式化，并通过定向 `rustfmt --check` 与 `git diff --check`。
+- 未运行 Cargo build/check/test/run、测试、打包或 GUI 人工验收。
+- 目前无法生成金融表单：应用没有经过验证的 S3-F05 Excel-Core Passed 编辑器能力。待补足精确操作批次和模板结构的证据后，再接入该生产能力并人工验收真实 3.3 配置。

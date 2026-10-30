@@ -1,0 +1,27 @@
+{
+  "adapter": "excel-editor 0.1.0 OpenpyxlXlsxBackend",
+  "attempts": [
+    {
+      "batch": "S1-F01 公式复制（外部表导入 + 模板区域复制 + 注释 + 重算标记）",
+      "result": "execution_refused: ExcelModifierError { kind: OutputValidationFailed, engine: Some(OpenpyxlWorker), message: \"backend output validation failed; fallback stopped: openpyxl changed OOXML relationships outside explicitly allowed worksheet relationship changes\", route_decisions: [BackendRouteDecision { engine: OpenpyxlWorker, eligible: true, rejected_reasons: [] }], attempts: [BackendAttempt { engine: OpenpyxlWorker, outcome: ValidationFailed, message: \"openpyxl changed OOXML relationships outside explicitly allowed worksheet relationship changes\", elapsed_ms: 674 }] }"
+    },
+    {
+      "batch": "S3-F03 机构说明写回（先备份、原地更新）",
+      "result": "routing_refused: NoEligibleBackend；计划要求 RowAndColumnDimensions/UnmodifiedPackageParts，超出 openpyxl 保留集；目标保持原样"
+    },
+    {
+      "batch": "S3-F05 金融表单编辑（删列等）",
+      "result": "routing_refused: openpyxl 后端不支持 DeleteColumn；不自动切换 Umya"
+    }
+  ],
+  "available": false,
+  "conclusion": "openpyxl 重写无法满足 S1-F01/S3-F03/S3-F05 任一批次的生产保留契约（OOXML 关系列表、列尺寸、包部件、DeleteColumn）；高级选项保持置灰，全部批次失败关闭且输入不受影响",
+  "engine": "openpyxl 3.1.5 (isolated worker)",
+  "harness": "audit-core/tests/production_capability_verification.rs (openpyxl section)",
+  "platform": "windows-x86_64",
+  "python": "C:/Users/AZI/AppData/Local/Programs/Python/Python312/python.exe",
+  "sample_set_id": "audit-openpyxl-capability-verification-20261029",
+  "schema_version": 1,
+  "verified_at": "2026-10-30 01:47:03 +08:00",
+  "worker": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\crates/excel-editor/python/openpyxl_worker.py"
+}

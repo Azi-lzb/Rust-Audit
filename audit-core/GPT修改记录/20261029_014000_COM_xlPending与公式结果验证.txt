@@ -1,0 +1,40 @@
+时间：2026-10-29 01:40（Asia/Shanghai）
+执行者：Codex
+仓库：C:\Users\AZI\Desktop\VibeCode\Rust-Audit
+分支：main
+HEAD：fd7c982（未提交）
+工作树：保留此前已有的大量未提交修改；没有 reset、清理、覆盖、提交或 push。
+
+目的
+
+按用户授权优化 Windows Excel COM 公式重算判定，并确认 S1-F1 公式缓存及结果值不是仅凭 COM API 返回成功而接受。
+
+发现
+
+- sidecar 在重算请求中设置 `fullCalcOnLoad=1` 和 `forceFullCalc=1`。Excel COM 对含两项标记的文件在 `CalculateFull()` / `CalculateFullRebuild()` 后仍可能持续返回 `xlPending`。
+- 受控 Excel COM 探针显示，原公式结果实际已在内存计算并可读，包括 `#DIV/0!`、`#REF!` 及文本值；普通公式错误并非计算失败原因。关闭两个加载标记后，清除缓存的文件仍可由显式全量计算和依赖重建得到 `xlDone`。
+
+修改
+
+- `sidecar/lo-convert/src/main.rs`：Windows COM 路由从全量重算请求副本再创建专用临时输入，将 `fullCalcOnLoad` 和 `forceFullCalc` 置 false；验证公式仍存在且没有任何旧公式缓存，再交给 PowerShell + Excel COM。COM 仍执行 `CalculateFull()`、`CalculateFullRebuild()`，只有 `xlDone` 才保存。
+- LibreOffice 路由继续接收 `fullCalcOnLoad=1`、`forceFullCalc=1` 的重算请求；不改变 Linux 调用策略。
+- 保存后验证工作表顺序、每张表公式文本不变、每个公式都有缓存节点，且 Calamine 为每个公式读到带类型的结果值。错误结果和公式返回的空字符串都保留为可读结果。
+- 新增单测覆盖 COM 输入标记、缓存清空、公式结果覆盖、错误值/空字符串和缺失值拒绝。
+- 更新 `DEVELOPMENT_GOAL.md` 与 `audit-core/MIGRATION_INVENTORY.md`：记录 COM `xlPending` 原因、COM/LO 分工和本轮实际验证范围。
+
+验证
+
+- `CARGO_TARGET_DIR=F:\RustBuild\audit cargo test --offline --locked -p lo-convert --quiet`：13 单测、1 集成测试通过。
+- `CARGO_TARGET_DIR=F:\RustBuild\audit cargo test --offline --locked -p audit-core --test s1_audit_directory_cli s1_directory_copies_template_formulas_recalculates_and_combines_real_issues -- --ignored --exact --nocapture`，`AUDIT_S1_RECALC_TEST_SIDECAR=...\dist\lo-convert.exe`：Windows Excel COM Release sidecar 端到端通过；3 条预设公式异常与 1 条实际触发条件格式异常进入结果，源文件/模板/重算前副本保护断言通过。
+- `CARGO_TARGET_DIR=F:\RustBuild\audit cargo test --offline --locked --workspace -- --quiet`：80 个测试目标，464 passed、0 failed、31 ignored。日志：`F:\RustBuild\audit\workspace-test-final-20261029-com-pending.log`。
+- `build-release.bat`：成功，Release 二进制复制到项目 `dist`。`dist/open-data-audit.exe --version` 和 `dist/lo-convert.exe --help` 通过。
+- `rustfmt --edition 2021 --check sidecar/lo-convert/src/main.rs` 与 `git diff --check` 通过；`cargo fmt --all -- --check` 报告工作树其他既有文件的格式化差异，本轮没有格式化无关文件。
+- 本次未执行 Cargo clean、Git push、Linux 实机或 LibreOffice 真实工作簿重算。
+
+未复验项
+
+- 本轮环境没有提供 `AUDIT_S1_REAL_SOURCE`、`AUDIT_S1_REAL_TEMPLATE`、`AUDIT_S1_REAL_EXTERNAL`、`AUDIT_S1_REAL_MAPPING` 路径。真实旧 Python S1-F1 工作簿中约 210 条 `参照表!D2:D211` VLOOKUP 的 Umya 复制及 COM 重算本日此前已有通过记录，但没有在这次 COM 加载标记修复后重跑。
+- S1-F1 GUI 真实业务最终输出仍需用户人工验收；S1-F3 人工强制重算、保存关闭、程序重启后恢复及幂等流程也仍需用户 GUI 验收。
+- 因上述验收未完成，Rust-Audit 总 Goal 保持 active。
+
+最终交付状态：本轮仅定点修改上述 sidecar 与状态/证据文档；保留现有业务实现；未引入 openpyxl/Python 生产依赖，未触碰 Rust-Tools、旧 Main、RustHistory；未创建 worktree；未提交或 push。

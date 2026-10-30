@@ -1,6 +1,6 @@
 # Open-Data-Audit core
 
-This package is the Audit project inside the shared Rust workspace. Spreadsheet
+This package is the Audit business core inside the independent Rust-Audit workspace. Spreadsheet
 primitives come from `../crates/`; project-specific probe operations, config,
 rules, fixtures, and acceptance records stay here. No legacy Python business
 entry point is included.
@@ -12,7 +12,7 @@ configuration is in `config/`; sanitized local templates belong in the ignored
 
 ## Probes
 
-From the workspace root:
+From the workspace root. These cargo run commands compile and execute Rust; an Agent must obtain explicit authorization first:
 
 ```text
 cargo run -p audit-core --bin umya-probe -- --input <workbook.xlsx> --output-dir <tmp-dir> --report <report.json>
@@ -26,7 +26,9 @@ as a clearly marked legacy Python regression map; its old `core/tests` commands
 do not apply to this Rust workspace. Markdown findings are in `GPT修改记录/`;
 per-run JSON output goes to `probe/reports/`.
 
-## Rust S2 CLI candidate
+> Current feature status: see the repository-root DEVELOPMENT_GOAL.md. The historical slices below describe their original scope, not the complete current implementation.
+
+## Historical S2 CLI candidate evidence
 
 The file-based S2 audit flow can be invoked without Python:
 
@@ -41,11 +43,11 @@ templates, Windows-native execution, target Linux/deb, and production routing
 remain unverified; see `MIGRATION_INVENTORY.md` and
 `probe/reports/s2_service_parity.json`.
 
-The current reports cover a synthetic fixture only. Real sanitized workbook and
+The early reports described here cover a synthetic fixture only. Real sanitized workbook and
 Kylin/UOS installation acceptance are still required before business migration
 or deb packaging.
 
-## Rust S1 template recommendation slice
+## Historical S1 template recommendation slice
 
 The `open-data-audit template-suggest` command reads `.xlsx` worksheet names
 through the shared namespace-aware OOXML metadata adapter and applies the
@@ -66,7 +68,7 @@ a general performance claim. See
 `probe/reports/template_recommendation_parity.json` and
 `probe/reports/template_recommendation_real_smoke.json`.
 
-## Rust S1 conditional-format issue extraction slice
+## Historical S1 conditional-format issue extraction slice
 
 `open-data-audit conditional-audit` evaluates supported static conditional
 format rules and converts triggers into Audit `Issue` records in Rust. Supply
@@ -102,29 +104,23 @@ temporary ASCII basename to work around WSL Unicode argument handling, so
 Issue identity with the original workbook filename remains unverified. Full
 S1-F01 remains unverified.
 
-## Rust web UI bridge (incremental)
+## Rust web UI bridge
 
-The original Audit frontend is copied without edits to `frontend/web/index.html`;
-the original icon files are copied to `frontend/assets/`. The Rust server injects
-the `window.bridge.api` transport into the HTTP response and binds only to
-`127.0.0.1`:
+The maintained Rust + HTML frontend is in audit-core/frontend (or frontend/ from
+this directory). The Rust server serves it on loopback and injects the bridge.
+From the repository root, run the existing distribution executable with:
 
-```text
-cargo run -p audit-core --bin open-data-audit -- serve --port 8750 --config <s2-config.xlsx>
-```
+~~~powershell
+.\run.bat
+~~~
 
-The server defaults to `OPEN_DATA_AUDIT_S2_CONFIG`, then searches the workspace
-for a local real config and the public placeholder. Pass `--config` when running
-outside the workspace or when the intended S2 config is elsewhere.
+An optional --port or --config argument is passed to the serve command. The
+launcher requires dist/open-data-audit.exe, which is produced only by an
+explicitly authorized build-release.bat run.
 
-Currently connected APIs are `get_state`, `browse_dir`,
-`check_period_audit_config`, `choose_period_compare`, `clear_path`,
-`toggle_period_output_pin`, `start_period_compare_v2`, and a limited `update`
-subset for appearance and interaction settings. The page opens on S2. Period
-directory selection now refreshes the workbook/sheet pair preview using the
-Rust Calamine sheet-name reader and Audit filename identity rules; the original
-HTML remains unchanged. Other frontend APIs return HTTP 501 with the
-unimplemented API name. Cancellation, settings persistence, S1/S3/S4/S5
-workflows, and Linux/deb packaging are not implemented or accepted yet. The
-local HTTP bridge is an incremental UI entry point, not evidence that all Audit
-features have migrated.
+The bridge connects S1-F2, S2-F1, S3-F1, S3 current-period checks, S3
+explanation export, and S5-F1 to their Rust handlers. S1-F1 and the S3
+institution split are not connected as complete workflows. An API being wired
+does not establish business acceptance; see DEVELOPMENT_GOAL.md at the
+repository root and the historical audit-core/MIGRATION_INVENTORY.md for
+current status and scoped evidence.

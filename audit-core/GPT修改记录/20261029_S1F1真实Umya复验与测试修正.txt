@@ -1,0 +1,37 @@
+时间：2026-10-29（Asia/Shanghai）
+仓库：C:\Users\AZI\Desktop\VibeCode\Rust-Audit
+分支：main
+
+## 目的
+
+按当前 Goal 在 Windows Excel COM 持续 xlPending 修复之后，重新验证 S1-F1 的真实跨工作簿复制，不以 Umya API 成功返回代替公式文本、引用、重算值和工作簿可打开性证据。
+
+## 实施
+
+- 在旧 Python 参考项目的只读目录定位真实单位贷款源工作簿、S1 模板、映射配置、外部数据和同机构 Python 审核副本。测试只读这些原件，在系统临时目录创建/重算副本；不修改旧 Python 代码和业务文件。
+- 修正真实纯数据源往返探针：当源工作簿没有公式时只重开和比较数据/结构，不调用公式重算 sidecar；存在公式时才要求真实计算引擎。
+- 纯数据值对比区分非空数据与显式空字符串。该真实样本中，Umya 将 211 个零长度文本单元格规范化为空白（分布于 6 张表），其余非空值未变。这个表示差异被记录，没有宣称字节或逐单元格表示完全一致。
+- 真实 S1-F1 探针检查模板规则中的 1,072 个公式位置及公式文本，检查外部 `参照表!D2:D211` 的约 210 个 VLOOKUP 和共同复制的依赖工作表，并将公式结果与旧 Python 同机构审核副本比较。错误消息只输出差异数量和单元格位置，不输出业务单元格值。
+
+## 验证
+
+命令：
+
+`CARGO_TARGET_DIR=F:\RustBuild\audit cargo test --offline --locked -p audit-core --test s1_real_umya_copy -- --ignored --nocapture`
+
+本地只读输入使用 `AUDIT_S1_REAL_SOURCE/TEMPLATE/EXTERNAL/MAPPING/SIDECAR`，旧 Python 审核副本作为可选 `AUDIT_S1_REAL_PYTHON_BASELINE`。结果：**3 passed / 0 failed**，完整日志 `F:\RustBuild\audit\s1f1-real-umya-final-20261029.log`。
+
+- 纯数据源 Umya 往返：工作表顺序/名称、公式和非空值通过；报告空字符串规范化数量。
+- 完整真实 S1-F1 复制/计算：210 条 VLOOKUP 公式、模板公式文本及跨表依赖保留；1,072 个公式结果与旧 Python 审核副本逐格一致（695 非空，0 差异）。外部表 VLOOKUP 结果与独立 Excel COM 重算基线一致。
+- 外部表单独导入、模板范围单独导入和完整合并副本均可由 Excel COM 打开。
+- 源文件、模板、外部数据和映射配置哈希不变。
+
+## 引擎策略结论
+
+该真实 S1-F1 跨工作簿公式 ImportRange 由 Umya 满足。OOXML Patch 尚无已实现且验证通过的同语义跨工作簿公式工作表复制能力，因此不登记为此操作的回退。Umya 若写入前拒绝且后备能力无有效验证，或发生部分写入/校验错误，均按现有 Excel-Core 策略失败关闭；通用能力回退协议测试已在前序全工作区回归中通过。
+
+## 状态与边界
+
+本次只增补真实验收探针和迁移记录，没有修改生产业务后端。此前 COM 修复后的合成 E2E、470 项 workspace 回归、Windows Release 构建和 S1-F3 恢复单测证据保持有效。真实 S1-F1 GUI 批次结果、跳过原因、条件格式异常与 13 列报告仍需用户人工验收；S1-F3 强制重算保存/重启恢复 GUI 流程及 Linux 真实目标机也未验收，总 Goal 保持 active。
+
+Git：未提交、未 push、未 merge；保留已有工作区 WIP。

@@ -1,0 +1,34 @@
+{
+  "feature": "S1-F2 named-region summary",
+  "rounds": 3,
+  "fixture": "synthetic Windows XLSX; two source workbooks, three source sheets, nine output data rows",
+  "python_ms": [
+    4316,
+    4320,
+    4355
+  ],
+  "rust_ms": [
+    60,
+    59,
+    56
+  ],
+  "python_best_ms": 4316,
+  "rust_best_ms": 56,
+  "speedup_best": 77.07,
+  "python_median_ms": 4320,
+  "rust_median_ms": 59,
+  "speedup_median": 73.22,
+  "python_engine": "Microsoft Excel COM; timer covers the Python feature call, excludes Python interpreter startup",
+  "rust_reader": "calamine + namespace-aware OOXML",
+  "rust_writer": "rust_xlsxwriter 0.101.0",
+  "verification": {
+    "all_three_rounds_output_comparison_passed": true,
+    "all_three_rounds_input_files_unchanged": true,
+    "sheet_name_dimension_and_cell_value_differences": 0,
+    "number_format_font_alignment_filter_freeze_differences": 0,
+    "max_main_case_column_width_delta": 0.53515625,
+    "additional_history_and_fallback_cases_passed_each_round": true,
+    "scope": "additional history and fallback cases are parity checks; their timings are separate fields in each source report and are not included in the primary median"
+  },
+  "scope": "synthetic formula-free workbooks; S1-F2 named arbitrary-row and fixed-row summary; Rust timing includes CLI startup; no real user workbook or Linux measurement"
+}

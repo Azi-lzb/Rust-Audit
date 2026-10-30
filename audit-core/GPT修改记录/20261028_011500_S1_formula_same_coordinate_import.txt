@@ -1,0 +1,31 @@
+时间：2026-10-28 01:15（Asia/Shanghai）
+执行者：Codex
+仓库：C:\Users\AZI\Desktop\VibeCode\Rust-Audit
+分支：main
+修改前 commit：fd7c982f0358a74e2eb4f9cb74d022f88a1dfafe
+修改后 commit：fd7c982f0358a74e2eb4f9cb74d022f88a1dfafe（未提交）
+工作区状态：保留此前的多项未提交 WIP；本次针对 S1-F1 同坐标公式导入修改 Excel-Core，并增加对应测试源码。
+
+目的：S1-F1 从模板向审核副本复制的映射区域通常落在相同坐标；此路径不需要公式引用平移。此前 Umya ImportRange 即使源/目标坐标相同也运行公式语法转换器，可能改写或拒绝结构化/外部引用公式。
+
+修改文件：
+- crates/excel-editor/src/umya_backend.rs
+- crates/excel-editor/tests/formula_copy_translation.rs
+- DEVELOPMENT_GOAL.md
+- audit-core/MIGRATION_INVENTORY.md
+- 本记录
+
+实现变化：
+- CopyRange/ImportRange 开启平移模式但源与目标单元格坐标相同的情况下，直接复制公式对象及原文本；坐标确实变化时仍走原有公式平移和语法限制。
+- 增加跨工作簿同坐标导入测试源码，覆盖结构化引用和外部工作簿公式文本保持不变，并断言源工作簿字节不变。
+- 此更改有望解决同坐标公式被不必要转换的问题，但尚未运行测试，不能认定真实候选的 78 个公式/值差异已消除。
+- 同步当前 S1-F1 状态和迁移证据；明确该修复未解决或验证此前真实候选差异。
+
+验证：
+- 未执行 Cargo/build/check/test/run、编译、打包或 Excel/LibreOffice。
+- `rustfmt --check --edition 2021` 对本次两个 Rust 文件通过，`git diff --check` 通过（仅工作区 CRLF 提示）。
+- S1-F1 Excel-Core Passed 生产能力仍未登记，业务运行仍会失败关闭。
+
+删除清单：无。
+回滚提示：只回滚上述 Excel-Core 两处增量和本记录；保留其余工作区修改。
+【组件版本】：未升级。

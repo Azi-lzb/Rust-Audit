@@ -1,0 +1,40 @@
+时间：2026-10-28 01:07（Asia/Shanghai）
+执行者：Codex
+仓库：C:\Users\AZI\Desktop\VibeCode\Rust-Audit
+分支：main
+修改前 commit：fd7c982f0358a74e2eb4f9cb74d022f88a1dfafe
+修改后 commit：fd7c982f0358a74e2eb4f9cb74d022f88a1dfafe（未提交）
+工作区状态：存在大量已有未提交修改；本次只在既有 S1-F1 Web/CLI 路径上增量修改，保留其他 WIP。
+
+目的：将 S1-F1 GUI 从模板/结构预检推进到既有公式复制、真实重算、公式与条件格式异常提取、历史归类和结果工作簿写入流程；失败时不发布不完整结果。
+
+修改文件：
+- audit-core/src/web_bridge.rs
+- audit-core/src/bin/open-data-audit.rs
+- audit-core/src/s1_formula_copy.rs
+- audit-core/frontend/web/index.html
+- DEVELOPMENT_GOAL.md
+- audit-core/MIGRATION_INVENTORY.md
+- 本记录
+
+实现变化：
+- GUI worker 保留逐文件模板规则、条件扫描区域和结构范围；模板不匹配、健康检查失败或结构不符时继续记录原因并跳过。
+- 正式执行阶段要求可用重算 sidecar；在独立本次输出目录运行公式副本、公式/校验区域错误和实际条件格式触发项提取、两类 Issue 合流、历史记录读取/归类及 13 列结果表输出。
+- 条件格式和校验区域公式扫描读取真实重算后的审核副本；源工作簿只读。运行失败会清理本次新建目录，并将失败原因与预期结果路径返回 GUI。
+- CLI 校验区域公式扫描也改为读取已选中的审核副本。
+- GUI 主按钮说明更新为完整执行步骤和能力缺失时的停止行为。
+- 同步更新 DEVELOPMENT_GOAL 当前 S1-F1 状态，并在迁移清单追加本次增量证据与未验证限制。
+- 新增输出目录 guard 测试源码，覆盖失败清理及成功保留；新增 Umya 公式复制候选测试源码，核对模板公式落入独立副本且源文件字节不变；未运行测试。
+
+已知限制/后续：
+- S1-F1 Excel-Core 当前没有可用的 Passed 生产编辑路由；workflow 明确保留空路由并失败关闭，不能声称本地已可生成审核文件。需要后续在获准的统一编译测试阶段完成精确操作批次的后端验证及证据登记，之后才能注册生产路由。
+- 未执行 Cargo、编译、测试、运行、打包或 Excel/LibreOffice 人工验收；真实样本结果仍待用户验收。
+
+静态检查：
+- git diff --check：通过（仅报告工作区 LF/CRLF 提示）。
+- rustfmt --check --edition 2021 audit-core/src/web_bridge.rs：通过。
+- rustfmt 对 CLI 文件仅报告已有 import 排序差异；未格式化整文件，避免无关改动。
+
+删除清单：无。
+回滚提示：本次修改未提交；不要重置整个工作区。若需撤回，仅按上述三个业务文件中本次 S1-F1 增量差异及本记录单独恢复。
+【组件版本】：未升级。

@@ -1,0 +1,2374 @@
+{
+ "schemaVersion": 1,
+ "title": "Rust-Audit 对齐决策清单（S1/S2/S3）",
+ "date": "2026-10-29",
+ "source": "audit-core/docs/FEATURE_TECHNOLOGY_AND_FAILURE_MATRIX_20261028.json",
+ "categories": {
+  "adoptAsIs": {
+   "label": "建议直接采纳（保持 Rust 安全行为 + 矩阵建议）",
+   "count": 96
+  },
+  "userDecision": {
+   "label": "需用户业务决策",
+   "count": 6
+  },
+  "s5OutOfScope": {
+   "label": "S5 项（维持现状，不在本 Goal 范围）",
+   "count": 2
+  }
+ },
+ "failureStrategy": {
+  "adoptAsIs": [
+   {
+    "id": "G01",
+    "features": [
+     "S1-F1",
+     "S1-F2",
+     "S5-F1"
+    ],
+    "steps": [
+     "S1F1.01",
+     "S1F2.01",
+     "S5F1.01"
+    ],
+    "scenario": "已选输入不存在、路径指向目录/临时产物、输出与输入相同",
+    "currentBehavior": "入口路径/身份检查返回错误；不同入口校验覆盖不完全一致。",
+    "impact": "无法确定实际被审核文件或可能覆盖原件。",
+    "recommendedAction": "STOP_ALL",
+    "reason": "开始前拦截并给具体路径；不能静默换文件/改输出覆盖源。",
+    "test": "N：未找到针对这一故障及当前源码的独立执行证据。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 S1-F1、S1-F2；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "G02",
+    "features": [
+     "S1-F1",
+     "S1-F2",
+     "S2-F1",
+     "S3-F1",
+     "S3-F2",
+     "S3-F3",
+     "S3-F4",
+     "S3-F5",
+     "S5-F1"
+    ],
+    "steps": [
+     "S1F1.01",
+     "S1F1.06",
+     "S1F1.14",
+     "S1F2.01",
+     "S1F2.07",
+     "S2F1.09",
+     "S3F1.08",
+     "S3F2.05",
+     "S3F3.04",
+     "S3F3.06",
+     "S3F4.06",
+     "S3F5.06",
+     "S5F1.15"
+    ],
+    "scenario": "没有权限、输入占用、输出/临时盘空间不足、网络盘断连",
+    "currentBehavior": "通常IO错误返回；S1/F5暂存guard清理，S5可能已留下副本/部分输出。",
+    "impact": "读取不全或产物不完整；备份和源安全受影响。",
+    "recommendedAction": "STOP_ALL",
+    "reason": "共享配置/输出故障阻断批次；只影响单源的读取可按文件隔离，前提是明确缺项。",
+    "test": "N：未找到针对这一故障及当前源码的独立执行证据。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 S1-F1、S1-F2、S2-F1、S3-F1、S3-F2、S3-F3、S3-F4、S3-F5；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "G03",
+    "features": [
+     "S1-F1",
+     "S1-F2",
+     "S5-F1"
+    ],
+    "steps": [
+     "S1F1.01",
+     "S1F2.01",
+     "S5F1.01"
+    ],
+    "scenario": "没有选文件/所有预检来源被跳过/批次0可执行项",
+    "currentBehavior": "大多入口开始前返回无来源；S5执行后全失败可生成FAILED总账。",
+    "impact": "0条异常可能被误读成全部通过。",
+    "recommendedAction": "STOP_ALL",
+    "reason": "保留失败/跳过清单；不出‘审核通过’。",
+    "test": "N：未找到针对这一故障及当前源码的独立执行证据。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 S1-F1、S1-F2；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "G04",
+    "features": [
+     "S1-F1",
+     "S1-F2",
+     "S2-F1",
+     "S3-F1",
+     "S3-F2",
+     "S3-F3",
+     "S3-F5",
+     "S5-F1"
+    ],
+    "steps": [
+     "S1F1.02",
+     "S1F1.03",
+     "S1F1.04",
+     "S1F2.02",
+     "S1F2.04",
+     "S2F1.02",
+     "S2F1.07",
+     "S3F1.03",
+     "S3F2.01",
+     "S3F3.01",
+     "S3F5.01",
+     "S5F1.02",
+     "S5F1.07"
+    ],
+    "scenario": "XLSX ZIP损坏、XML/关系异常、文件加密、伪扩展名、Calamine不支持类型",
+    "currentBehavior": "没有通用Calamine→OOXML/openpyxl值读取回退；按所在阶段返回错误或预检跳过。",
+    "impact": "所有依赖值/坐标都不可信；元数据补读不能补救值读取。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "共享模板/配置坏应整批停止；仅一份源坏可隔离并标部分未审。",
+    "test": "N：未找到针对这一故障及当前源码的独立执行证据。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 S1-F1、S1-F2、S2-F1、S3-F1、S3-F2、S3-F3、S3-F5；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "G05",
+    "features": [
+     "S1-F1",
+     "S1-F2",
+     "S2-F1",
+     "S3-F1",
+     "S3-F2",
+     "S3-F3",
+     "S3-F4",
+     "S3-F5",
+     "S5-F1"
+    ],
+    "steps": [
+     "S1F1.03",
+     "S1F1.04",
+     "S1F2.02",
+     "S2F1.01",
+     "S3F1.01",
+     "S3F2.01",
+     "S3F3.01",
+     "S3F4.01",
+     "S3F5.02",
+     "S5F1.03"
+    ],
+    "scenario": "共享配置或模板缺表、关键表头/定义名称错误、作用域不明",
+    "currentBehavior": "配置/模板加载/规则规划报错；部分旧兼容路径可warning继续，应逐功能确认。",
+    "impact": "可能影响所有文件/规则，无法得出可信统一结论。",
+    "recommendedAction": "STOP_ALL",
+    "reason": "配置/模板级错误优先阻断受影响功能；不能把错表头当空规则。",
+    "test": "N：未找到针对这一故障及当前源码的独立执行证据。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 S1-F1、S1-F2、S2-F1、S3-F1、S3-F2、S3-F3、S3-F4、S3-F5；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "G06",
+    "features": [
+     "S1-F1",
+     "S1-F2",
+     "S2-F1",
+     "S3-F1",
+     "S3-F2",
+     "S3-F3",
+     "S3-F4",
+     "S3-F5",
+     "S5-F1"
+    ],
+    "steps": [
+     "S1F1.06",
+     "S1F1.09",
+     "S1F1.14",
+     "S1F2.07",
+     "S1F2.08",
+     "S2F1.09",
+     "S3F1.08",
+     "S3F2.05",
+     "S3F3.04",
+     "S3F4.06",
+     "S3F5.07",
+     "S5F1.16"
+    ],
+    "scenario": "目标已存在、被Excel占用、原子提交/硬链接/rename失败",
+    "currentBehavior": "按具体输出函数报错且不覆盖；有的已保存文件会保留，有的清理暂存。",
+    "impact": "有内容不代表已成功发布；重试可能覆盖或重复。",
+    "recommendedAction": "RETRY_SAFE",
+    "reason": "只可在保留同一已验证候选且新输出路径的前提下安全重试；失败应有明确产物清单。",
+    "test": "N：未找到针对这一故障及当前源码的独立执行证据。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 S1-F1、S1-F2、S2-F1、S3-F1、S3-F2、S3-F3、S3-F4、S3-F5；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "G07",
+    "features": [
+     "S1-F1",
+     "S3-F3",
+     "S3-F5"
+    ],
+    "steps": [
+     "S1F1.07",
+     "S3F3.05",
+     "S3F5.04",
+     "S3F5.05"
+    ],
+    "scenario": "文件含未支持图表/透视/VBA/ActiveX/嵌入/外链/未知drawing等，或平台无Passed编辑器",
+    "currentBehavior": "编辑前profile/能力筛选拒绝；当前生产只有Umya，无openpyxl后备。",
+    "impact": "继续编辑可能丢关系/公式/关键对象。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "未覆盖对象先保持原件，只出诊断；新后备须覆盖整批同契约后才可启用。",
+    "test": "R/H：E03/E04有限保留样本；特定未知对象拒绝为现源码规定，未证明所有负向输入。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "G08",
+    "features": [
+     "S1-F1",
+     "S3-F3",
+     "S3-F5"
+    ],
+    "steps": [
+     "S1F1.07",
+     "S3F3.05",
+     "S3F5.05"
+    ],
+    "scenario": "编辑已写入后报错、结果验证失败、后端冒称写前拒绝但已写出字节",
+    "currentBehavior": "ExcelModifier停止回退；不发布无效候选。",
+    "impact": "再用另一引擎可能掩盖/放大损坏，不能从坏候选继续。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "丢弃候选，保留原件/诊断；不能当自动后备成功。",
+    "test": "N：有框架mock测试源码，未定位当前实际双引擎故障回执。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "G09",
+    "features": [
+     "S1-F1",
+     "S5-F1"
+    ],
+    "steps": [
+     "S1F1.12",
+     "S5F1.07",
+     "S5F1.13"
+    ],
+    "scenario": "条件格式有不支持规则/函数、缺缓存/上下文、色阶/图标集/数据条等未实现判断",
+    "currentBehavior": "CF求值输出unsupported/error；S1GUI要求完整否则整批停，S5保留PARTIAL继续。",
+    "impact": "未审的条件可能隐藏真实异常；颜色或规则存在不能代替本轮触发。",
+    "recommendedAction": "MANUAL_REVIEW",
+    "reason": "可继续生成带缺项结果，但受影响范围不允许标通过；用户决定必审规则是否阻断。",
+    "test": "R：E05有限支持子集；新S5CF桥U。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 S1-F1；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "G10",
+    "features": [
+     "S1-F2",
+     "S2-F1",
+     "S3-F1",
+     "S3-F2",
+     "S3-F4",
+     "S5-F1"
+    ],
+    "steps": [
+     "S1F2.07",
+     "S2F1.09",
+     "S3F1.08",
+     "S3F2.05",
+     "S3F4.06",
+     "S5F1.16"
+    ],
+    "scenario": "输出超过XLSX单表行列上限，或单格文本过长",
+    "currentBehavior": "部分writer显式限制/库返回错误，S5CF有行数检查；不会自动分卷。",
+    "impact": "可能丢行/截文本或无法保存。",
+    "recommendedAction": "STOP_ALL",
+    "reason": "不静默截断；用户另行决定分sheet/分卷是否符合结果契约。",
+    "test": "N：未找到针对这一故障及当前源码的独立执行证据。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 S1-F2、S2-F1、S3-F1、S3-F2、S3-F4；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "G11",
+    "features": [
+     "S2-F1",
+     "S3-F1",
+     "S3-F2",
+     "S3-F4",
+     "S3-F5",
+     "S5-F1"
+    ],
+    "steps": [
+     "S2F1.03",
+     "S3F1.04",
+     "S3F2.04",
+     "S3F4.04",
+     "S3F5.03",
+     "S5F1.10"
+    ],
+    "scenario": "单位缺失/不识别、极大/非有限数值、前导0标识、金额舍入/浮点尾差",
+    "currentBehavior": "不同模块采用Decimal或f64及既定兼容语义；可能规则错误/质量警告/文本保留。",
+    "impact": "影响业务匹配和阈值判定；代码与金额不是同种转换。",
+    "recommendedAction": "STOP_RULE",
+    "reason": "保留原单位/原始类型/规范值；影响全局单位则整批停止，不自行改舍入规则。",
+    "test": "N：未找到针对这一故障及当前源码的独立执行证据。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 S2-F1、S3-F1、S3-F2、S3-F4、S3-F5；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "G13",
+    "features": [
+     "S2-F1",
+     "S3-F1",
+     "S3-F3",
+     "S3-F4",
+     "S3-F5",
+     "S5-F1"
+    ],
+    "steps": [
+     "S2F1.10",
+     "S3F1.09",
+     "S3F3.04",
+     "S3F3.08",
+     "S3F4.07",
+     "S3F5.08",
+     "S5F1.16"
+    ],
+    "scenario": "GUI显示完成但包含文件/规则失败，或结果文件存在而总账/日志失败",
+    "currentBehavior": "各功能状态口径不一；S5已有部分/全失败细分，其他入口可能主要返回计数或通用完成。",
+    "impact": "用户误把部分结果当完整通过。",
+    "recommendedAction": "CONTINUE_DIAGNOSTIC",
+    "reason": "已有有效产物可展示，但须明确未完成范围/数量和不可作为通过结论的部分。",
+    "test": "H/U：历史API/CLI记录，当前GUI真实交互未验收。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 S2-F1、S3-F1、S3-F3、S3-F4、S3-F5；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "G14",
+    "features": [
+     "S3-F3",
+     "S5-F1"
+    ],
+    "steps": [
+     "S3F3.05",
+     "S5F1.06",
+     "S5F1.15"
+    ],
+    "scenario": "运行期间输入/配置/模板被另一个进程改动，或副本hash不一致",
+    "currentBehavior": "S3F3提交前拒绝；S5降级成功规则和CF结论；其他路径源保护不等于都有实时变化监视。",
+    "impact": "一份报告混合了不同版本输入。",
+    "recommendedAction": "DIAGNOSTIC_ONLY",
+    "reason": "只保留带失效标记诊断；需要输入稳定后整批重跑。",
+    "test": "R：E27旧单源降级；新多物理源保护U。",
+    "priority": "P0",
+    "constraint": "不得将变化输入产生的结果当已审核通过。",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 S3-F3；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "S1F1-E01",
+    "features": [
+     "S1-F1"
+    ],
+    "steps": [
+     "S1F1.01"
+    ],
+    "scenario": "S1F1缺计算sidecar或引擎能力路径",
+    "currentBehavior": "开始执行前拒绝，不进入模板复制/审核。",
+    "impact": "F1公式结果无法刷新，不能以存储旧缓存顶替。",
+    "recommendedAction": "STOP_ALL",
+    "reason": "该功能需要真实计算；其他不需要计算的功能可独立使用。",
+    "test": "H：E02/E29有环境缺失及成功记录，当前引擎前置行为为静态核对。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S1F1-E02",
+    "features": [
+     "S1-F1"
+    ],
+    "steps": [
+     "S1F1.02"
+    ],
+    "scenario": "模板不匹配/多个候选/元数据读取坏转空sheet集合",
+    "currentBehavior": "预检排除该文件；部分推荐函数将错误变空集合。",
+    "impact": "可能误把损坏文件说成模板未匹配。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "跳过该文件并保留实际解析/匹配原因；整批仍有合格文件可继续。",
+    "test": "N：未找到针对这一故障及当前源码的独立执行证据。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S1F1-E03",
+    "features": [
+     "S1-F1"
+    ],
+    "steps": [
+     "S1F1.03"
+    ],
+    "scenario": "表结构/表头不匹配或名称区域无法确认",
+    "currentBehavior": "预检记录原因并跳过；全跳过则停止。",
+    "impact": "套错模板会复制到错位置。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "保持现有预检隔离；共享模板错误则整批阻断。",
+    "test": "N：未找到针对这一故障及当前源码的独立执行证据。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S1F1-E04",
+    "features": [
+     "S1-F1"
+    ],
+    "steps": [
+     "S1F1.04",
+     "S1F1.09",
+     "S1F1.10"
+    ],
+    "scenario": "现代公式错误#SPILL!/#CALC!等导致Calamine不支持",
+    "currentBehavior": "仅sidecar校验有opt-in临时归一读取；后续公式/CF/校验区域读取未统一使用。",
+    "impact": "可能已完成真实重算，却在后续抽取阶段整批失败。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "应先保证错误token可无损作为异常透传；不得跳过报错单元格而宣称通过。",
+    "test": "N：unknown_error_tokens测试源码存在但细分执行回执未定位；未跑当前链。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S1F1-E06",
+    "features": [
+     "S1-F1"
+    ],
+    "steps": [
+     "S1F1.05"
+    ],
+    "scenario": "外部sheet有普通公式、跨sheet依赖或UsedRange从C4等非A1开始",
+    "currentBehavior": "当前Rust用Umya导入公式，新增依赖闭包/保持起点；不是有公式就拒绝。",
+    "impact": "旧起点错误/漏依赖会使公式值错误；修复未执行测试。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "应支持这类正常输入；在修复完成验证前失败不能当跳过外部继续。",
+    "test": "U：external_formula_sheets_and_their_dependencies_are_copied_without_rejecting_formulas未运行。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S1F1-E07",
+    "features": [
+     "S1-F1"
+    ],
+    "steps": [
+     "S1F1.05"
+    ],
+    "scenario": "INDIRECT/OFFSET等动态sheet引用，扩大全部外部后又重名",
+    "currentBehavior": "当前扩大全部sheet；与源sheet同名（大小写不敏感）拒绝。",
+    "impact": "静态闭包不全或覆盖源sheet风险。",
+    "recommendedAction": "MANUAL_REVIEW",
+    "reason": "动态公式允许扩大来源需完整检查；不能为了继续随意改sheet名且不改所有引用。",
+    "test": "N：动态全导入/冲突测试源码存在，独立成功回执未定位。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S1F1-E08",
+    "features": [
+     "S1-F1"
+    ],
+    "steps": [
+     "S1F1.06"
+    ],
+    "scenario": "输入/模板包含共享、数组、动态数组等带特殊属性公式",
+    "currentBehavior": "OOXML缓存清理及能力契约可能在写前明确拒绝。",
+    "impact": "普通复制/缓存清除可能破坏数组或共享主从关系。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "普通公式可用不覆盖特殊公式；不能清掉属性强行继续。",
+    "test": "N：未找到针对这一故障及当前源码的独立执行证据。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S1F1-E09",
+    "features": [
+     "S1-F1"
+    ],
+    "steps": [
+     "S1F1.07"
+    ],
+    "scenario": "跨区域/跨表公式引用或必要批注/名称保存后不一致",
+    "currentBehavior": "编辑或保留校验失败终止；当前无实际openpyxl自动后备。",
+    "impact": "公式逻辑、异常说明或定位改变。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "保留原件，只允许重新从原件生成候选且证明相同契约后再试。",
+    "test": "R有限样本E03/E04；复杂外部公式最新U。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S1F1-E10",
+    "features": [
+     "S1-F1"
+    ],
+    "steps": [
+     "S1F1.08"
+    ],
+    "scenario": "Windows无Excel/COM激活失败、PowerShell策略拦截或COM挂起",
+    "currentBehavior": "当前PowerShell COM路径报错或等待，无pywin32、无明确硬超时、无LO自动后备。",
+    "impact": "重算无法完成，界面可能长时间停留运行中。",
+    "recommendedAction": "STOP_ALL",
+    "reason": "先按要求换/补pywin32桥和生命周期保护；当前失败不读旧缓存继续。",
+    "test": "H：旧Excel16合成成功；pywin32路径N。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S1F1-E11",
+    "features": [
+     "S1-F1"
+    ],
+    "steps": [
+     "S1F1.08"
+    ],
+    "scenario": "Linux无soffice、profile不可写、LO没产生输出",
+    "currentBehavior": "sidecar明确失败，GUI停止；没有引擎回退。",
+    "impact": "不能完成F1真实重算。",
+    "recommendedAction": "STOP_ALL",
+    "reason": "该功能提示需要可用LO；其他Rust功能独立继续。",
+    "test": "H：E29缺soffice负向记录；LO成功N。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S1F1-E12",
+    "features": [
+     "S1-F1"
+    ],
+    "steps": [
+     "S1F1.08"
+    ],
+    "scenario": "Excel与LO公式语义不同、外部链接/易失函数/异步数据依赖未完成",
+    "currentBehavior": "选择引擎后没有运行时跨引擎重试；公式文本/缓存检查不覆盖所有语义差异。",
+    "impact": "缓存存在仍可能是错误业务值。",
+    "recommendedAction": "MANUAL_REVIEW",
+    "reason": "只允许经业务确认的另一计算引擎从原候选重算，并比较关键结果；不能静默降级。",
+    "test": "N：无跨引擎成功回退和真实复杂公式对照。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S1F1-E13",
+    "features": [
+     "S1-F1"
+    ],
+    "steps": [
+     "S1F1.09"
+    ],
+    "scenario": "重算后公式文本改变、缓存缺失/数量不符、返回引擎错误",
+    "currentBehavior": "sidecar/调用层校验失败，独立候选不发布。",
+    "impact": "公式计算结果不可信。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "不能以修改公式比较规则/填0掩盖；保留诊断供修复。",
+    "test": "H：普通Excel合成链E02；失败样本无当前独立证据。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S1F1-E14",
+    "features": [
+     "S1-F1"
+    ],
+    "steps": [
+     "S1F1.10",
+     "S1F1.11"
+    ],
+    "scenario": "规则定位sheet/坐标不存在、公式结果抽取/校验扫描失败",
+    "currentBehavior": "GUI用?终止整批；CLI有的扫描错误转失败Issue。",
+    "impact": "少提异常或扫描范围错误。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "受影响文件未完成，用户决定是否保留其他文件完整结果。",
+    "test": "N：未找到针对这一故障及当前源码的独立执行证据。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S1F1-E15",
+    "features": [
+     "S1-F1"
+    ],
+    "steps": [
+     "S1F1.11"
+    ],
+    "scenario": "GUI扫重算副本、CLI校验区域扫原源缓存导致不同结论",
+    "currentBehavior": "现源码口径不同；CLI是已复制manifest入口而非GUI完整复制链。",
+    "impact": "原缓存与本轮公式不同时可能漏报/多报。",
+    "recommendedAction": "MANUAL_REVIEW",
+    "reason": "必须用反例确定既定业务口径；在确定前不宣称两入口等价。",
+    "test": "N：未找到专门区分源/副本缓存差异的成功验收。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S1F2-E01",
+    "features": [
+     "S1-F2"
+    ],
+    "steps": [
+     "S1F2.02"
+    ],
+    "scenario": "数据区/表头区/附加字段命名区缺失或定义非法",
+    "currentBehavior": "规划时失败，终止本次汇总。",
+    "impact": "列语义不能确定，所有汇总可能错位。",
+    "recommendedAction": "STOP_ALL",
+    "reason": "模板/映射级错误阻断；不是临时改成第一行表头继续。",
+    "test": "N：未找到该故障在当前源码上的独立执行回执。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S1F2-E02",
+    "features": [
+     "S1-F2"
+    ],
+    "steps": [
+     "S1F2.03"
+    ],
+    "scenario": "部分文件表结构预检失败",
+    "currentBehavior": "跳过该工作簿，保留原因；全跳过报错。",
+    "impact": "汇总缺少部分来源。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "可继续其他文件，但必须显示未参与清单。",
+    "test": "H/R：历史汇总与人工样例记录；本轮未重新跑坏表头。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S1F2-E03",
+    "features": [
+     "S1-F2"
+    ],
+    "steps": [
+     "S1F2.04"
+    ],
+    "scenario": "预检已过但正式读源/OOXML范围失败",
+    "currentBehavior": "正式读循环?返回，整个汇总失败。",
+    "impact": "单坏文件使其他结果不交付。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "如果业务允许不完整汇总，可文件隔离并显式列缺项；当前未实现此改动。",
+    "test": "N：未找到该故障在当前源码上的独立执行回执。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S1F2-E04",
+    "features": [
+     "S1-F2"
+    ],
+    "steps": [
+     "S1F2.04"
+    ],
+    "scenario": "需要汇总的公式缓存缺失、无法确认公式或合并信息",
+    "currentBehavior": "ensure_formula_cache_values/状态检查报错，不使用公式文本顶替。",
+    "impact": "汇总值可能是空/旧值而非本轮值。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "要求用户先计算保存；若要自动重算应明确新能力/入口，不能宣称当前F2已重算。",
+    "test": "N：未找到该故障在当前源码上的独立执行回执。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S1F2-E05",
+    "features": [
+     "S1-F2"
+    ],
+    "steps": [
+     "S1F2.05"
+    ],
+    "scenario": "源sheet无同名模板但存在有效兜底模板",
+    "currentBehavior": "按兜底任意行/固定行区域读取，结果可继续。",
+    "impact": "范围选择依赖业务模板，不是智能猜表。",
+    "recommendedAction": "CONTINUE_DIAGNOSTIC",
+    "reason": "明确标明采用兜底及来源sheet，便于抽查。",
+    "test": "R：E08两种兜底分支各4行、内容一致、源未变，历史通过。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S1F2-E06",
+    "features": [
+     "S1-F2"
+    ],
+    "steps": [
+     "S1F2.05"
+    ],
+    "scenario": "源sheet无同名模板且无兜底，或数据区全空",
+    "currentBehavior": "跳过该sheet/空数据并计数。",
+    "impact": "部分sheet没有参与汇总。",
+    "recommendedAction": "MANUAL_REVIEW",
+    "reason": "若应有业务数据但缺模板，可能应阻断文件；纯空sheet可正常略过。",
+    "test": "N：未找到该故障在当前源码上的独立执行回执。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S1F2-E07",
+    "features": [
+     "S1-F2"
+    ],
+    "steps": [
+     "S1F2.06"
+    ],
+    "scenario": "附加字段/历史匹配不到或重复",
+    "currentBehavior": "既定缺匹配可留空并计数；非法历史读取终止。",
+    "impact": "说明和机构辅助字段可能缺失。",
+    "recommendedAction": "CONTINUE_DIAGNOSTIC",
+    "reason": "空值合法性由业务判断，不能把读失败当匹配不到。",
+    "test": "R：E08/E09所列空字段/历史正常匹配；歧义负向N。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S2F1-E01",
+    "features": [
+     "S2-F1"
+    ],
+    "steps": [
+     "S2F1.01"
+    ],
+    "scenario": "未选外部文件但配置存在外部规则",
+    "currentBehavior": "服务按可选输入跳过外部核对分支。",
+    "impact": "其他规则完成不代表外部规则完成。",
+    "recommendedAction": "MANUAL_REVIEW",
+    "reason": "若外部核对属必审，应阻断或标该分支未执行；不能仅因未选就显示全功能通过。",
+    "test": "N：未找到该故障在当前源码上的独立执行回执。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S2F1-E02",
+    "features": [
+     "S2-F1"
+    ],
+    "steps": [
+     "S2F1.02"
+    ],
+    "scenario": "文件名不识别、或已识别文件打不开",
+    "currentBehavior": "不识别→warning跳过；识别后读取错误→整个服务停止。",
+    "impact": "两个相似坏文件触发不同范围停止。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "保留身份不可识别/损坏两类原因，让其余机构可部分完成需明确政策。",
+    "test": "N：未找到该故障在当前源码上的独立执行回执。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S2F1-E03",
+    "features": [
+     "S2-F1"
+    ],
+    "steps": [
+     "S2F1.03"
+    ],
+    "scenario": "机构代码/名称/表单归属不一致、指标缺参照或异常金额",
+    "currentBehavior": "源身份优先，配置补缺；warning/质量问题及规则失败按现逻辑。",
+    "impact": "可能用错机构/指标单位。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "身份冲突阻断该机构；纯描述字段缺失可仅提示，不一律置0。",
+    "test": "N：未找到该故障在当前源码上的独立执行回执。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S2F1-E04",
+    "features": [
+     "S2-F1"
+    ],
+    "steps": [
+     "S2F1.04"
+    ],
+    "scenario": "相同逻辑key在多文件中出现不同值",
+    "currentBehavior": "当前保留第一条并记录质量问题。",
+    "impact": "后续规则使用哪份取决于排序，可能漏异常。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "相同值重复可提示；不同值冲突建议隔离对应机构/指标，用户决定是否整批停。",
+    "test": "R有限合成导入契约；当前真实冲突样例N。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S2F1-E05",
+    "features": [
+     "S2-F1"
+    ],
+    "steps": [
+     "S2F1.05"
+    ],
+    "scenario": "上期缺机构/指标、分母0、空值与真实0混用",
+    "currentBehavior": "按既定环比/质量逻辑诊断或跳过。",
+    "impact": "无法算环比不等于该规则通过。",
+    "recommendedAction": "STOP_RULE",
+    "reason": "继续本期可算规则并列环比缺项；核心环比必审可扩大阻断。",
+    "test": "R：E12/E14有限样本。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S2F1-E06",
+    "features": [
+     "S2-F1"
+    ],
+    "steps": [
+     "S2F1.06"
+    ],
+    "scenario": "S2表达式无取数/不支持函数/除零",
+    "currentBehavior": "配置检查或规则执行报错/诊断，没有COM/LO补算。",
+    "impact": "校验没有实际执行。",
+    "recommendedAction": "STOP_RULE",
+    "reason": "保留rule id和失败取数，不能隐式false。",
+    "test": "R：E14所列错误案例；非全部语法。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S2F1-E07",
+    "features": [
+     "S2-F1"
+    ],
+    "steps": [
+     "S2F1.07"
+    ],
+    "scenario": "已选外部不是XLSX、缺集中系统数据/参照、静态时序布局错",
+    "currentBehavior": "外部导入?返回，当前整个S2服务停止。",
+    "impact": "一份外部坏可能使可算的环比结果也不交付。",
+    "recommendedAction": "MANUAL_REVIEW",
+    "reason": "可分离外部分支并标未完成；若外部为必审则整批停止。",
+    "test": "R：E13正常非时序；异常/时序全覆盖N。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S2F1-E08",
+    "features": [
+     "S2-F1"
+    ],
+    "steps": [
+     "S2F1.08"
+    ],
+    "scenario": "外部机构/指标/期别不存在或多行冲突",
+    "currentBehavior": "规则取数/外部匹配诊断，不存在通用读取回退。",
+    "impact": "取错外部值会改变审核结论。",
+    "recommendedAction": "STOP_RULE",
+    "reason": "仅隔离受影响外部规则，保留坐标/候选与单位。",
+    "test": "N：未找到该故障在当前源码上的独立执行回执。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F1-E01",
+    "features": [
+     "S3-F1"
+    ],
+    "steps": [
+     "S3F1.01"
+    ],
+    "scenario": "3.0默认单位/3.1规则动作或表达式配置缺失、无效",
+    "currentBehavior": "配置/服务加载失败；部分空配置可能无规则可执行。",
+    "impact": "所有比较/警戒尺度可能错误。",
+    "recommendedAction": "STOP_ALL",
+    "reason": "核心运行单位必须有效，启用规则数量应预览确认。",
+    "test": "N：未找到该故障在当前源码上的独立执行回执。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F1-E02",
+    "features": [
+     "S3-F1",
+     "S3-F4"
+    ],
+    "steps": [
+     "S3F1.02",
+     "S3F4.02"
+    ],
+    "scenario": "GBK失败后UTF8读取，或UTF8字节也能被GBK无错解码",
+    "currentBehavior": "解码优先GBK，然后UTF8；不是先UTF8。",
+    "impact": "英文表头/文本可能混合可读但实际汉字误解码。",
+    "recommendedAction": "MANUAL_REVIEW",
+    "reason": "用户应确认编码来源；报告记录选择路径/必要时显式编码，不仅看能否解码。",
+    "test": "N：未定位每个编码分支独立成功凭证。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F1-E03",
+    "features": [
+     "S3-F1",
+     "S3-F4"
+    ],
+    "steps": [
+     "S3F1.02",
+     "S3F4.02"
+    ],
+    "scenario": "两种严格解码均失败、最终GBK替换产生字符损失",
+    "currentBehavior": "当前以替换解码继续，再按业务表头/行解析。",
+    "impact": "机构/指标代码或说明被替换会造成丢配/错配。",
+    "recommendedAction": "STOP_ALL",
+    "reason": "建议出现替换字符先阻断本文件；若损坏仅非关键说明字段可业务批准带警告继续。",
+    "test": "N：替换后内容仍正确的成功证据未见。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F1-E04",
+    "features": [
+     "S3-F1",
+     "S3-F4"
+    ],
+    "steps": [
+     "S3F1.03",
+     "S3F4.02"
+    ],
+    "scenario": "CSV/Excel不满足14列表头，或数据行列数异常",
+    "currentBehavior": "关键表头错误停止；异常行按ImportIssue保留/略过。",
+    "impact": "某些数据行未进入后续比较。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "表头错不可猜列；坏行允许隔离必须显示数量及行号。",
+    "test": "N：未找到该故障在当前源码上的独立执行回执。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F1-E05",
+    "features": [
+     "S3-F1",
+     "S3-F4"
+    ],
+    "steps": [
+     "S3F1.03",
+     "S3F4.02"
+    ],
+    "scenario": "同文件数据日期不一致、两期关系异常、代码前导0丢失",
+    "currentBehavior": "同文件日期不一致明确报错；两期关系按period警告/规则；数字代码已丢0不能自动还原。",
+    "impact": "期别/身份配对可能错误。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "期间/身份是全局键；不能用任意一行日期代表整个文件。",
+    "test": "N：未找到该故障在当前源码上的独立执行回执。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F1-E06",
+    "features": [
+     "S3-F1"
+    ],
+    "steps": [
+     "S3F1.04"
+    ],
+    "scenario": "八维相同key重复且不同值；拼接key无分隔歧义",
+    "currentBehavior": "当前CentralDataset字典后条覆盖；key为多字段字符串拼接。",
+    "impact": "重复与潜在拼接碰撞改变采用的值。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "先报告重复与采用来源；应以结构化tuple优化key但需保留旧业务重复语义再验收。",
+    "test": "N：未见真实冲突/拼接碰撞专项验收。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F1-E07",
+    "features": [
+     "S3-F1"
+    ],
+    "steps": [
+     "S3F1.05"
+    ],
+    "scenario": "本期或上期独有记录/非数值/合法空值",
+    "currentBehavior": "按base comparison既定分支构造比较，可能采用缺期默认值/保留异常。",
+    "impact": "当作0会影响增减和警戒。",
+    "recommendedAction": "CONTINUE_DIAGNOSTIC",
+    "reason": "结果必须有缺期/异常值标记；能否参与阈值由业务判定。",
+    "test": "R：E15有限真实比较子集。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F1-E08",
+    "features": [
+     "S3-F1"
+    ],
+    "steps": [
+     "S3F1.06",
+     "S3F1.07"
+    ],
+    "scenario": "动作/表达式规则错误或无法取数",
+    "currentBehavior": "按具体分支写日志/跳过或传播配置错误；不调用旧Python求值。",
+    "impact": "比较文件可能有效但部分规则未执行。",
+    "recommendedAction": "STOP_RULE",
+    "reason": "输出未执行规则清单，是否必审由用户选。",
+    "test": "N：未找到该故障在当前源码上的独立执行回执。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F1-E09",
+    "features": [
+     "S3-F1",
+     "S3-F4"
+    ],
+    "steps": [
+     "S3F1.08",
+     "S3F4.06"
+    ],
+    "scenario": "主结果已写而可选日志写失败/读回失败",
+    "currentBehavior": "错误返回，前面已保存结果可能存在；无通用跨文件事务。",
+    "impact": "用户看到文件但本次整体显示失败。",
+    "recommendedAction": "CONTINUE_DIAGNOSTIC",
+    "reason": "如果主结果已独立验证可展示，明确日志缺失；更稳妥是统一暂存后提交。",
+    "test": "N：未找到该故障在当前源码上的独立执行回执。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3-E01",
+    "features": [
+     "S3-F1",
+     "S3-F2"
+    ],
+    "steps": [
+     "S3F1.09",
+     "S3F2.06"
+    ],
+    "scenario": "仍按旧Rust编号选错F2/F3/F4/F5输入，或把F3当直接更新比较文件",
+    "currentBehavior": "当前正式菜单已按五项；历史名字/CLI辅助命令仍可能混淆。",
+    "impact": "错误文件能读但业务完全不同。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "展示产物类型与预期关键表头；F1→F2→F3、F1→F5，F4独立，不能只凭文件后缀。",
+    "test": "H：菜单/调用源已核，真实五项接续人工验收未证。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F2-E01",
+    "features": [
+     "S3-F2"
+    ],
+    "steps": [
+     "S3F2.01"
+    ],
+    "scenario": "比较文件手工改了关键表头/删输出说明列",
+    "currentBehavior": "找不到必需字段报错，无法导出。",
+    "impact": "不能确定人工选择和说明数据。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "不自动退回规则‘是否说明’或猜列位置。",
+    "test": "N：未找到该故障在当前源码上的独立执行回执。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F2-E02",
+    "features": [
+     "S3-F2"
+    ],
+    "steps": [
+     "S3F2.02"
+    ],
+    "scenario": "人工输出说明全未选或标记不在兼容真值集合",
+    "currentBehavior": "未选行被排除，可能生成0行且completed。",
+    "impact": "用户可能以为有规则要求说明就会导出。",
+    "recommendedAction": "CONTINUE_DIAGNOSTIC",
+    "reason": "0行可以是正常，但应提示实际选中0并可由业务要求阻断。",
+    "test": "R：E16非空2610；E30 0行输出，范围分开。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F2-E03",
+    "features": [
+     "S3-F2"
+    ],
+    "steps": [
+     "S3F2.03"
+    ],
+    "scenario": "3.0机构地区映射缺失/多地区身份不一致",
+    "currentBehavior": "按现有输入/参照映射分支输出；读配置失败阻断。",
+    "impact": "机构展示或F3身份后续不一致。",
+    "recommendedAction": "MANUAL_REVIEW",
+    "reason": "原始代码保留；多地区派生标识由既定规则，不能靠近似名称改码。",
+    "test": "R：E16有限真实映射，歧义负向N。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F3-E01",
+    "features": [
+     "S3-F3"
+    ],
+    "steps": [
+     "S3F3.01"
+    ],
+    "scenario": "反馈表头被机构修改、目标XLSM、任一反馈坏文件",
+    "currentBehavior": "当前读入/格式检查停止整个导入计划。",
+    "impact": "其他合法反馈也不导入。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "可考虑隔离反馈文件后更新其余，但先生成清单；目标不支持必须停止本次。",
+    "test": "N：未找到该故障在当前源码上的独立执行回执。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F3-E02",
+    "features": [
+     "S3-F2",
+     "S3-F3"
+    ],
+    "steps": [
+     "S3F2.04",
+     "S3F2.06",
+     "S3F3.02"
+    ],
+    "scenario": "机构/指标码、数据值或增减额被改/规范化不一致",
+    "currentBehavior": "四字段key不匹配计入unmatched，跳过；机构/指标名称不作key。",
+    "impact": "原因说明未写入预期行。",
+    "recommendedAction": "MANUAL_REVIEW",
+    "reason": "允许其他合法行继续，但必须给可定位未匹配明细；不能降低为名称相似匹配。",
+    "test": "R：E17计划子集；真实金额改动专项N。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F3-E03",
+    "features": [
+     "S3-F3"
+    ],
+    "steps": [
+     "S3F3.03"
+    ],
+    "scenario": "同key反馈不同原因，或目标同key多行",
+    "currentBehavior": "冲突计数与冲突报告；跳过冲突key，合法行继续。",
+    "impact": "不能自动决定哪个原因写哪行。",
+    "recommendedAction": "STOP_RULE",
+    "reason": "保留所有冲突来源，用户后续修正再导，不自动选最后一个。",
+    "test": "R：E17计划与2条冲突已比对。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F3-E04",
+    "features": [
+     "S3-F3"
+    ],
+    "steps": [
+     "S3F3.03"
+    ],
+    "scenario": "目标原因已有文本，新唯一反馈将其更新",
+    "currentBehavior": "当前合法SetCellValue计划可替换原因；与来源冲突不同。",
+    "impact": "用户已有人工说明可能被覆盖。",
+    "recommendedAction": "MANUAL_REVIEW",
+    "reason": "先备份是已确认保护；是否非空原因差异也作冲突需要用户决定，不能擅改现行为。",
+    "test": "N：未找到该故障在当前源码上的独立执行回执。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F3-E05",
+    "features": [
+     "S3-F3"
+    ],
+    "steps": [
+     "S3F3.06"
+    ],
+    "scenario": "无法创建/验证字节备份",
+    "currentBehavior": "执行停止，原目标不被替换。",
+    "impact": "丢失可恢复原版风险。",
+    "recommendedAction": "STOP_ALL",
+    "reason": "保持‘无有效备份不写回’，不提供无备份继续。",
+    "test": "R：E04 Linux备份成功；失败故障N。",
+    "priority": "P0",
+    "constraint": "用户已明确：必须原地更新目标文件并先备份。",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F3-E06",
+    "features": [
+     "S3-F3"
+    ],
+    "steps": [
+     "S3F3.07"
+    ],
+    "scenario": "目标被锁、或候选安装rename失败",
+    "currentBehavior": "目标首次rename失败则原件不动；已挪走时尝试rollback恢复。",
+    "impact": "原路径可能暂时不存在；导入未成功。",
+    "recommendedAction": "RETRY_SAFE",
+    "reason": "只在确认已恢复原件且输入hash一致后重试；回滚成功也不算导入成功。",
+    "test": "H：E02称Linux回滚覆盖；Windows当前独立证据N。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F3-E07",
+    "features": [
+     "S3-F3"
+    ],
+    "steps": [
+     "S3F3.07"
+    ],
+    "scenario": "安装失败且rollback恢复也失败",
+    "currentBehavior": "抛带备份/rollback路径的错误，保留恢复材料。",
+    "impact": "目标路径可能缺失或状态不确定。",
+    "recommendedAction": "STOP_ALL",
+    "reason": "立即停止本功能，必须人工确认恢复，禁止自动继续写其他目标。",
+    "test": "N：未找到双rename故障注入的当前证据。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F3-E08",
+    "features": [
+     "S3-F3"
+    ],
+    "steps": [
+     "S3F3.08"
+    ],
+    "scenario": "写回成功但rollback暂存文件删除失败",
+    "currentBehavior": "返回cleanup warning；保留正式目标与旁备份。",
+    "impact": "多余副本不影响已验证结果，但不能盲删恢复材料。",
+    "recommendedAction": "CONTINUE_DIAGNOSTIC",
+    "reason": "告知清理警告；无需重跑导入或删除正式备份。",
+    "test": "N：清理故障专项未见。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F4-E01",
+    "features": [
+     "S3-F4"
+    ],
+    "steps": [
+     "S3F4.01"
+    ],
+    "scenario": "当前GUI仅本期，CLI请求跨期但上期缺失或规则期别不一致",
+    "currentBehavior": "GUI/CLI参数能力不同；加载/取数按实际绑定报错。",
+    "impact": "某跨期规则无输入，不等于可在本期模式执行。",
+    "recommendedAction": "STOP_RULE",
+    "reason": "区分纯本期必需输入与跨期规则必需输入；不要把F4全部称两期比较。",
+    "test": "N：未找到该故障在当前源码上的独立执行回执。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F4-E02",
+    "features": [
+     "S3-F4"
+    ],
+    "steps": [
+     "S3F4.02"
+    ],
+    "scenario": "工作簿日期型/DurationIso值不受支持",
+    "currentBehavior": "DurationIso等明确报不支持，不按任意字符串/0继续。",
+    "impact": "错误日期或金额会污染全部指标。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "保留真实类型/位置，用户应修源值或确定兼容语义后再改。",
+    "test": "N：未找到该故障在当前源码上的独立执行回执。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F4-E03",
+    "features": [
+     "S3-F4"
+    ],
+    "steps": [
+     "S3F4.03"
+    ],
+    "scenario": "机构/地区scope模式无法表达或不匹配",
+    "currentBehavior": "不匹配正常不执行；解析/表达式问题走日志/配置错误。",
+    "impact": "错误scope可能导致没有规则执行却输出成功。",
+    "recommendedAction": "STOP_RULE",
+    "reason": "明确‘未适用’和‘模式错误’的不同状态。",
+    "test": "N：未找到该故障在当前源码上的独立执行回执。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F4-E04",
+    "features": [
+     "S3-F4"
+    ],
+    "steps": [
+     "S3F4.04"
+    ],
+    "scenario": "前提/左右表达式取数失败",
+    "currentBehavior": "写执行日志并continue当前规则，不写正常比较行。",
+    "impact": "结果表看不到失败规则，可能被当0异常。",
+    "recommendedAction": "STOP_RULE",
+    "reason": "把跳过规则数量合并到run状态；必审规则可提升到文件阻断。",
+    "test": "R：E18有214结果+3日志，不能说无规则错误。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F4-E06",
+    "features": [
+     "S3-F4"
+    ],
+    "steps": [
+     "S3F4.07"
+    ],
+    "scenario": "本期核对报告完成但有规则错误日志",
+    "currentBehavior": "当前结果/日志可成功输出；GUI是否清晰呈现需人工验收。",
+    "impact": "completed可能只是产物完成。",
+    "recommendedAction": "CONTINUE_DIAGNOSTIC",
+    "reason": "完整列出失败规则，不把‘214结果行比对成功’当业务无异常。",
+    "test": "R：E18结果/日志一致；GUI当前N。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F5-E01",
+    "features": [
+     "S3-F5"
+    ],
+    "steps": [
+     "S3F5.01"
+    ],
+    "scenario": "F5比较表头改名/列被重排但列数仍≥15",
+    "currentBehavior": "当前warning后按固定列位置读取。",
+    "impact": "可把机构/指标/金额读错后生成看似正常表单。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "建议列位置改变阻断；仅允许已明确的同义表头兼容并核对实际索引。",
+    "test": "N：未见该兼容分支正确业务输出专项证据。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F5-E02",
+    "features": [
+     "S3-F5"
+    ],
+    "steps": [
+     "S3F5.01",
+     "S3F5.03"
+    ],
+    "scenario": "同机构同指标映射key重复或输出机构名碰撞",
+    "currentBehavior": "比较数据映射先条保留；不同机构清洗后输出名相同则提前报错。",
+    "impact": "重复值可能被忽略；产物不能唯一归属。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "相同值可提示，冲突值阻断对应机构；命名冲突可用稳定代码区分但需保留业务可识别名。",
+    "test": "N：未找到该故障在当前源码上的独立执行回执。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F5-E03",
+    "features": [
+     "S3-F5"
+    ],
+    "steps": [
+     "S3F5.02"
+    ],
+    "scenario": "使用仓库空占位3.3，或报表清单没有启用表单",
+    "currentBehavior": "有效表单/映射为空，规划或执行报错/无法生成。",
+    "impact": "空配置不代表没有应输出的业务。",
+    "recommendedAction": "STOP_ALL",
+    "reason": "必须使用真实3.3模板并预览启用数；原只读参考有43条启用记录不能靠占位验收。",
+    "test": "H：DEVELOPMENT_GOAL已有明确限制；真实全量验收N。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F5-E04",
+    "features": [
+     "S3-F5"
+    ],
+    "steps": [
+     "S3F5.02"
+    ],
+    "scenario": "比较簿单位与生成时3.0目标单位不同，3.3遗留单位另有值",
+    "currentBehavior": "3.3字段忽略；F5取比较簿既有值，无独立3.3换算路径；3.0主要提供警戒。",
+    "impact": "错误来源比较簿可能带不同量纲而无全局校验。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "保持用户已确认忽略3.3；应验证F1产物单位来源，不能自行再按3.3换算。",
+    "test": "N：跨配置单位不一致专项未见。",
+    "priority": "P0",
+    "constraint": "用户已确认3.3分析文件数据单位为遗留，沿用3.0默认目标单位。",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F5-E05",
+    "features": [
+     "S3-F5"
+    ],
+    "steps": [
+     "S3F5.03"
+    ],
+    "scenario": "金融表指标/频度/批次/币种无映射，生成空白或缺值",
+    "currentBehavior": "按配置映射，未命中按warning/空值规则；不自动借用近似指标。",
+    "impact": "文件生成成功但关键数据缺失。",
+    "recommendedAction": "MANUAL_REVIEW",
+    "reason": "列出每表缺项；业务必填项未命中应阻断机构而不是默认为0。",
+    "test": "N：未找到该故障在当前源码上的独立执行回执。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F5-E06",
+    "features": [
+     "S3-F5"
+    ],
+    "steps": [
+     "S3F5.04"
+    ],
+    "scenario": "删列/删表影响已有公式/合并/CF/DV/打印范围",
+    "currentBehavior": "编辑能力预检和保留校验；受支持样本可处理，未知对象失败。",
+    "impact": "结构错位可能改变数据和审核判断。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "不能为了少量版式差异扩迁，但关键引用/CF区域必须安全。",
+    "test": "R：E03/E04受限结构样本，不代表真实3.3所有对象。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F5-E07",
+    "features": [
+     "S3-F5"
+    ],
+    "steps": [
+     "S3F5.05"
+    ],
+    "scenario": "模板存在defined names且本批次要DeleteColumn",
+    "currentBehavior": "Umya后端在写前拒绝；生产无合格openpyxl后备。",
+    "impact": "删列后名称可能失效，不能确认关键范围。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "保留模板，针对真实模板确定必要依赖；openpyxl也不自动维护所有删列依赖，不能简单换库承诺解决。",
+    "test": "N：无该类模板成功编辑或后备证据。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F5-E08",
+    "features": [
+     "S3-F5"
+    ],
+    "steps": [
+     "S3F5.06",
+     "S3F5.07"
+    ],
+    "scenario": "多机构批次第N个编辑失败/最终目录发布失败",
+    "currentBehavior": "当前停止，staging目录guard清理，不发布前面成功机构。",
+    "impact": "一机构问题阻断所有金融表交付。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "如允许部分完成，需先设计每机构失败清单和可靠发布；当前行为不可说成已隔离机构。",
+    "test": "H：历史成功/失败烟测；真实多机构混合故障N。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F5-E09",
+    "features": [
+     "S3-F5"
+    ],
+    "steps": [
+     "S3F5.08"
+    ],
+    "scenario": "金融表单保存成功但映射/空表/警戒有警告",
+    "currentBehavior": "当前可返回输出路径和warnings。",
+    "impact": "用户可能以为每个启用表都填全。",
+    "recommendedAction": "CONTINUE_DIAGNOSTIC",
+    "reason": "生成状态、业务完备性和警告分开；必填缺项由用户定阻断等级。",
+    "test": "N：未找到该故障在当前源码上的独立执行回执。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S5F1-E01",
+    "features": [
+     "S5-F1"
+    ],
+    "steps": [
+     "S5F1.01"
+    ],
+    "scenario": "批次混模板/混业务/混期，选上期未填期间",
+    "currentBehavior": "全局匹配/期间/参数检查阻断。",
+    "impact": "不能为多机构共享同一活跃规则和模板上下文。",
+    "recommendedAction": "STOP_ALL",
+    "reason": "当前GUI合同是同模板同业务同期间，不擅自拆分成多批。",
+    "test": "U：当前批次修复未执行。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 ；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "S5F1-E02",
+    "features": [
+     "S5-F1"
+    ],
+    "steps": [
+     "S5F1.02"
+    ],
+    "scenario": "模板候选同分/显式模板坏包/业务或报告期不唯一",
+    "currentBehavior": "全局识别失败；某些元数据底层可空集合导致未匹配。",
+    "impact": "匹配错将影响全部规则和CF范围。",
+    "recommendedAction": "STOP_ALL",
+    "reason": "必须明确唯一模板业务期别；保留解析错误细节。",
+    "test": "R：E24旧CLI歧义拒绝/显式优先；当前GUI U。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 ；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "S5F1-E03",
+    "features": [
+     "S5-F1"
+    ],
+    "steps": [
+     "S5F1.03"
+    ],
+    "scenario": "过期/禁用版本要求来源，或显式source被默认来源覆盖",
+    "currentBehavior": "当前源码已统一生效规则筛选与显式source优先，修复未运行。",
+    "impact": "错误地阻断输入，或从错误文件取数。",
+    "recommendedAction": "STOP_ALL",
+    "reason": "预检与执行必须同规则快照；生效规则错误不能用跳过掩盖。",
+    "test": "U：active revision/explicit source测试未运行。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 ；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "S5F1-E04",
+    "features": [
+     "S5-F1"
+    ],
+    "steps": [
+     "S5F1.04"
+    ],
+    "scenario": "GUI一个外部物理簿无法表达启用规则引用多个逻辑外部来源",
+    "currentBehavior": "明确报错，建议按来源拆配置或CLI显式多来源；不取第一个。",
+    "impact": "来源选择不唯一。",
+    "recommendedAction": "STOP_ALL",
+    "reason": "保留当前GUI边界；多源能力要在CLI单独验收，不能把CLI扩展当GUI已有。",
+    "test": "R：旧多外部歧义负向E28；新预检U。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 ；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "S5F1-E05",
+    "features": [
+     "S5-F1"
+    ],
+    "steps": [
+     "S5F1.05"
+    ],
+    "scenario": "当前机构代码缺失/冲突/外部参照无别名映射",
+    "currentBehavior": "当前文件失败Outcome，继续其他文件。",
+    "impact": "结果无法可靠归属机构。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "不能按文件名/近似机构名猜身份；待补映射或修banner后重跑。",
+    "test": "U：新strict外部身份/owner修复未执行。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 ；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "S5F1-E07",
+    "features": [
+     "S5-F1"
+    ],
+    "steps": [
+     "S5F1.05",
+     "S5F1.10"
+    ],
+    "scenario": "某机构没有上期或V_PRE指标缺失",
+    "currentBehavior": "V_PRE取数失败保留结果；仅本期规则可继续；上期身份问题记批次。",
+    "impact": "未做完跨期规则不能算文件完整通过。",
+    "recommendedAction": "STOP_RULE",
+    "reason": "明确缺的是上期文件还是具体指标，用户决定跨期必审是否文件级阻断。",
+    "test": "R：旧V_PRE正常CLI E22；新GUI缺期分支U。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 ；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "S5F1-E08",
+    "features": [
+     "S5-F1"
+    ],
+    "steps": [
+     "S5F1.06"
+    ],
+    "scenario": "执行前某个文件hash读取失败，或同source id多物理文件覆盖清单",
+    "currentBehavior": "前者全局返回；后者已新增物理path区分，修复未执行。",
+    "impact": "批次来源/副本无法逐份核对。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "共享配置/模板hash失败仍整批；单源可隔离，但不能丢hash继续出通过结论。",
+    "test": "U：多物理hash修复与测试未运行。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 ；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "S5F1-E09",
+    "features": [
+     "S5-F1"
+    ],
+    "steps": [
+     "S5F1.07"
+    ],
+    "scenario": "源ScanBook打不开/公式或合并状态不可确认/未知错误token",
+    "currentBehavior": "文件身份/检索绑定阶段失败时记录文件失败继续其他；global hash/识别阶段可能先阻断。",
+    "impact": "不具备可靠取数数据。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "保留实际发生阶段，不能笼统说所有坏文件都能隔离。",
+    "test": "R：旧读取子集；当前批次故障N。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 ；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "S5F1-E10",
+    "features": [
+     "S5-F1"
+    ],
+    "steps": [
+     "S5F1.08"
+    ],
+    "scenario": "外部catalog缺机构映射/有非法启用标记",
+    "currentBehavior": "当前严格解析为失败，能落到文件/规则问题；新修复未跑。",
+    "impact": "不能把机构默认匹配至错误外部行。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "影响全部机构的catalog全局错误应一次阻断/诊断，单机构缺映射按文件。",
+    "test": "U：unmapped identity/invalid flags测试未运行。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 ；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "S5F1-E11",
+    "features": [
+     "S5-F1"
+    ],
+    "steps": [
+     "S5F1.08",
+     "S5F1.10"
+    ],
+    "scenario": "外部布局错、指标/时间点不存在、源优先级歧义",
+    "currentBehavior": "外部绑定/取数失败，保留失败项，不选任意候选。",
+    "impact": "外部审核未执行。",
+    "recommendedAction": "STOP_RULE",
+    "reason": "其他来源规则可继续，必审外部规则可提升文件阻断。",
+    "test": "R：旧歧义负向E28；真实时序全覆盖N。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 ；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "S5F1-E13",
+    "features": [
+     "S5-F1"
+    ],
+    "steps": [
+     "S5F1.09",
+     "S5F1.10"
+    ],
+    "scenario": "动态行列变动、合并结构不符、多个同名指标值",
+    "currentBehavior": "返回STRUCTURE_ERROR/RETRIEVAL_FAILED，继续其他规则。",
+    "impact": "有值并不意味着取到了唯一正确值。",
+    "recommendedAction": "STOP_RULE",
+    "reason": "不采用随意首个候选；保留候选坐标及变化结构。",
+    "test": "R：E21/E25旧有限结构错误结果；新owner U。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 ；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "S5F1-E14",
+    "features": [
+     "S5-F1"
+    ],
+    "steps": [
+     "S5F1.11"
+    ],
+    "scenario": "规则语法/变量/单位错误或某文件规则运行函数失败",
+    "currentBehavior": "单规则失败保留；文件级异常生成RULE_EXECUTION_FAILED后继续其他。",
+    "impact": "只有部分规则运行，不能用无TRIGGERED称无问题。",
+    "recommendedAction": "STOP_RULE",
+    "reason": "必审规则失败可升级文件未完成；结果要统计全部执行状态。",
+    "test": "R：E21 80项含3错误；最新批次U。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 ；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "S5F1-E15",
+    "features": [
+     "S5-F1"
+    ],
+    "steps": [
+     "S5F1.12"
+    ],
+    "scenario": "源校验区域公式缓存陈旧/缺失，但S5规则本身已能计算",
+    "currentBehavior": "S5只读保存缓存，不做S1式注入/重算；新scanner仅投影已有错误/失败。",
+    "impact": "不能证明源Excel公式本轮已正确算过。",
+    "recommendedAction": "MANUAL_REVIEW",
+    "reason": "分别展示Rust规则结论和缓存错误扫描，不把后者称真重算；若需要刷新另开显式Excel/LO能力。",
+    "test": "U：新缓存scanner测试未运行。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 ；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "S5F1-E16",
+    "features": [
+     "S5-F1"
+    ],
+    "steps": [
+     "S5F1.12"
+    ],
+    "scenario": "模板校验区域扫描失败、源缺sheet、CLI未给明确模板",
+    "currentBehavior": "GUI失败Outcome并继续；CLI无明确模板可SKIPPED，只扫primary。",
+    "impact": "模板公式错误扫描覆盖不全。",
+    "recommendedAction": "STOP_RULE",
+    "reason": "主规则可以继续，但必须标该扫描未完成；若该补扫必审可阻断文件。",
+    "test": "U：新模块未运行。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 ；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "S5F1-E17",
+    "features": [
+     "S5-F1"
+    ],
+    "steps": [
+     "S5F1.13"
+    ],
+    "scenario": "CF模板范围错误/源规则不支持/源缓存不新/无法确认上下文",
+    "currentBehavior": "当前CF PARTIAL保留诊断，规则/其他文件继续；无模板区域默认AppliesTo。",
+    "impact": "不确定规则不是0异常。",
+    "recommendedAction": "MANUAL_REVIEW",
+    "reason": "按CF业务重要性决定阻断文件或输出需复核；不能把显示颜色作替代判定。",
+    "test": "U：新桥接范围/归属未运行，旧S5输出CF为空。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 ；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "S5F1-E18",
+    "features": [
+     "S5-F1"
+    ],
+    "steps": [
+     "S5F1.14"
+    ],
+    "scenario": "结构基线来自另一机构/本次没有证据却写基线",
+    "currentBehavior": "新GUI批次finish_read_only和owner设计避免覆盖，测试未跑；CLI旧单次持久化不同。",
+    "impact": "后续结构审核基准被污染。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "无证据状态应未比较，不自动接受；按机构/模板归属核验。",
+    "test": "U：read_only owner/no-evidence测试未运行。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 ；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "S5F1-E19",
+    "features": [
+     "S5-F1"
+    ],
+    "steps": [
+     "S5F1.14"
+    ],
+    "scenario": "结构快照目录/.schema-key无权限，或首次无基线",
+    "currentBehavior": "read_only比较仍可能创建key；目录/key错误可使输出失败；无基线需区别未比较。",
+    "impact": "‘只读基线’不代表完全不写本地状态；可能影响交付。",
+    "recommendedAction": "CONTINUE_DIAGNOSTIC",
+    "reason": "若业务允许，可以只缺结构比较并输出已完成规则，但不能声称结构已通过。",
+    "test": "N：目录/只读介质故障未实测；新逻辑U。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 ；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "S5F1-E20",
+    "features": [
+     "S5-F1"
+    ],
+    "steps": [
+     "S5F1.15"
+    ],
+    "scenario": "不同源名清洗后相同、副本被覆盖/损坏、复制后原件又变",
+    "currentBehavior": "新create_new唯一副本/逐物理hash，完整性不一致使结论降级。",
+    "impact": "链接可能指错机构或错误版本。",
+    "recommendedAction": "DIAGNOSTIC_ONLY",
+    "reason": "安全副本没验证就不交正式结论；可保留失效诊断。",
+    "test": "U：sanitized collision/per physical hash用例未运行。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 ；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "S5F1-E21",
+    "features": [
+     "S5-F1"
+    ],
+    "steps": [
+     "S5F1.16"
+    ],
+    "scenario": "多文件部分失败/全失败、CF不完整、结果XLSX成功但ledger失败",
+    "currentBehavior": "新状态区分FAILED/COMPLETED_WITH_ISSUES/CF_LIMITATIONS/INPUT_CHANGED；写出失败返回错误，可能已有副本。",
+    "impact": "产物存在但不可理解完整性；失败机构可能错误显示通过。",
+    "recommendedAction": "CONTINUE_DIAGNOSTIC",
+    "reason": "保留每物理文件归属、全状态统计和总账；全失败不能标完成审核。",
+    "test": "U：当前混合/全失败/非空CF/ledger联动未跑。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 ；S5 维持现状不参与本清单。"
+   }
+  ],
+  "userDecision": [
+   {
+    "id": "G12",
+    "features": [
+     "S2-F1",
+     "S3-F1",
+     "S3-F4",
+     "S5-F1"
+    ],
+    "steps": [
+     "S2F1.06",
+     "S3F1.06",
+     "S3F1.07",
+     "S3F4.03",
+     "S3F4.05",
+     "S5F1.03",
+     "S5F1.11"
+    ],
+    "scenario": "配置表达式包含不支持函数/语法、除零、正则语义差异",
+    "currentBehavior": "配置错误或规则日志/失败Outcome；没有Python eval或Excel补算。",
+    "impact": "某规则没有实际审核，不能当未触发。",
+    "recommendedAction": "STOP_RULE",
+    "reason": "隔离受影响规则并计入未完成；若为业务必审规则再由用户决定文件/整批阻断。",
+    "test": "R：E14/E18/E21含有限错误案例，非全部语法。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "决策仅作用于 S2-F1、S3-F1、S3-F4；S5 维持现状不参与本清单。"
+   },
+   {
+    "id": "S1F1-E05",
+    "features": [
+     "S1-F1"
+    ],
+    "steps": [
+     "S1F1.05"
+    ],
+    "scenario": "模板公式依赖外部sheet但未选外部/外部缺sheet",
+    "currentBehavior": "规划/读取时报缺引用，GUI正式执行错误导致整批停止。",
+    "impact": "#REF或缺数导致公式审核无效。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "缺依赖时该文件不可审；可由用户决定其他独立源是否继续。",
+    "test": "N：未找到针对这一故障及当前源码的独立执行证据。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S1F1-E16",
+    "features": [
+     "S1-F1"
+    ],
+    "steps": [
+     "S1F1.12"
+    ],
+    "scenario": "CF规则不支持或指标/批注上下文不完整",
+    "currentBehavior": "S1 GUI强制CF report.status=completed，否则整批停止并不生成最终结果。",
+    "impact": "部分CF不确定导致全部已算好的文件也不交付。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "建议文件级保守阻断，其他完整文件可生成部分结果；是否必须整批由业务决定。",
+    "test": "R：支持子集E05/E02；全体CF语法不适用。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S1F1-E17",
+    "features": [
+     "S1-F1",
+     "S1-F2"
+    ],
+    "steps": [
+     "S1F1.13",
+     "S1F2.06"
+    ],
+    "scenario": "已选历史簿打不开/历史key重复或格式有误",
+    "currentBehavior": "GUI历史读取错误导致整批失败；没选历史才用空历史。",
+    "impact": "不能正确承接说明/识别延续。",
+    "recommendedAction": "MANUAL_REVIEW",
+    "reason": "可保留本次异常并标‘历史分类未完成’，是否允许按无历史输出需业务决定，不能隐瞒。",
+    "test": "R历史正常分类E07；具体故障N。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S1F1-E18",
+    "features": [
+     "S1-F1"
+    ],
+    "steps": [
+     "S1F1.14"
+    ],
+    "scenario": "批次第N个文件失败或最终writer失败",
+    "currentBehavior": "正式循环?使整批结束；run目录guard删除此前审核副本/成果。",
+    "impact": "其他独立文件成功成果没有交付。",
+    "recommendedAction": "STOP_FILE",
+    "reason": "建议隔离独立文件并输出部分批次清单；当前未实现，是否修改由用户决定。",
+    "test": "N：未定位当前多文件‘前成功后失败’业务验收。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   },
+   {
+    "id": "S3F4-E05",
+    "features": [
+     "S3-F4"
+    ],
+    "steps": [
+     "S3F4.05"
+    ],
+    "scenario": "校验公式错误、反转/抑制标记有误、epsilon归零边界",
+    "currentBehavior": "校验公式错误可记formula_error并继续生成带错结果；双0不出行。",
+    "impact": "不出行未必通过；阈值边界影响结论。",
+    "recommendedAction": "STOP_RULE",
+    "reason": "明确输出错误说明，近零容差需业务认可，不擅改旧规则。",
+    "test": "R：E18所列真实配置，不涵盖全部边界。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": ""
+   }
+  ],
+  "s5OutOfScope": [
+   {
+    "id": "S5F1-E06",
+    "features": [
+     "S5-F1"
+    ],
+    "steps": [
+     "S5F1.05"
+    ],
+    "scenario": "同机构匹配到多份上期",
+    "currentBehavior": "当前整个本期文件标PREVIOUS_SOURCE_AMBIGUOUS失败继续其他文件。",
+    "impact": "纯本期规则也没有继续执行。",
+    "recommendedAction": "MANUAL_REVIEW",
+    "reason": "建议只阻断依赖上期规则而让纯本期继续，但需业务确认并改代码；当前尚未这么做。",
+    "test": "U：当前GUI批次逻辑未执行。",
+    "priority": "P1",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "S5 项：按用户口径 S5 维持现状，本项不在本 Goal 决策范围。"
+   },
+   {
+    "id": "S5F1-E12",
+    "features": [
+     "S5-F1"
+    ],
+    "steps": [
+     "S5F1.09"
+    ],
+    "scenario": "没有数值命名区域/没有可用模板投影，退到整sheet检索",
+    "currentBehavior": "旧兼容范围保留，带质量提示；会扩大候选。",
+    "impact": "可能从表头/说明/其他表块取到同名标签。",
+    "recommendedAction": "MANUAL_REVIEW",
+    "reason": "可作为诊断/手工复核结果，正式必审是否允许整sheet由用户决定。",
+    "test": "R：E24/E25旧范围契约匹配，不代表所有结果业务通过。",
+    "priority": "P0",
+    "constraint": "",
+    "userDecision": "待决定",
+    "notes": "",
+    "scopeNote": "S5 项：按用户口径 S5 维持现状，本项不在本 Goal 决策范围。"
+   }
+  ]
+ },
+ "alignmentGaps": [
+  {
+   "id": "AL-01",
+   "area": "S1-F1 重算",
+   "py": "旧 Python 用 pywin32 驱动 Excel COM。",
+   "rust": "PowerShell→Excel.Application COM（sidecar），转换通道已探测 WPS，但重算通道只有 Excel.Application；无逐引擎强制选项。",
+   "impact": "只装 WPS 的机器无法重算；用户无法固定引擎。",
+   "cls": 1,
+   "plan": "本 Goal B：重算通道加 WPS 探测 + 高级设置四通道。",
+   "status": "进行中（Goal B）"
+  },
+  {
+   "id": "AL-02",
+   "area": "S1-F1/S3-F3/S3-F5 编辑引擎",
+   "py": "openpyxl 直接改写工作簿。",
+   "rust": "生产路由仅注册 Umya；openpyxl worker 为候选适配器未接生产。",
+   "impact": "极端结构下旧 Python 可改而 Rust 失败关闭（显式报错）。",
+   "cls": 3,
+   "plan": "本 Goal B：openpyxl 高级选项，先出能力证据再注册，仅显式选择时路由。",
+   "status": "进行中（Goal B）"
+  },
+  {
+   "id": "AL-03",
+   "area": "S1 校验区域扫描口径",
+   "py": "旧流程口径：审核副本重算结果。",
+   "rust": "GUI 扫重算副本；CLI s1-audit-directory 扫源文件缓存值，两者不一致。",
+   "impact": "同一样本 CLI 与 GUI 的“校验公式扫描”结果可能不同。",
+   "cls": 3,
+   "plan": "本 Goal C：测试固定两种行为后交用户决定。",
+   "status": "进行中（Goal C）"
+  },
+  {
+   "id": "AL-04",
+   "area": "S3-F1 数值显示口径",
+   "py": "IEEE-754 二进制浮点经 Python .15g 显示。",
+   "rust": "同样 IEEE-754；真实对拍 1,306 处尾差（≤5.7e-14），显示层 0 差异。",
+   "impact": "结论一致；仅极端位值内部表示不同。",
+   "cls": 3,
+   "plan": "本 Goal D：先给 Decimal 化评估结论，再由用户决定是否改。",
+   "status": "进行中（Goal D）"
+  },
+  {
+   "id": "AL-05",
+   "area": "内部编号口径",
+   "py": "S1-F3/F4/F5 = 组合工作表/联合模板（暂缓）。",
+   "rust": "新增内部“S1-F3”= S1-F01 人工重算恢复 worker（s1_recovery.rs），与 Python 菜单编号撞名。",
+   "impact": "文档/GUI 文案易误读为开发了暂缓功能；功能本身服务 S1-F1 链路。",
+   "cls": 3,
+   "plan": "Goal E：澄清命名并报告；是否保留该命名由用户定。",
+   "status": "已核实，待用户确认"
+  },
+  {
+   "id": "AL-06",
+   "area": "S3-F3 输出契约",
+   "py": "先备份再原地更新目标说明文件。",
+   "rust": "已按用户确认改为“备份+原地更新+失败回滚”。",
+   "impact": "已对齐。",
+   "cls": 1,
+   "plan": "无。",
+   "status": "已对齐（用户已确认）"
+  },
+  {
+   "id": "AL-07",
+   "area": "S3-F5 3.3“分析文件数据单位”",
+   "py": "实际未使用该字段，沿用 3.0 默认目标单位。",
+   "rust": "沿用相同行为。",
+   "impact": "已对齐（用户确认历史遗留字段忽略）。",
+   "cls": 1,
+   "plan": "无。",
+   "status": "已对齐（用户已确认）"
+  },
+  {
+   "id": "AL-08",
+   "area": "LibreOffice 真重算证据",
+   "py": "LO 非旧 Python 主通道（旧用 Excel COM）。",
+   "rust": "Linux/LO 通道只有“缺 soffice 正确报错”记录，无成功重算证据。",
+   "impact": "Linux 交付的重算能力未证。",
+   "cls": 3,
+   "plan": "本 Goal B：装 soffice 时跑通一次并留证；装不了记环境阻碍。",
+   "status": "进行中（Goal B）"
+  },
+  {
+   "id": "AL-09",
+   "area": "无通用值读取回退",
+   "py": "旧 Python 有 OOXML→openpyxl 值读取兜底。",
+   "rust": "明确不设通用回退；仅 sidecar 校验的限定错误 token 兼容重读。",
+   "impact": "极少数 Calamine 不支持的值 Rust 显式失败。",
+   "cls": 3,
+   "plan": "列入决策清单；默认保持 Rust 行为，用户要求才加。",
+   "status": "待用户决定"
+  },
+  {
+   "id": "AL-10",
+   "area": "S2 外部取数告警的处理口径（对拍重生成时发现的真实语义分歧）",
+   "py": "旧 Python（基线捕获时）：外部取数告警经 validate_external_warnings 转为软性“校验规则”发现（如 Q002“外部导入提示”）。当前 Python service.py 已改为“外部文件取数提示属于运行诊断，不纳入审核发现或异常统计”，函数已删除。",
+   "rust": "跟随旧口径：外部取数告警进入审核发现（与已提交基线一致，s2_analysis_parity 在 501 回归中通过）。",
+   "impact": "影响 S2 结果工作簿“校验规则”表的行数：同一输入，旧口径多一行诊断类发现（Q002）。",
+   "cls": 3,
+   "plan": "待用户决定：A 维持旧口径（Rust 不动，基线脚本已双 API 兼容并标注）；B 对齐当前 Python（Rust 改为运行诊断不进发现，需同步更新基线与测试）。",
+   "status": "待用户决定（2026-10-29 基线重生成实测：9 项 vs 8 项，差异即 Q002）"
+  }
+ ]
+}

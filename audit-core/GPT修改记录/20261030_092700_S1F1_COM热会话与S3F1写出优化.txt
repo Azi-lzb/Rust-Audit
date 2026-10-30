@@ -1,0 +1,31 @@
+【修改时间】2026-10-30 09:31（Asia/Shanghai）
+【执行者】Codex
+【修改前 commit】fd7c982f0358a74e2eb4f9cb74d022f88a1dfafe
+【修改后 commit】fd7c982f0358a74e2eb4f9cb74d022f88a1dfafe（未提交）
+【分支】main
+【WIP 状态】开始前工作区已有大量未提交和未跟踪内容。修改前检查了 Git 状态；保留既有改动，只编辑本次 S1-F1/S3-F1 性能链路和相关状态文档，没有清理、覆盖或提交其他 WIP。
+
+【修改目的】按用户指示减少 S1-F1 多文件重算时的 Excel 冷启动和 PowerShell 启动开销；只做 S3-F1 低风险的格式对象复用；S5 配置审核暂停开发。
+
+【修改文件】
+- 新增 `sidecar/lo-convert/src/excel_com.rs`：用 Windows 原生 IDispatch/COM 管理私有 Excel/WPS 进程，执行工作簿打开、完整重算、等待计算完成、另存、关闭；如果 COM 连接到重算前已存在的 Office 进程则拒绝使用，以保护用户现有会话。
+- `sidecar/lo-convert/src/main.rs`：公式重算改走原生 COM worker；新增持久 `recalculate-session` JSON 行协议，自动模式支持转 LibreOffice。旧 PowerShell 重算脚本仅留在 `cfg(test)` 测试夹具；文件格式转换流程里的 PowerShell 调用未改。
+- `Cargo.toml`、`sidecar/lo-convert/Cargo.toml`：启用 windows-sys 所需 COM、Variant、窗口与进程快照 API，并将依赖接入 sidecar。
+- `audit-core/src/s1_recalculation.rs`：新增批次 session 管理、超时停止、仅清理 session 自建 Office 进程、自动模式 COM 失败后 LibreOffice 回退；复用现有公式/缓存可读性校验和不覆盖发布。
+- `audit-core/src/s1_formula_copy.rs`、`audit-core/src/web_bridge.rs`、`audit-core/src/bin/open-data-audit.rs`：将 session 接入 S1-F1 GUI 和 Windows CLI 顺序工作簿批次；Linux 继续用原先的单文件 LibreOffice 调用路径。单个输出仍独立准备、校验和发布。
+- `audit-core/src/s3_execution_compare.rs`：日期、填色文本、数据值和空白的 Format 对象按实际样式预建并复用；保留完整工作簿回读及逐项验证。
+- `DEVELOPMENT_GOAL.md`、`audit-core/MIGRATION_INVENTORY.md`、`audit-core/probe/reports/perf_gap_analysis_20261029.md`：记录新实现、未重新计时的状态和 S5 暂停要求。
+- 本修改记录。
+
+【行为/配置/VBA 影响】业务规则和配置字段没有变化；没有 VBA 迁移影响。公式重算 Windows 默认仍优先 Office COM，自动通道在 COM 失败时尝试 LibreOffice；显式强制引擎仍按其强制语义失败。S3-F1 输出格式和值语义不变。S5 业务代码未修改。
+
+【验证】
+- `git diff --check`：通过。
+- `rustfmt --check --edition 2021`：S1 重算、公式复制、CLI、S3-F1 和新增 COM 模块定向检查通过；Web bridge 与 sidecar 主文件的整文件检查仍报告工作区原有格式差异。`cargo fmt --check --all` 也因多处现存 WIP 格式差异未通过；没有对全项目运行 rustfmt，以免改写无关未提交文件。
+- 未运行 Cargo build/check/test/run、编译脚本、GUI、Excel COM、LibreOffice 或性能基准；当前无法声称新增 COM 模块已编译或实机验证，也没有新的优化后加速数字。
+
+【已知问题/后续验证】必须在用户授权的 Windows 环境编译并对 Excel COM/WPS 能力、COM 超时清理、COM→LibreOffice 回退、批量多文件 session、单文件保护和同输入计时做定向验证。S3-F1 用相同样本重跑性能比较，并确认输出逐项验证仍通过。历史 2026-10-29 数字仅为优化前基线。
+
+【删除清单】无。
+【回滚提示】如需撤销本轮，按上述文件的本轮差异逐项回退；不要 reset/checkout 整个工作区文件，因为其中包含本轮前已存在的未提交工作。
+【组件版本】不升级。

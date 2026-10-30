@@ -1,0 +1,362 @@
+{
+ "schema_version": 1,
+ "date": "2026-10-30",
+ "platform": "windows-x86_64",
+ "rust_binary": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\dist\\open-data-audit.exe",
+ "rust_startup_ms": 13.4,
+ "python_source": "C:\\Users\\AZI\\Desktop\\VibeCode\\3.open-data-audit",
+ "methodology": {
+  "python": "进程内 perf_counter，不含解释器启动；S1-F1 每轮用一个 Python ExcelSession 处理两册",
+  "rust": "当前工作区编译的 release CLI 子进程墙钟，含 CLI 启动；S1-F1 每轮启动一次 Audit 原生 COM worker 处理两册",
+  "rounds": 3,
+  "inputs": "S2 使用相同仓库测试夹具，其余使用合成输入；S1-F1/S3-F3 另核验公式结果、更新前备份与输入文件未改"
+ },
+ "results": [
+  {
+   "feature": "S3-F1 两期数据→比较文件（10k 行）",
+   "rounds": 3,
+   "python_ms": [
+    2070.7,
+    1138.6,
+    1032.5
+   ],
+   "rust_ms": [
+    1012.9,
+    1526.3,
+    1373.6
+   ],
+   "python_best_ms": 1032.5,
+   "rust_best_ms": 1012.9,
+   "speedup_best": 1.02,
+   "python_median_ms": 1138.6,
+   "rust_median_ms": 1373.6,
+   "speedup_median": 0.83,
+   "python_extra": {
+    "rows": 10000
+   },
+   "rust_extra": {
+    "schema": "five-segment"
+   }
+  },
+  {
+   "feature": "S3-F4 本期数值核对（10k 行）",
+   "rounds": 3,
+   "python_ms": [
+    5902.5,
+    6034.0,
+    6193.3
+   ],
+   "rust_ms": [
+    927.1,
+    941.0,
+    960.1
+   ],
+   "python_best_ms": 5902.5,
+   "rust_best_ms": 927.1,
+   "speedup_best": 6.37,
+   "python_median_ms": 6034.0,
+   "rust_median_ms": 941.0,
+   "speedup_median": 6.41,
+   "python_extra": {},
+   "rust_extra": {}
+  },
+  {
+   "feature": "S3-F5 比较文件→金融表单（30 机构 × 40 指标 × 4 表）",
+   "rounds": 3,
+   "python_ms": [
+    1942.8,
+    1934.9,
+    1936.1
+   ],
+   "rust_ms": [
+    963.4,
+    896.7,
+    1072.3
+   ],
+   "python_best_ms": 1934.9,
+   "rust_best_ms": 896.7,
+   "speedup_best": 2.16,
+   "python_median_ms": 1936.1,
+   "rust_median_ms": 963.4,
+   "speedup_median": 2.01,
+   "python_extra": {
+    "workbooks": 30
+   },
+   "rust_extra": {
+    "workbooks": 30
+   }
+  },
+  {
+   "feature": "S3-F2 比较文件→说明文件（5000 行 / 1667 选中）",
+   "rounds": 3,
+   "python_ms": [
+    2665.6,
+    2270.5,
+    2191.5
+   ],
+   "rust_ms": [
+    248.8,
+    255.7,
+    267.0
+   ],
+   "python_best_ms": 2191.5,
+   "rust_best_ms": 248.8,
+   "speedup_best": 8.81,
+   "python_median_ms": 2270.5,
+   "rust_median_ms": 255.7,
+   "speedup_median": 8.88,
+   "python_extra": {
+    "exported": 1667
+   },
+   "rust_extra": {
+    "exported": 1667
+   }
+  },
+  {
+   "feature": "S3-F3 机构反馈原地导入（1000 行，含目标备份）",
+   "rounds": 3,
+   "python_ms": [
+    1123.1,
+    1030.4,
+    945.4
+   ],
+   "rust_ms": [
+    1055.3,
+    1027.6,
+    1145.8
+   ],
+   "python_best_ms": 945.4,
+   "rust_best_ms": 1027.6,
+   "speedup_best": 0.92,
+   "python_median_ms": 1030.4,
+   "rust_median_ms": 1055.3,
+   "speedup_median": 0.98,
+   "python_extra": {
+    "imported": 1000,
+    "unmatched": 0,
+    "conflicts": 0
+   },
+   "rust_extra": {
+    "imported": 1000,
+    "unmatched": 0,
+    "conflicts": 0
+   },
+   "verification": {
+    "python_and_rust_imported_1000_rows": true,
+    "all_updated_targets_have_byte_identical_backup": true,
+    "feedback_input_unchanged": true,
+    "scope": "synthetic unique keys with no conflicts; backup and in-place write are timed"
+   }
+  },
+  {
+   "feature": "S1-F1 公式重算子步骤（每册 7200 个公式；批次 2 册；Excel COM 热会话）",
+   "rounds": 3,
+   "python_ms": [
+    3857.4,
+    3839.6,
+    3595.5
+   ],
+   "rust_ms": [
+    4709.6,
+    4668.5,
+    4820.7
+   ],
+   "python_best_ms": 3595.5,
+   "rust_best_ms": 4668.5,
+   "speedup_best": 0.77,
+   "python_median_ms": 3839.6,
+   "rust_median_ms": 4709.6,
+   "speedup_median": 0.82,
+   "python_extra": {
+    "engine": "Microsoft Excel",
+    "per_workbook_ms": [
+     543.8,
+     321.0
+    ]
+   },
+   "rust_extra": {
+    "engine": "Excel.Application",
+    "engine_process_id_reused": true,
+    "stages_ms": [
+     {
+      "close": 98,
+      "connections_check": 24,
+      "open": 1036,
+      "save_as": 90,
+      "sheets_calculate": 444
+     },
+     {
+      "close": 68,
+      "connections_check": 0,
+      "open": 266,
+      "save_as": 80,
+      "sheets_calculate": 160
+     }
+    ],
+    "per_workbook_ms": [
+     1731.6,
+     608.6
+    ],
+    "session_total_ms": 4820.4
+   },
+   "python_full_calculation_ms": [
+    3482.8,
+    3414.1,
+    3415.7
+   ],
+   "python_full_median_ms": 3415.7,
+   "python_full_extra": {
+    "engine": "Microsoft Excel",
+    "per_workbook_ms": [
+     536.8,
+     324.0
+    ]
+   },
+   "speedup_median_vs_python_full": 0.73,
+   "verification": {
+    "all_outputs_kept_7200_formulas_and_numeric_caches": true,
+    "output_formula_cache_checks": {
+     "python_legacy": [
+      {
+       "formula_cells": 7200,
+       "numeric_cached_results_verified": 7200
+      },
+      {
+       "formula_cells": 7200,
+       "numeric_cached_results_verified": 7200
+      },
+      {
+       "formula_cells": 7200,
+       "numeric_cached_results_verified": 7200
+      },
+      {
+       "formula_cells": 7200,
+       "numeric_cached_results_verified": 7200
+      },
+      {
+       "formula_cells": 7200,
+       "numeric_cached_results_verified": 7200
+      },
+      {
+       "formula_cells": 7200,
+       "numeric_cached_results_verified": 7200
+      }
+     ],
+     "python_full": [
+      {
+       "formula_cells": 7200,
+       "numeric_cached_results_verified": 7200
+      },
+      {
+       "formula_cells": 7200,
+       "numeric_cached_results_verified": 7200
+      },
+      {
+       "formula_cells": 7200,
+       "numeric_cached_results_verified": 7200
+      },
+      {
+       "formula_cells": 7200,
+       "numeric_cached_results_verified": 7200
+      },
+      {
+       "formula_cells": 7200,
+       "numeric_cached_results_verified": 7200
+      },
+      {
+       "formula_cells": 7200,
+       "numeric_cached_results_verified": 7200
+      }
+     ],
+     "rust": [
+      {
+       "formula_cells": 7200,
+       "numeric_cached_results_verified": 7200
+      },
+      {
+       "formula_cells": 7200,
+       "numeric_cached_results_verified": 7200
+      },
+      {
+       "formula_cells": 7200,
+       "numeric_cached_results_verified": 7200
+      },
+      {
+       "formula_cells": 7200,
+       "numeric_cached_results_verified": 7200
+      },
+      {
+       "formula_cells": 7200,
+       "numeric_cached_results_verified": 7200
+      },
+      {
+       "formula_cells": 7200,
+       "numeric_cached_results_verified": 7200
+      }
+     ]
+    },
+    "source_workbooks_unchanged": true,
+    "scope": "COM recalculation/save substep only; Python legacy uses Worksheets.Calculate, Python matched variant and Rust use Application.CalculateFull; Rust production cache clearing, post-checks and atomic publication are excluded"
+   }
+  },
+  {
+   "feature": "S5 配置化逐笔统计审核（单文件 + 独立上期）",
+   "rounds": 3,
+   "python_ms": [
+    189.3,
+    22.0,
+    21.8
+   ],
+   "rust_ms": [
+    88.0,
+    57.9,
+    54.5
+   ],
+   "python_best_ms": 21.8,
+   "rust_best_ms": 54.5,
+   "speedup_best": 0.4,
+   "python_median_ms": 22.0,
+   "rust_median_ms": 57.9,
+   "speedup_median": 0.38,
+   "python_extra": {},
+   "rust_extra": {}
+  },
+  {
+   "feature": "S2-F1 报表采集审核（2 份仓库测试夹具，含结果写出）",
+   "rounds": 3,
+   "python_ms": [
+    101.1,
+    34.8,
+    35.6
+   ],
+   "rust_ms": [
+    43.4,
+    41.3,
+    39.1
+   ],
+   "python_best_ms": 34.8,
+   "rust_best_ms": 39.1,
+   "speedup_best": 0.89,
+   "python_median_ms": 35.6,
+   "rust_median_ms": 41.3,
+   "speedup_median": 0.86,
+   "python_extra": {
+    "findings": 16,
+    "workbooks": 1
+   },
+   "rust_extra": {
+    "workbooks": 1
+   },
+   "verification": {
+    "both_services_wrote_one_readable_workbook_per_round": true,
+    "result_sheet_names_and_dimensions_match": true,
+    "python_path": "PeriodAuditV2Service.run including ExcelExporter output"
+   }
+  },
+  {
+   "feature": "S1-F2 汇总校验结果说明",
+   "skipped": true,
+   "reason": "S1-F2 使用 compare_s1_region_summary.py 单独执行三轮性能与输出对拍；本脚本不重复计时。正式汇总 perf_comparison_20261030.json 已合并专项结果。"
+  }
+ ]
+}
