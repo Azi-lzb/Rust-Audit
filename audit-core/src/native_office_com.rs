@@ -44,6 +44,7 @@ const IID_IDISPATCH: GUID = GUID::from_u128(0x0002040000000000_c000000000000046)
 const IID_NULL: GUID = GUID::from_u128(0);
 const LOCALE_USER_DEFAULT: u32 = 0x0400;
 const XL_CALCULATION_AUTOMATIC: i32 = -4105;
+const XL_CALCULATION_MANUAL: i32 = -4135;
 const XL_DONE: i32 = 0;
 const XL_PENDING: i32 = 2;
 
@@ -402,6 +403,21 @@ impl ExcelComSession {
         let app = self.app.as_ref().expect("COM app initialized");
         app.set("Visible", OwnedVariant::boolean(false))?;
         app.set("DisplayAlerts", OwnedVariant::boolean(false))?;
+        // 与旧 Python 生产通道一致的 Excel 端开销配置：关闭屏幕刷新与事件、
+        // AskToUpdateLinks 关闭（UpdateLinks 已在 Open 参数显式控制）、
+        // 计算模式设为手动以消除 Workbooks.Open 对脏公式的隐式自动重算
+        // （审核副本全部公式为待算状态；显式 Calculate 随后一次性同步完成，
+        // 旧 Python 生产语义与此完全一致，Calculation 为应用级属性不随
+        // SaveAs 写入输出文件）。
+        app.set("ScreenUpdating", OwnedVariant::boolean(false))?;
+        app.set("EnableEvents", OwnedVariant::boolean(false))?;
+        app.set("AskToUpdateLinks", OwnedVariant::boolean(false))?;
+        // 某些含数据模型/OLAP 连接的 Excel 实例禁止通过 COM 修改
+        // Application.Calculation（0x800A03EC）；与旧 Python 一致降级忽略，
+        // 显式 Calculate 仍完成重算。
+        if let Err(error) = app.set("Calculation", OwnedVariant::i32(XL_CALCULATION_MANUAL)) {
+            let _ = error;
+        }
         Ok(())
     }
 

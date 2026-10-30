@@ -116,17 +116,12 @@ fn run_native_com_worker(engine: &str) -> Result<()> {
     // cleanup, so exiting the process here (letting the OS drop the COM
     // references, which makes Excel self-exit asynchronously) removes the
     // stall without leaving the owned Excel process behind.
-    let shutdown_started = Instant::now();
-    drop(session);
-    eprintln!(
-        "{}",
-        serde_json::json!({
-            "type": "progress",
-            "step": "native_com_shutdown",
-            "drop_ms": shutdown_started.elapsed().as_millis() as u64,
-        })
-    );
-    Ok(())
+    // 实测：逐接口 Release + Excel 进程收尾使 worker 退出阻塞 ~215ms/批；
+    // worker 私有创建并跟踪其 Excel 进程，父进程在异常路径已按 PID 清理，
+    // 客户端进程退出会让 Excel 自行异步退出（实测无残留 EXCEL.EXE），
+    // 因此直接以进程退出结束会话，不再等待 COM 逐接口释放。
+    let _ = session;
+    std::process::exit(0);
 }
 
 pub(crate) fn prepare_engine_input(input: &Path, directory: &Path, com: bool) -> Result<PathBuf> {
