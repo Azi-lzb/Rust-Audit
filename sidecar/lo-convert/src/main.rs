@@ -24,6 +24,7 @@ mod excel_com;
 mod excel_com {
     pub struct ExcelComSession;
 }
+mod lo_batch;
 
 #[cfg(test)]
 const MAIN_NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
@@ -54,6 +55,12 @@ fn run() -> Result<()> {
     }
     if command == "recalculate-session" {
         return run_recalculate_session(args.collect());
+    }
+    if command == "recalculate-batch" {
+        return run_recalculate_batch(args.collect());
+    }
+    if command == "recalculate-batch" {
+        return run_recalculate_batch(args.collect());
     }
     if command == "__recalculate-com-worker" {
         return run_com_worker(args.collect());
@@ -146,13 +153,14 @@ fn run() -> Result<()> {
 }
 
 fn run_recalculate(arguments: Vec<String>) -> Result<()> {
-    run_recalculate_with_session(arguments, None, None)
+    run_recalculate_with_session(arguments, None, None, None)
 }
 
 fn run_recalculate_with_session(
     arguments: Vec<String>,
     mut com_session: Option<&mut excel_com::ExcelComSession>,
     com_initialization_error: Option<&str>,
+    mut lo_batch: Option<&mut lo_batch::LoWarmProfileSession>,
 ) -> Result<()> {
     if arguments
         .iter()
@@ -247,6 +255,8 @@ fn run_recalculate_with_session(
     .context("prepare explicit full recalculation request")?;
     let mut attempts = Vec::new();
     let mut accepted = None;
+    // 批次会话复用时记录本次会话处理阶段与实例归属；单发路径为 None。
+    let mut lo_batch_stages: Option<serde_json::Value> = None;
     for selected in selected_engines {
         let attempt_dir = engine_output_dir.join(selected);
         fs::create_dir_all(&attempt_dir)?;
@@ -256,7 +266,20 @@ fn run_recalculate_with_session(
             _ => unreachable!("validated engine order contains an unknown engine"),
         };
         let attempt = match selected {
-            "lo" => run_libreoffice_recalculate(&recalc_input, &attempt_dir),
+            "lo" => {
+                if let Some(session) = lo_batch.as_deref_mut() {
+                    // 批次会话复用：同一 Rust 拥有的 LibreOffice 实例顺序处理；
+                    // 阶段计时由会话内的批次驱动逐本记录。
+                    session
+                        .recalculate(&recalc_input, &candidate, recalculation_timeout())
+                        .map(|(engine_label, stages)| {
+                            lo_batch_stages = Some(stages);
+                            engine_label
+                        })
+                } else {
+                    run_libreoffice_recalculate(&recalc_input, &attempt_dir)
+                }
+            }
             "com" | "excel" | "wps" => {
                 let com_input = attempt_dir.join("com-recalculation-request.xlsx");
                 prepare_com_recalculation_input(&recalc_input, &com_input).and_then(|()| {
@@ -327,15 +350,18 @@ fn run_recalculate_with_session(
         )
     })?;
     publish_recalculated_output(&candidate, &output)?;
-    println!("{{\"status\":\"recalculated\",\"engine\":{},\"input\":{},\"output\":{},\"formula_cache_values_cleared_before_engine\":{},\"attempts\":{},\"validation\":{}}}", json_string(&actual_engine), json_string(&input.display().to_string()), json_string(&output.display().to_string()), cache_report.cache_values_removed, serde_json::to_string(&attempts)?, validation);
+    let lo_batch_json = match lo_batch_stages {
+        Some(ref stages) => format!(",\"lo_batch\":{}", serde_json::to_string(stages)?),
+        None => String::new(),
+    };
+    println!("{{\"status\":\"recalculated\",\"engine\":{},\"input\":{},\"output\":{},\"formula_cache_values_cleared_before_engine\":{},\"attempts\":{},\"validation\":{}{lo_batch_json}}}", json_string(&actual_engine), json_string(&input.display().to_string()), json_string(&output.display().to_string()), cache_report.cache_values_removed, serde_json::to_string(&attempts)?, validation);
     Ok(())
 }
 
 fn run_recalculate_session(arguments: Vec<String>) -> Result<()> {
     #[cfg(not(windows))]
     {
-        let _ = arguments;
-        bail!("persistent COM recalculation sessions are only available on Windows")
+        run_recalculate_session_lo(arguments)
     }
     #[cfg(windows)]
     {
@@ -413,6 +439,7 @@ fn run_recalculate_session(arguments: Vec<String>) -> Result<()> {
                 recalculate_arguments,
                 com_session.as_mut(),
                 com_initialization_error.as_deref(),
+                None,
             ) {
                 println!(
                     "{}",
@@ -425,6 +452,289 @@ fn run_recalculate_session(arguments: Vec<String>) -> Result<()> {
         drop(com_session);
         Ok(())
     }
+}
+
+/// Linux 持久重算会话：`--engine auto|lo` 时由一个本进程拥有的隔离
+/// LibreOffice 实例（独立 profile + 内置批次驱动）顺序处理批次内的工作簿。
+/// LibreOffice 实例惰性启动：`auto` 在父会话探测 COM 失败并重启为 `lo` 的
+/// 过程中不产生多余实例。`--engine com/excel/wps` 在 Linux 不可用，按既有
+/// 会话协议报告 `com_error`，由父会话的 auto 路由重启为 `lo`。
+fn run_recalculate_session_lo(arguments: Vec<String>) -> Result<()> {
+    let mut values = BTreeMap::new();
+    let mut args = arguments.into_iter();
+    while let Some(key) = args.next() {
+        ensure!(key.starts_with("--"), "expected an option, got {key:?}");
+        let name = key.trim_start_matches('-').to_owned();
+        ensure!(
+            name == "engine",
+            "unknown recalculation-session option --{name}"
+        );
+        let value = args
+            .next()
+            .with_context(|| format!("{key} requires a value"))?;
+        values.insert(name, value);
+    }
+    let engine = values.get("engine").map(String::as_str).unwrap_or("auto");
+    ensure!(
+        engine == "auto"
+            || engine == "lo"
+            || engine == "com"
+            || engine == "excel"
+            || engine == "wps",
+        "--engine must be auto, lo, com, excel or wps"
+    );
+    let (needs_lo, com_error) = match engine {
+        "auto" | "lo" => (true, None),
+        _ => (
+            false,
+            Some("COM recalculation is only available on Windows; use --engine lo"),
+        ),
+    };
+    let mut lo_batch = if needs_lo {
+        Some(lo_batch::LoWarmProfileSession::create().context("创建 LibreOffice 批次会话")?)
+    } else {
+        None
+    };
+    let ready = serde_json::json!({
+        "status": "session_ready",
+        "engine": if lo_batch.is_some() { serde_json::json!("LibreOffice") } else { serde_json::Value::Null },
+        "engine_process_id": None::<u32>,
+        "engine_process_owned": lo_batch.is_some(),
+        "com_available": false,
+        "com_error": com_error,
+        "lo_batch_session": lo_batch.is_some(),
+        "lo_batch_work_dir": lo_batch
+            .as_ref()
+            .map(|session| session.work_dir().display().to_string()),
+    });
+    println!("{}", serde_json::to_string(&ready)?);
+    std::io::stdout().flush()?;
+
+    for line in std::io::stdin().lock().lines() {
+        let line = line?;
+        let request: serde_json::Value = match serde_json::from_str(&line) {
+            Ok(request) => request,
+            Err(error) => {
+                println!(
+                    "{}",
+                    serde_json::json!({"status":"failed","error":format!("invalid session request: {error}")})
+                );
+                std::io::stdout().flush()?;
+                continue;
+            }
+        };
+        if request.get("type").and_then(serde_json::Value::as_str) == Some("shutdown") {
+            break;
+        }
+        let input = request.get("input").and_then(serde_json::Value::as_str);
+        let output = request.get("output").and_then(serde_json::Value::as_str);
+        let (Some(input), Some(output)) = (input, output) else {
+            println!(
+                "{}",
+                serde_json::json!({"status":"failed","error":"session request requires input and output paths"})
+            );
+            std::io::stdout().flush()?;
+            continue;
+        };
+        let recalculate_arguments = vec![
+            "--input".to_owned(),
+            input.to_owned(),
+            "--output".to_owned(),
+            output.to_owned(),
+            "--engine".to_owned(),
+            if engine == "auto" { "lo".to_owned() } else { engine.to_owned() },
+        ];
+        if let Err(error) = run_recalculate_with_session(
+            recalculate_arguments,
+            None,
+            None,
+            lo_batch.as_mut(),
+        ) {
+            println!(
+                "{}",
+                serde_json::json!({"status":"failed","error":format!("{error:#}")})
+            );
+            std::io::stdout().flush()?;
+        }
+        std::io::stdout().flush()?;
+    }
+    if let Some(session) = lo_batch {
+        // 暖 profile 会话没有常驻进程（每本转换进程自然退出）；
+        // 工作目录由 TempDirGuard 在会话结束时清理。
+        let _ = session;
+    }
+    Ok(())
+}
+
+/// 批次重算：`recalculate-batch --pairs <tsv> --engine lo`。TSV 每行
+/// `输入副本<TAB>期望输出`；一次 soffice 启动顺序转换全部输入，再逐本
+/// 规范化、验证并发布。逐本准备（清缓存 + 重算标记）在批次内完成；单本
+/// 验证失败不影响其他本的发布，批次级失败（引擎启动/超时）整体报错。
+fn run_recalculate_batch(arguments: Vec<String>) -> Result<()> {
+    let mut values: BTreeMap<String, String> = BTreeMap::new();
+    let mut args = arguments.into_iter();
+    while let Some(key) = args.next() {
+        ensure!(key.starts_with("--"), "expected an option, got {key:?}");
+        let name = key.trim_start_matches('-').to_owned();
+        ensure!(
+            matches!(name.as_str(), "pairs" | "engine"),
+            "unknown recalculate-batch option --{name}"
+        );
+        let value = args
+            .next()
+            .with_context(|| format!("{key} requires a value"))?;
+        values.insert(name, value);
+    }
+    let engine = values.get("engine").map(String::as_str).unwrap_or("lo");
+    ensure!(engine == "lo", "batch recalculation only supports LibreOffice (--engine lo)");
+    let pairs_path = PathBuf::from(values.get("pairs").context("--pairs is required")?);
+    let content = fs::read_to_string(&pairs_path)
+        .with_context(|| format!("read batch pairs {}", pairs_path.display()))?;
+    let mut declared = Vec::new();
+    for line in content.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let mut parts = line.split('\t');
+        let input = parts.next().context("batch pair missing input")?;
+        let output = parts.next().context("batch pair missing output")?;
+        ensure!(
+            parts.next().is_none(),
+            "batch pair line has extra fields: {line:?}"
+        );
+        declared.push((PathBuf::from(input), PathBuf::from(output)));
+    }
+    ensure!(!declared.is_empty(), "batch pairs file is empty");
+    for (input, output) in &declared {
+        ensure!(
+            input.is_file(),
+            "batch input workbook does not exist: {}",
+            input.display()
+        );
+        ensure!(
+            !output.exists(),
+            "refusing to overwrite existing batch output: {}",
+            output.display()
+        );
+    }
+
+    let guard = TempDirGuard(unique_temp_dir(&env::temp_dir())?);
+    let profile_dir = guard.0.join("profile");
+    fs::create_dir_all(&profile_dir)?;
+    let profile_argument = libreoffice_user_installation_arg(&profile_dir)?;
+    let init_status = Command::new("soffice")
+        .args(["--headless", "--terminate_after_init"])
+        .arg(&profile_argument)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .context("start LibreOffice profile initialisation")?;
+    ensure!(
+        init_status.success(),
+        "LibreOffice profile initialisation failed (exit={init_status})"
+    );
+    // 沉降 + 排空：与暖 profile 会话相同的已知竞态（oosplash fork 窗口）。
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    let profile_pattern = format!(
+        "UserInstallation={}",
+        profile_argument
+            .split_once("UserInstallation=")
+            .map(|(_, rest)| rest.to_owned())
+            .unwrap_or_else(|| profile_argument.clone())
+    );
+    let _ = Command::new("pkill")
+        .args(["-f", "--", &profile_pattern])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+
+    let input_dir = guard.0.join("batch-input");
+    let output_dir = guard.0.join("batch-output");
+    fs::create_dir_all(&input_dir)?;
+    fs::create_dir_all(&output_dir)?;
+    let mut prepared_pairs = Vec::with_capacity(declared.len());
+    for (index, (input, _)) in declared.iter().enumerate() {
+        let canonical = fs::canonicalize(input)
+            .with_context(|| format!("resolve batch input {}", input.display()))?;
+        let cacheless = input_dir.join(format!("book-{index:04}-cacheless.xlsx"));
+        let prepared = input_dir.join(format!("book-{index:04}.xlsx"));
+        ooxml_patch::clear_formula_caches_for_recalculation(&canonical, &cacheless)
+            .with_context(|| format!("clear formula caches for batch book {}", index + 1))?;
+        ooxml_patch::patch_workbook_calculation_properties(
+            &cacheless,
+            &prepared,
+            ooxml_patch::WorkbookCalculationProperties {
+                full_calc_on_load: Some(true),
+                force_full_calc: Some(true),
+            },
+        )
+        .with_context(|| format!("prepare batch book {}", index + 1))?;
+        prepared_pairs.push((prepared, output_dir.join(format!("book-{index:04}.xlsx"))));
+    }
+    let batch_timeout = recalculation_timeout()
+        .saturating_mul(declared.len() as u32)
+        .max(recalculation_timeout());
+    let convert_started = Instant::now();
+    let (engine_name, stages) =
+        lo_batch::run_batch_convert(&prepared_pairs, guard.0.as_path(), batch_timeout)
+            .context("batch LibreOffice conversion")?;
+    let convert_ms = convert_started.elapsed().as_millis() as u64;
+
+    let mut books = Vec::with_capacity(declared.len());
+    let mut failures = 0usize;
+    for (index, (input, output)) in declared.iter().enumerate() {
+        let candidate = stages
+            .get(index)
+            .and_then(|stage| stage.get("batch_output"))
+            .and_then(serde_json::Value::as_str)
+            .map(PathBuf::from);
+        let Some(candidate) = candidate else {
+            failures += 1;
+            books.push(serde_json::json!({"index": index + 1, "status": "failed", "error": "batch did not produce output"}));
+            continue;
+        };
+        let attempt = (|| -> Result<serde_json::Value> {
+            require_engine_output(&candidate)?;
+            let (validated_candidate, restored_error_constants) =
+                normalize_promoted_error_constants(input, &candidate, &guard.0)?;
+            let mut validation = validate_recalculated_workbook(input, &validated_candidate)?;
+            let mut validation_json: serde_json::Value = serde_json::from_str(&validation)?;
+            validation_json["promoted_error_constants_restored"] =
+                serde_json::json!(restored_error_constants);
+            validation = serde_json::to_string(&validation_json)?;
+            publish_recalculated_output(&validated_candidate, output)?;
+            Ok(serde_json::from_str(&validation)?)
+        })();
+        match attempt {
+            Ok(validation) => {
+                books.push(serde_json::json!({
+                    "index": index + 1,
+                    "status": "recalculated",
+                    "engine": engine_name,
+                    "input": input.display().to_string(),
+                    "output": output.display().to_string(),
+                    "validation": validation,
+                }));
+            }
+            Err(error) => {
+                failures += 1;
+                books.push(serde_json::json!({
+                    "index": index + 1,
+                    "status": "failed",
+                    "input": input.display().to_string(),
+                    "error": format!("{error:#}"),
+                }));
+            }
+        }
+    }
+    let result = serde_json::json!({
+        "status": if failures == 0 { "recalculated" } else { "partial" },
+        "engine": engine_name,
+        "convert_ms": convert_ms,
+        "books": books,
+    });
+    println!("{}", serde_json::to_string(&result)?);
+    Ok(())
 }
 
 fn recalculation_engine_order(engine: &str, windows: bool) -> Result<Vec<&'static str>> {

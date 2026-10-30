@@ -1,0 +1,5478 @@
+{
+  "generated_at": "2026-10-30T19:39:48.905646+00:00",
+  "lo_convert": "/root/lo-build/target/release/lo-convert",
+  "rows_per_book": 400,
+  "rounds": 3,
+  "results": [
+    {
+      "books": 2,
+      "mode": "per-book",
+      "rounds": 3,
+      "all_rounds_succeeded": true,
+      "batch_seconds_median": 3.0693,
+      "per_book_seconds_median": 1.5346,
+      "distinct_lo_pids": [],
+      "lo_instance_ids": [],
+      "leftover_soffice_pids": [],
+      "input_sha256_unchanged_all_rounds": true,
+      "output_sheet_names_match_input": true,
+      "output_formula_count_matches_input": true,
+      "round_details": [
+        {
+          "mode": "per-book",
+          "ready": null,
+          "books": [
+            {
+              "index": 1,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5344
+            },
+            {
+              "index": 2,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5341
+            }
+          ],
+          "batch_seconds": 3.0686,
+          "leftover_soffice_pids": [],
+          "round": "round-1",
+          "input_sha256_unchanged": true,
+          "output_checks": [
+            {
+              "output": "book-0001-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0002-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            }
+          ]
+        },
+        {
+          "mode": "per-book",
+          "ready": null,
+          "books": [
+            {
+              "index": 1,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5342
+            },
+            {
+              "index": 2,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.535
+            }
+          ],
+          "batch_seconds": 3.0693,
+          "leftover_soffice_pids": [],
+          "round": "round-2",
+          "input_sha256_unchanged": true,
+          "output_checks": [
+            {
+              "output": "book-0001-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0002-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            }
+          ]
+        },
+        {
+          "mode": "per-book",
+          "ready": null,
+          "books": [
+            {
+              "index": 1,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5361
+            },
+            {
+              "index": 2,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5348
+            }
+          ],
+          "batch_seconds": 3.0709,
+          "leftover_soffice_pids": [],
+          "round": "round-3",
+          "input_sha256_unchanged": true,
+          "output_checks": [
+            {
+              "output": "book-0001-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0002-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "books": 2,
+      "mode": "batch",
+      "rounds": 3,
+      "all_rounds_succeeded": true,
+      "batch_seconds_median": 3.6868,
+      "per_book_seconds_median": null,
+      "distinct_lo_pids": [],
+      "lo_instance_ids": [],
+      "leftover_soffice_pids": [],
+      "input_sha256_unchanged_all_rounds": true,
+      "output_sheet_names_match_input": true,
+      "output_formula_count_matches_input": true,
+      "round_details": [
+        {
+          "mode": "batch",
+          "ready": {
+            "mode": "batch",
+            "convert_ms": 1502
+          },
+          "books": [
+            {
+              "index": 1,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 1502,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 2,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 1502,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            }
+          ],
+          "batch_seconds": 3.6882,
+          "leftover_soffice_pids": [],
+          "round": "round-1",
+          "input_sha256_unchanged": true,
+          "output_checks": [
+            {
+              "output": "book-0001-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0002-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            }
+          ]
+        },
+        {
+          "mode": "batch",
+          "ready": {
+            "mode": "batch",
+            "convert_ms": 1502
+          },
+          "books": [
+            {
+              "index": 1,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 1502,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 2,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 1502,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            }
+          ],
+          "batch_seconds": 3.6868,
+          "leftover_soffice_pids": [],
+          "round": "round-2",
+          "input_sha256_unchanged": true,
+          "output_checks": [
+            {
+              "output": "book-0001-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0002-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            }
+          ]
+        },
+        {
+          "mode": "batch",
+          "ready": {
+            "mode": "batch",
+            "convert_ms": 1402
+          },
+          "books": [
+            {
+              "index": 1,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 1402,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 2,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 1402,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            }
+          ],
+          "batch_seconds": 3.5871,
+          "leftover_soffice_pids": [],
+          "round": "round-3",
+          "input_sha256_unchanged": true,
+          "output_checks": [
+            {
+              "output": "book-0001-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0002-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "books": 10,
+      "mode": "per-book",
+      "rounds": 3,
+      "all_rounds_succeeded": true,
+      "batch_seconds_median": 15.3444,
+      "per_book_seconds_median": 1.5351,
+      "distinct_lo_pids": [],
+      "lo_instance_ids": [],
+      "leftover_soffice_pids": [],
+      "input_sha256_unchanged_all_rounds": true,
+      "output_sheet_names_match_input": true,
+      "output_formula_count_matches_input": true,
+      "round_details": [
+        {
+          "mode": "per-book",
+          "ready": null,
+          "books": [
+            {
+              "index": 1,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5348
+            },
+            {
+              "index": 2,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5346
+            },
+            {
+              "index": 3,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5345
+            },
+            {
+              "index": 4,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5342
+            },
+            {
+              "index": 5,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5345
+            },
+            {
+              "index": 6,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5351
+            },
+            {
+              "index": 7,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.535
+            },
+            {
+              "index": 8,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5336
+            },
+            {
+              "index": 9,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5339
+            },
+            {
+              "index": 10,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5337
+            }
+          ],
+          "batch_seconds": 15.3444,
+          "leftover_soffice_pids": [],
+          "round": "round-1",
+          "input_sha256_unchanged": true,
+          "output_checks": [
+            {
+              "output": "book-0001-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0002-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0003-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0004-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0005-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0006-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0007-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0008-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0009-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0010-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            }
+          ]
+        },
+        {
+          "mode": "per-book",
+          "ready": null,
+          "books": [
+            {
+              "index": 1,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5356
+            },
+            {
+              "index": 2,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5339
+            },
+            {
+              "index": 3,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5336
+            },
+            {
+              "index": 4,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5341
+            },
+            {
+              "index": 5,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5341
+            },
+            {
+              "index": 6,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5382
+            },
+            {
+              "index": 7,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5388
+            },
+            {
+              "index": 8,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5353
+            },
+            {
+              "index": 9,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5353
+            },
+            {
+              "index": 10,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.537
+            }
+          ],
+          "batch_seconds": 15.3563,
+          "leftover_soffice_pids": [],
+          "round": "round-2",
+          "input_sha256_unchanged": true,
+          "output_checks": [
+            {
+              "output": "book-0001-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0002-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0003-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0004-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0005-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0006-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0007-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0008-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0009-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0010-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            }
+          ]
+        },
+        {
+          "mode": "per-book",
+          "ready": null,
+          "books": [
+            {
+              "index": 1,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5455
+            },
+            {
+              "index": 2,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5423
+            },
+            {
+              "index": 3,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5452
+            },
+            {
+              "index": 4,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5411
+            },
+            {
+              "index": 5,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5341
+            },
+            {
+              "index": 6,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5472
+            },
+            {
+              "index": 7,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5415
+            },
+            {
+              "index": 8,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5404
+            },
+            {
+              "index": 9,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5381
+            },
+            {
+              "index": 10,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.4347
+            }
+          ],
+          "batch_seconds": 15.3106,
+          "leftover_soffice_pids": [],
+          "round": "round-3",
+          "input_sha256_unchanged": true,
+          "output_checks": [
+            {
+              "output": "book-0001-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0002-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0003-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0004-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0005-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0006-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0007-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0008-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0009-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0010-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "books": 10,
+      "mode": "batch",
+      "rounds": 3,
+      "all_rounds_succeeded": true,
+      "batch_seconds_median": 4.2861,
+      "per_book_seconds_median": null,
+      "distinct_lo_pids": [],
+      "lo_instance_ids": [],
+      "leftover_soffice_pids": [],
+      "input_sha256_unchanged_all_rounds": true,
+      "output_sheet_names_match_input": true,
+      "output_formula_count_matches_input": true,
+      "round_details": [
+        {
+          "mode": "batch",
+          "ready": {
+            "mode": "batch",
+            "convert_ms": 1902
+          },
+          "books": [
+            {
+              "index": 1,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 1902,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 2,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 1902,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 3,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 1902,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 4,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 1902,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 5,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 1902,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 6,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 1902,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 7,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 1902,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 8,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 1902,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 9,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 1902,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 10,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 1902,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            }
+          ],
+          "batch_seconds": 4.28,
+          "leftover_soffice_pids": [],
+          "round": "round-1",
+          "input_sha256_unchanged": true,
+          "output_checks": [
+            {
+              "output": "book-0001-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0002-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0003-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0004-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0005-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0006-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0007-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0008-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0009-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0010-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            }
+          ]
+        },
+        {
+          "mode": "batch",
+          "ready": {
+            "mode": "batch",
+            "convert_ms": 1902
+          },
+          "books": [
+            {
+              "index": 1,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 1902,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 2,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 1902,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 3,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 1902,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 4,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 1902,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 5,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 1902,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 6,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 1902,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 7,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 1902,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 8,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 1902,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 9,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 1902,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 10,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 1902,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            }
+          ],
+          "batch_seconds": 4.2861,
+          "leftover_soffice_pids": [],
+          "round": "round-2",
+          "input_sha256_unchanged": true,
+          "output_checks": [
+            {
+              "output": "book-0001-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0002-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0003-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0004-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0005-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0006-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0007-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0008-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0009-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0010-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            }
+          ]
+        },
+        {
+          "mode": "batch",
+          "ready": {
+            "mode": "batch",
+            "convert_ms": 2003
+          },
+          "books": [
+            {
+              "index": 1,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 2003,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 2,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 2003,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 3,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 2003,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 4,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 2003,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 5,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 2003,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 6,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 2003,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 7,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 2003,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 8,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 2003,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 9,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 2003,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 10,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 2003,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            }
+          ],
+          "batch_seconds": 4.3806,
+          "leftover_soffice_pids": [],
+          "round": "round-3",
+          "input_sha256_unchanged": true,
+          "output_checks": [
+            {
+              "output": "book-0001-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0002-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0003-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0004-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0005-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0006-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0007-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0008-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0009-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0010-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "books": 33,
+      "mode": "per-book",
+      "rounds": 3,
+      "all_rounds_succeeded": true,
+      "batch_seconds_median": 50.5759,
+      "per_book_seconds_median": 1.535,
+      "distinct_lo_pids": [],
+      "lo_instance_ids": [],
+      "leftover_soffice_pids": [],
+      "input_sha256_unchanged_all_rounds": true,
+      "output_sheet_names_match_input": true,
+      "output_formula_count_matches_input": true,
+      "round_details": [
+        {
+          "mode": "per-book",
+          "ready": null,
+          "books": [
+            {
+              "index": 1,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5335
+            },
+            {
+              "index": 2,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5343
+            },
+            {
+              "index": 3,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5356
+            },
+            {
+              "index": 4,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5341
+            },
+            {
+              "index": 5,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.534
+            },
+            {
+              "index": 6,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5347
+            },
+            {
+              "index": 7,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5372
+            },
+            {
+              "index": 8,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5399
+            },
+            {
+              "index": 9,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5389
+            },
+            {
+              "index": 10,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5399
+            },
+            {
+              "index": 11,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5402
+            },
+            {
+              "index": 12,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5409
+            },
+            {
+              "index": 13,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5564
+            },
+            {
+              "index": 14,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5451
+            },
+            {
+              "index": 15,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5387
+            },
+            {
+              "index": 16,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5338
+            },
+            {
+              "index": 17,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5336
+            },
+            {
+              "index": 18,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5533
+            },
+            {
+              "index": 19,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5478
+            },
+            {
+              "index": 20,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.4343
+            },
+            {
+              "index": 21,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5342
+            },
+            {
+              "index": 22,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5336
+            },
+            {
+              "index": 23,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.4421
+            },
+            {
+              "index": 24,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.544
+            },
+            {
+              "index": 25,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.539
+            },
+            {
+              "index": 26,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5342
+            },
+            {
+              "index": 27,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.535
+            },
+            {
+              "index": 28,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.535
+            },
+            {
+              "index": 29,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5434
+            },
+            {
+              "index": 30,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5424
+            },
+            {
+              "index": 31,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5351
+            },
+            {
+              "index": 32,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5356
+            },
+            {
+              "index": 33,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5345
+            }
+          ],
+          "batch_seconds": 50.5759,
+          "leftover_soffice_pids": [],
+          "round": "round-1",
+          "input_sha256_unchanged": true,
+          "output_checks": [
+            {
+              "output": "book-0001-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0002-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0003-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0004-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0005-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0006-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0007-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0008-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0009-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0010-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0011-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0012-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0013-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0014-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0015-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0016-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0017-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0018-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0019-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0020-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0021-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0022-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0023-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0024-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0025-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0026-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0027-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0028-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0029-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0030-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0031-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0032-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0033-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            }
+          ]
+        },
+        {
+          "mode": "per-book",
+          "ready": null,
+          "books": [
+            {
+              "index": 1,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5397
+            },
+            {
+              "index": 2,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5378
+            },
+            {
+              "index": 3,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.537
+            },
+            {
+              "index": 4,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5348
+            },
+            {
+              "index": 5,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5344
+            },
+            {
+              "index": 6,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.535
+            },
+            {
+              "index": 7,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5355
+            },
+            {
+              "index": 8,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5341
+            },
+            {
+              "index": 9,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5348
+            },
+            {
+              "index": 10,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5341
+            },
+            {
+              "index": 11,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5342
+            },
+            {
+              "index": 12,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.4344
+            },
+            {
+              "index": 13,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5355
+            },
+            {
+              "index": 14,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5351
+            },
+            {
+              "index": 15,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5342
+            },
+            {
+              "index": 16,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.6343
+            },
+            {
+              "index": 17,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5339
+            },
+            {
+              "index": 18,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5341
+            },
+            {
+              "index": 19,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5335
+            },
+            {
+              "index": 20,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.4344
+            },
+            {
+              "index": 21,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5336
+            },
+            {
+              "index": 22,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.534
+            },
+            {
+              "index": 23,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5352
+            },
+            {
+              "index": 24,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5368
+            },
+            {
+              "index": 25,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5354
+            },
+            {
+              "index": 26,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5348
+            },
+            {
+              "index": 27,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5358
+            },
+            {
+              "index": 28,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5344
+            },
+            {
+              "index": 29,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5349
+            },
+            {
+              "index": 30,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.537
+            },
+            {
+              "index": 31,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5363
+            },
+            {
+              "index": 32,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5356
+            },
+            {
+              "index": 33,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5346
+            }
+          ],
+          "batch_seconds": 50.5607,
+          "leftover_soffice_pids": [],
+          "round": "round-2",
+          "input_sha256_unchanged": true,
+          "output_checks": [
+            {
+              "output": "book-0001-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0002-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0003-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0004-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0005-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0006-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0007-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0008-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0009-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0010-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0011-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0012-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0013-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0014-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0015-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0016-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0017-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0018-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0019-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0020-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0021-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0022-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0023-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0024-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0025-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0026-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0027-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0028-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0029-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0030-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0031-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0032-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0033-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            }
+          ]
+        },
+        {
+          "mode": "per-book",
+          "ready": null,
+          "books": [
+            {
+              "index": 1,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5344
+            },
+            {
+              "index": 2,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5337
+            },
+            {
+              "index": 3,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5352
+            },
+            {
+              "index": 4,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5341
+            },
+            {
+              "index": 5,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5356
+            },
+            {
+              "index": 6,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.7354
+            },
+            {
+              "index": 7,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5354
+            },
+            {
+              "index": 8,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5339
+            },
+            {
+              "index": 9,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5342
+            },
+            {
+              "index": 10,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5347
+            },
+            {
+              "index": 11,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.535
+            },
+            {
+              "index": 12,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.534
+            },
+            {
+              "index": 13,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5357
+            },
+            {
+              "index": 14,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5346
+            },
+            {
+              "index": 15,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5349
+            },
+            {
+              "index": 16,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5342
+            },
+            {
+              "index": 17,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5341
+            },
+            {
+              "index": 18,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5362
+            },
+            {
+              "index": 19,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5356
+            },
+            {
+              "index": 20,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5354
+            },
+            {
+              "index": 21,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5342
+            },
+            {
+              "index": 22,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5356
+            },
+            {
+              "index": 23,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5358
+            },
+            {
+              "index": 24,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5361
+            },
+            {
+              "index": 25,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5355
+            },
+            {
+              "index": 26,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5344
+            },
+            {
+              "index": 27,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5347
+            },
+            {
+              "index": 28,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5347
+            },
+            {
+              "index": 29,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5342
+            },
+            {
+              "index": 30,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5364
+            },
+            {
+              "index": 31,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5349
+            },
+            {
+              "index": 32,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.435
+            },
+            {
+              "index": 33,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "book_seconds": 1.5352
+            }
+          ],
+          "batch_seconds": 50.7547,
+          "leftover_soffice_pids": [],
+          "round": "round-3",
+          "input_sha256_unchanged": true,
+          "output_checks": [
+            {
+              "output": "book-0001-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0002-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0003-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0004-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0005-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0006-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0007-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0008-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0009-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0010-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0011-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0012-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0013-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0014-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0015-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0016-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0017-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0018-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0019-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0020-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0021-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0022-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0023-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0024-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0025-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0026-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0027-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0028-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0029-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0030-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0031-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0032-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0033-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "books": 33,
+      "mode": "batch",
+      "rounds": 3,
+      "all_rounds_succeeded": true,
+      "batch_seconds_median": 6.4249,
+      "per_book_seconds_median": null,
+      "distinct_lo_pids": [],
+      "lo_instance_ids": [],
+      "leftover_soffice_pids": [],
+      "input_sha256_unchanged_all_rounds": true,
+      "output_sheet_names_match_input": true,
+      "output_formula_count_matches_input": true,
+      "round_details": [
+        {
+          "mode": "batch",
+          "ready": {
+            "mode": "batch",
+            "convert_ms": 3604
+          },
+          "books": [
+            {
+              "index": 1,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 2,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 3,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 4,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 5,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 6,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 7,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 8,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 9,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 10,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 11,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 12,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 13,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 14,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 15,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 16,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 17,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 18,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 19,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 20,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 21,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 22,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 23,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 24,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 25,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 26,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 27,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 28,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 29,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 30,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 31,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 32,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 33,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3604,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            }
+          ],
+          "batch_seconds": 6.5327,
+          "leftover_soffice_pids": [],
+          "round": "round-1",
+          "input_sha256_unchanged": true,
+          "output_checks": [
+            {
+              "output": "book-0001-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0002-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0003-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0004-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0005-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0006-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0007-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0008-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0009-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0010-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0011-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0012-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0013-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0014-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0015-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0016-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0017-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0018-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0019-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0020-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0021-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0022-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0023-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0024-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0025-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0026-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0027-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0028-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0029-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0030-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0031-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0032-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0033-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            }
+          ]
+        },
+        {
+          "mode": "batch",
+          "ready": {
+            "mode": "batch",
+            "convert_ms": 3504
+          },
+          "books": [
+            {
+              "index": 1,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 2,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 3,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 4,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 5,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 6,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 7,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 8,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 9,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 10,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 11,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 12,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 13,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 14,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 15,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 16,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 17,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 18,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 19,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 20,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 21,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 22,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 23,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 24,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 25,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 26,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 27,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 28,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 29,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 30,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 31,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 32,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 33,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3504,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            }
+          ],
+          "batch_seconds": 6.4191,
+          "leftover_soffice_pids": [],
+          "round": "round-2",
+          "input_sha256_unchanged": true,
+          "output_checks": [
+            {
+              "output": "book-0001-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0002-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0003-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0004-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0005-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0006-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0007-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0008-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0009-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0010-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0011-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0012-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0013-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0014-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0015-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0016-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0017-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0018-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0019-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0020-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0021-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0022-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0023-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0024-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0025-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0026-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0027-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0028-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0029-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0030-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0031-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0032-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0033-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            }
+          ]
+        },
+        {
+          "mode": "batch",
+          "ready": {
+            "mode": "batch",
+            "convert_ms": 3507
+          },
+          "books": [
+            {
+              "index": 1,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 2,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 3,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 4,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 5,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 6,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 7,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 8,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 9,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 10,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 11,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 12,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 13,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 14,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 15,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 16,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 17,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 18,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 19,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 20,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 21,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 22,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 23,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 24,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 25,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 26,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 27,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 28,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 29,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 30,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 31,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 32,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            },
+            {
+              "index": 33,
+              "status": "recalculated",
+              "engine": "LibreOffice",
+              "error": null,
+              "lo_batch": {
+                "convert_ms": 3507,
+                "profile_warm": true
+              },
+              "book_seconds": null
+            }
+          ],
+          "batch_seconds": 6.4249,
+          "leftover_soffice_pids": [],
+          "round": "round-3",
+          "input_sha256_unchanged": true,
+          "output_checks": [
+            {
+              "output": "book-0001-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0002-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0003-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0004-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0005-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0006-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0007-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0008-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0009-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0010-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0011-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0012-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0013-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0014-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0015-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0016-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0017-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0018-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0019-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0020-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0021-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0022-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0023-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0024-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0025-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0026-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0027-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0028-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0029-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0030-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0031-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0032-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            },
+            {
+              "output": "book-0033-recalculated.xlsx",
+              "exists": true,
+              "signature": {
+                "sheets": [
+                  "数据"
+                ],
+                "formula_count": 401
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "libreoffice_version": "LibreOffice 24.2.7.2 420(Build:2)"
+}

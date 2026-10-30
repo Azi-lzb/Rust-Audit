@@ -5,6 +5,7 @@
 use crate::{
     discovery::{detect_period_from_workbooks, organisation_from_name},
     models::{CopyRange, Issue},
+    native_file_dialog::{PickKind, PickRequest},
     name_config::{
         load_s1_conditional_mappings, named_areas_from_defined_names,
         resolve_s1_conditional_area_plan,
@@ -167,8 +168,8 @@ impl AppState {
             "cancelRequested": false,
             "status": "Rust 迁移版已启动；当前接通报表采集 S2 功能",
             "log": [],
-            "filePickerMode": "浏览器内置",
-            "filePickerSystemNativeAvailable": false,
+            "filePickerMode": "自动",
+            "filePickerModeOptions": ["自动", "系统原生", "浏览器内置"],
             "uiTheme": "日间",
             "uiAccent": "默认蓝",
             "confirmBeforeRun": true,
@@ -291,6 +292,8 @@ impl AppState {
                     .expect("S3 execution compare state is a JSON object")
                     .clone(),
             );
+        // 恢复上一次会话保存的用户偏好与路径（无效路径仅清空自身字段）。
+        crate::app_settings::apply_preferences_to_state(&mut state);
         Self {
             ui: Arc::new(Mutex::new(UiState {
                 value: state,
@@ -472,6 +475,16 @@ async fn call_api(
             .into_response();
         }
     };
+
+    if method == "pick_paths" {
+        // 原生选择器需要 await（Windows 阻塞线程/Linux 门户），在进入同步
+        // 分发前单独处理；不改状态、不做 busy 限制，路径校验仍由后续
+        // choose_* 接口执行。
+        return match pick_paths(&state, &args).await {
+            Ok(result) => Json(json!({"result": result})).into_response(),
+            Err(error) => error.into_response(),
+        };
+    }
 
     match dispatch_api(&state, &method, &args) {
         Ok(result) => Json(json!({"result": result})).into_response(),
@@ -1425,6 +1438,51 @@ fn next_s5_task_id() -> String {
     )
 }
 
+/// 系统原生文件/目录选择的公共入口（`pick_paths` API）。
+/// 不修改状态、不受 busy 限制；返回 {canceled, paths, backend, message}。
+/// 原生能力不可用/超时时 `message` 带可读诊断，`canceled=false, paths=[]`，
+/// 由前端回退页面内选择器；用户取消时 `canceled=true`，前端不再回退。
+/// 选中的路径不在此校验——仍由各业务的 choose_* 接口按既有规则校验。
+async fn pick_paths(state: &AppState, args: &[Value]) -> std::result::Result<Value, ApiError> {
+    let options = args
+        .first()
+        .cloned()
+        .unwrap_or_else(|| Value::Object(serde_json::Map::new()));
+    let title = options
+        .get("title")
+        .and_then(Value::as_str)
+        .unwrap_or("选择位置")
+        .trim()
+        .to_owned();
+    let kind = match options.get("select").and_then(Value::as_str) {
+        Some("dir") => PickKind::Directory,
+        Some("multi") => PickKind::MultiFile,
+        _ => PickKind::File,
+    };
+    let mode = options.get("mode").and_then(Value::as_str).unwrap_or("");
+    let (start, start_notice) =
+        crate::native_file_dialog::normalize_start(options.get("start").and_then(Value::as_str));
+    let request = PickRequest {
+        title: if title.is_empty() { "选择位置".to_owned() } else { title },
+        kind,
+        extensions: browse_extensions(mode),
+        start,
+    };
+    let outcome = crate::native_file_dialog::pick(request).await;
+    // 克隆后合并：outcome 仍需整体借用序列化；起始路径提示与诊断可并存。
+    let message = outcome.message.clone().or(start_notice);
+    if let Some(text) = &message {
+        // 诊断写入运行日志但不改变业务状态，便于事后定位原生能力问题。
+        let mut ui = state.lock();
+        push_log(&mut ui.value, format!("文件选择：{text}"));
+    }
+    let mut value = crate::native_file_dialog::outcome_to_value(&outcome);
+    if let Some(text) = message {
+        value["message"] = json!(text);
+    }
+    Ok(value)
+}
+
 fn choose_folder(state: &AppState, args: &[Value]) -> std::result::Result<Value, ApiError> {
     let field = arg_string(args, 0)
         .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "choose_folder 缺少路径类型"))?;
@@ -1500,6 +1558,8 @@ fn choose_history_config(state: &AppState, args: &[Value]) -> std::result::Resul
     }
     ui.value["historyConfig"] = json!(value);
     push_log(&mut ui.value, "已选择逐笔统计系统历史审核配置".to_owned());
+    drop(ui);
+    persist_state_preferences(state)?;
     Ok(json!(value))
 }
 
@@ -3291,6 +3351,24 @@ fn execute_s1_f1_workflow(
     let session_initialization_started = Instant::now();
     let mut recalculation_session = if cfg!(windows) {
         Some(S1RecalculationSession::new_native(&request.calc_engine)?)
+    } else if matches!(request.calc_engine.as_str(), "auto" | "lo") {
+        // Linux：一个审核批次创建一个由 sidecar 拥有的隔离 LibreOffice 会话
+        // （rules/13 §4.5），逐本打开/重算/保存/关闭；创建失败时保持旧的
+        // 逐本 sidecar 路径作为有界回退。
+        match request
+            .sidecar_path
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("缺少公式重算 sidecar"))
+            .and_then(|sidecar| S1RecalculationSession::new(sidecar, &request.calc_engine))
+        {
+            Ok(session) => Some(session),
+            Err(error) => {
+                eprintln!(
+                    "S1-F01 Linux 公式重算会话创建失败，回退逐本 sidecar 路径：{error:#}"
+                );
+                None
+            }
+        }
     } else {
         None
     };
@@ -4452,8 +4530,10 @@ fn choose_central(state: &AppState, args: &[Value]) -> std::result::Result<Value
         "centralFormOutput" => ui.value["centralFormOutputAuto"] = json!(false),
         _ => {}
     }
-    push_log(&mut ui.value, format!("S3 路径已选择：{field}"));
-    Ok(ui.value[field].clone())
+    drop(ui);
+    push_log_for_state(state, &format!("S3 路径已选择：{field}"));
+    persist_state_preferences(state)?;
+    Ok(state.lock().value[field].clone())
 }
 
 fn start_central_comparison(state: &AppState) -> std::result::Result<Value, ApiError> {
@@ -5128,6 +5208,50 @@ fn run_s3_explanation_feedback_worker(
             );
         }
     }
+}
+
+/// 在不持有外部锁保护的前提下向状态日志追加一条消息（内部短暂加锁）。
+fn push_log_for_state(state: &AppState, message: &str) {
+    let mut ui = state.lock();
+    push_log(&mut ui.value, message.to_owned());
+}
+
+/// 将当前状态中的用户偏好与路径快照写入用户级设置文件。
+/// 供 choose_*/update 等改状态入口在成功后调用；失败时返回明确错误，
+/// 由前端提示，不静默丢弃用户选择。
+/// 注意：调用方必须已释放 `state.lock()` 守卫（本函数内部会重新加锁）。
+fn persist_state_preferences(state: &AppState) -> std::result::Result<(), ApiError> {
+    let (calc_engine, edit_engine, snapshot) = {
+        let ui = state.lock();
+        (
+            ui.value["advancedSettings"]["calcEngine"]
+                .as_str()
+                .unwrap_or("auto")
+                .to_owned(),
+            ui.value["advancedSettings"]["editEngine"]
+                .as_str()
+                .unwrap_or("umya")
+                .to_owned(),
+            ui.value.clone(),
+        )
+    };
+    let preferences: std::collections::BTreeMap<String, Value> = snapshot
+        .as_object()
+        .map(|object| {
+            object
+                .iter()
+                .filter(|(key, _)| crate::app_settings::preference_spec(key).is_some())
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect()
+        })
+        .unwrap_or_default();
+    crate::app_settings::AppSettings::store_preferences(
+        &calc_engine,
+        &edit_engine,
+        preferences,
+    )
+    .map(|_| ())
+    .map_err(|error| ApiError::internal(format!("保存用户设置失败：{error:#}")))
 }
 
 fn s3_production_modifier(feature: &str) -> std::result::Result<ExcelModifier, ApiError> {
@@ -6083,6 +6207,7 @@ fn choose_period_compare(state: &AppState, args: &[Value]) -> std::result::Resul
     if kind == "pcConfig" {
         let _ = check_period_audit_config(state)?;
     }
+    persist_state_preferences(state)?;
     Ok(chosen)
 }
 
@@ -6579,13 +6704,18 @@ fn update_state(state: &AppState, args: &[Value]) -> std::result::Result<Value, 
                 }
                 ui.value[key] = value.clone();
             }
-            "filePickerMode" if value.as_str() == Some("浏览器内置") => {
+            "filePickerMode"
+                if matches!(
+                    value.as_str(),
+                    Some("自动") | Some("系统原生") | Some("浏览器内置")
+                ) =>
+            {
                 ui.value[key] = value.clone();
             }
             "filePickerMode" => {
                 return Err(ApiError::new(
-                    StatusCode::NOT_IMPLEMENTED,
-                    "Rust Web 版当前只支持浏览器内置文件选择器",
+                    StatusCode::BAD_REQUEST,
+                    "文件/目录选择方式必须是：自动、系统原生 或 浏览器内置",
                 ));
             }
             "advancedSettings" => {
@@ -6645,6 +6775,41 @@ fn update_state(state: &AppState, args: &[Value]) -> std::result::Result<Value, 
                 ));
             }
         }
+    }
+    // 本轮更新涉及用户偏好（白名单键）时，把最终状态整体快照持久化；
+    // 失败时明确报错，不静默丢弃用户修改。此处持有 ui 守卫，因此直接
+    // 以 ui.value 构建快照，不得改调内部会重新加锁的 persist_state_preferences。
+    let touches_preferences = updates
+        .keys()
+        .any(|key| crate::app_settings::preference_spec(key).is_some());
+    if touches_preferences {
+        let calc_engine = ui.value["advancedSettings"]["calcEngine"]
+            .as_str()
+            .unwrap_or("auto")
+            .to_owned();
+        let edit_engine = ui.value["advancedSettings"]["editEngine"]
+            .as_str()
+            .unwrap_or("umya")
+            .to_owned();
+        let preferences: std::collections::BTreeMap<String, Value> = ui
+            .value
+            .as_object()
+            .map(|object| {
+                object
+                    .iter()
+                    .filter(|(key, _)| crate::app_settings::preference_spec(key).is_some())
+                    .map(|(key, value)| (key.clone(), value.clone()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        crate::app_settings::AppSettings::store_preferences(
+            &calc_engine,
+            &edit_engine,
+            preferences,
+        )
+        .map_err(|error| {
+            ApiError::internal(format!("保存用户设置失败：{error:#}"))
+        })?;
     }
     let input = ui.value["input"].as_str().unwrap_or_default().to_owned();
     if let Some(pinned) = updates.get("outputPinned").and_then(Value::as_bool) {
@@ -8370,7 +8535,8 @@ mod tests {
         assert!(super::ORIGINAL_HTML.contains("bridge.api.start_central_comparison()"));
         assert!(super::ORIGINAL_HTML.contains("bridge.api.start_central_explanation_export()"));
         assert!(
-            super::ORIGINAL_HTML.contains("bridge.api.import_central_explanation_feedback(paths)")
+            super::ORIGINAL_HTML
+                .contains("bridge.api.import_central_explanation_feedback(picked.paths)")
         );
         assert!(super::ORIGINAL_HTML.contains("bridge.api.start_central_indicator_split()"));
         assert!(super::ORIGINAL_HTML.contains("bridge.api.start_central_cross_period()"));
@@ -9124,7 +9290,7 @@ mod tests {
         let value = state.get_state();
         assert_eq!(value["distributionProfile"], "s1s2");
         assert!(value["pcConfig"].is_string());
-        assert_eq!(value["filePickerMode"], "浏览器内置");
+        assert_eq!(value["filePickerMode"], "自动");
         assert_eq!(value["busy"], false);
         assert_eq!(value["template"], "");
     }

@@ -774,10 +774,6 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 10h1M14 10h1M9 14h1M14 14h1M10 21v-3h4v3"/></svg>
     S4 地金系统
   </button>
-  <button type="button" class="sidenav-item" data-page="configured" data-system="S5" onclick="openS5Workbench()" title="S5 逐笔统计系统（配置版）">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8h10M7 12h10M7 16h6"/></svg>
-    <span>S5 逐笔统计系统<br><small>（配置版）</small></span>
-  </button>
   <button type="button" class="sidenav-item" data-page="settings" onclick="openSettingsWorkbench()" title="设置中心">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1.51 1 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     设置中心
@@ -1442,9 +1438,33 @@ async function sync(){const o=values();delete o.output;await bridge.api.update(o
    select 取 'dir'、'file' 或 'multi'；mode 为后端扩展名过滤（excel/data/config）。
    确定后经 onPick(paths) 回调，由调用方走 choose 系列接口或 update 提交。 */
 const BROWSE={path:'',parent:'',selection:new Set(),select:'dir',onPick:null};
-function usesBrowserPathPicker(){
-  return !!(window.bridge&&bridge.api&&typeof bridge.api.browse_dir==='function'
-    &&state&&state.filePickerMode==='浏览器内置');
+async function pickPathSmart(options){
+  /* 公共选择器入口：系统原生优先（Windows=IFileOpenDialog；Linux=XDG Portal），
+     页面内目录浏览器固定兜底，逻辑集中于此，业务入口不得各自复制。 */
+  const mode=(state&&state.filePickerMode)||'自动';
+  if(mode!=='浏览器内置'){
+    try{
+      const result=await bridge.api.pick_paths({
+        title:options.title||'选择位置',
+        select:options.select||'file',
+        mode:options.mode||'',
+        start:options.start||''
+      });
+      if(result&&result.canceled)return {status:'canceled',paths:[]};
+      if(result&&result.paths&&result.paths.length)return {status:'picked',paths:result.paths};
+      showToast('系统原生选择器不可用，已改用页面内选择器'+((result&&result.message)?'：'+result.message:''));
+    }catch(e){
+      showToast('系统原生选择器不可用，已改用页面内选择器：'+((e&&e.message)?e.message:String(e)));
+    }
+  }
+  const paths=await pickPathViaBrowser(options);
+  return {status:paths.length?'picked':'canceled',paths};
+}
+async function setFilePickerMode(value){
+  try{ await bridge.api.update({filePickerMode:value}); }
+  catch(e){ showToast('文件选择方式未保存：'+((e&&e.message)?e.message:String(e))); return; }
+  if(state)state.filePickerMode=value;
+  showToast('文件/目录选择方式：'+value);
 }
 function closeBrowse(){
   document.getElementById('browseMask').classList.remove('open');
@@ -1529,29 +1549,17 @@ function pickPathViaBrowser(options){
 async function pick(f,t){
   await sync();
   const isFolder=t==='folder';
-  // 桌面外壳保留系统原生文件对话框；只有 Flask 浏览器外壳使用页面内目录浏览。
-  if(!usesBrowserPathPicker()){
-    const v=isFolder?await bridge.api.choose_folder(f):await bridge.api.choose_file(f);
-    if(v){
-      state[f]=v;
-      const o=values();
-      if(f!=='output')delete o.output;
-      await bridge.api.update(o);
-    }
-    await refresh();
-    return;
-  }
-  const start=state[f]||'';
-  // 浏览器选择器仅允许当前 S1 链路支持的 OOXML 工作簿；旧版 .xls 不在此入口支持范围内。
+  // 自动=原生优先（Windows 原生对话框/Linux 门户），页面内目录浏览器兜底；
+  // 两条路径的选择结果都先经 choose_folder/choose_file 后端校验再更新状态。
   const PICK_MODES={template:'excel_ooxml',external:'excel_ooxml',historyConfig:'excel_ooxml'};
   const mode=!isFolder?PICK_MODES[f]||'':'';
-  const paths=await pickPathViaBrowser({
+  const picked=await pickPathSmart({
     title:isFolder?'选择目录':'选择文件',
     select:isFolder?'dir':'file',
     mode,
-    start,
+    start:state[f]||'',
   });
-  const v=paths[0];
+  const v=picked.paths[0];
   if(!v)return;
   if(isFolder)await bridge.api.choose_folder(f,v);
   else await bridge.api.choose_file(f,v);
@@ -1562,16 +1570,10 @@ async function pick(f,t){
   await refresh();
 }
 async function pickHistoryConfig(){
-  if(!usesBrowserPathPicker()){
-    await bridge.api.choose_history_config();
-    await refresh();
-    return;
-  }
-  const start=state.historyConfig||'';
-  const paths=await pickPathViaBrowser({
-    title:'选择逐笔统计系统配置', select:'file', mode:'excel_ooxml', start,
+  const picked=await pickPathSmart({
+    title:'选择逐笔统计系统配置', select:'file', mode:'excel_ooxml', start:state.historyConfig||'',
   });
-  if(paths[0])await bridge.api.choose_history_config(paths[0]);
+  if(picked.paths[0])await bridge.api.choose_history_config(picked.paths[0]);
   await refresh();
 }
 function appendPathClear(box,field){
@@ -1912,25 +1914,12 @@ async function loadSettingsData(){
   CFG.dirty=false;CFG.saving=false;
   CFG.selModule=-1;CFG.selFlow=null;CFG.selStep=-1;CFG.emptyFlows=[];CFG.origCombinePlanId='';
   hideSettingsFeedback();
-  try{
-    const data=await bridge.api.get_dag_editor_data();
-    DAG_EDITOR.data=data;
-    CFG.data=data;
-    CFG.draft={
-      customModules:draftModulesFrom(data),
-      customFlows:deepCopy([].concat(data.defaultFlows||[],data.customFlows||[])),
-      flowDisplay:deepCopy(data.flowDisplay||{}),
-      combineSheetsPlans:combinePlanDrafts(data.combineSheetsPlans),
-      activeCombineSheetsPlanId:String(data.activeCombineSheetsPlanId||'')
-    };
-    CFG.origCombinePlanId=CFG.draft.activeCombineSheetsPlanId;
-    CFG.tab='general';
-    setSettingsTab('general');
-  }catch(e){
-    CFG.data=null;
-    const pane=document.getElementById('settingsPane');
-    pane.innerHTML='<div class="inspector-empty">读取设置失败：'+esc((e&&e.message)?e.message:String(e))+'</div>';
-  }
+  /* 常规与高级设置直接读取后端状态（修改即即时保存）；组合工作表（S1-F3/F4）
+     业务暂缓，该页保留为准确的静态说明，不再要求 DAG 编辑器接口。 */
+  CFG.data={combineDeferred:true};
+  CFG.draft={customModules:[],customFlows:[],flowDisplay:{},combineSheetsPlans:[],activeCombineSheetsPlanId:''};
+  CFG.tab='general';
+  setSettingsTab('general');
 }
 function closeSettings(force){
   if(!force&&CFG.dirty){askDiscardSettings('audit');return}
@@ -2076,8 +2065,11 @@ const DAG_TYPE_LABELS={FILE:'文件',FILE_SET:'文件集合',METADATA:'配置数
 function dagPortLabel(name){return DAG_PORT_LABELS[name]||name}
 function dagTypeLabel(name){return DAG_TYPE_LABELS[name]||name}
 async function loadDagStudioData(){
+  /* get_dag_editor_data 接口未在 Rust 后端实现（DAG 编辑器随组合工作表业务
+     暂缓）；调用失败时返回空数据，保证相关页面以空态呈现而不报错。 */
   if(DAG_EDITOR.data)return DAG_EDITOR.data;
-  DAG_EDITOR.data=await bridge.api.get_dag_editor_data();
+  try{DAG_EDITOR.data=await bridge.api.get_dag_editor_data();}
+  catch(e){DAG_EDITOR.data={modules:[],functions:[],defaultFlows:[],customFlows:[],workflows:[],auditProfile:null,flowDisplay:{},combineSheetsPlans:[],activeCombineSheetsPlanId:'',mappingHeaders:[]};}
   return DAG_EDITOR.data;
 }
 function dagPortsHtml(module){
@@ -2108,15 +2100,6 @@ async function renderDagFunctionConfig(){
     const flow=flows.find(f=>f.workflowId===DAG_EDITOR.configFlowId)||flows[0],byId=Object.fromEntries((data.modules||[]).map(m=>[m.moduleId,m]));
     pane.innerHTML='<div class="studio-head"><div><h3 class="studio-title">功能配置</h3><p class="studio-desc">这里的“功能”是 DAG 中的节点实例。常用流程由内置配置自动组合；自定义 DAG 请在专家模式复制后编辑。</p></div></div><div class="gen-card"><div class="gen-row"><div class="gen-row-left"><div class="gen-row-name">选择流程</div><div class="gen-row-desc">内置流程只读，保证已验收业务口径稳定。</div></div><div class="gen-row-right"><select class="gen-select" onchange="DAG_EDITOR.configFlowId=this.value;renderDagFunctionConfig()">'+flows.map(f=>'<option value="'+esc(f.workflowId)+'"'+(f===flow?' selected':'')+'>'+esc(f.name)+'</option>').join('')+'</select></div></div></div><div class="detail-browser"><aside class="browser-list-panel"><div class="studio-panel-head"><b>节点配置</b><span>'+((flow.nodes||[]).length)+' 个</span></div><div class="browser-list-body">'+(flow.nodes||[]).map(n=>'<div class="browser-item"><b>'+esc(n.displayName||n.nodeId)+'</b><br><small>'+esc(byId[n.moduleId]&&byId[n.moduleId].name||n.moduleId)+'</small></div>').join('')+'</div></aside><section class="browser-detail-panel"><div class="browser-detail-content"><h4>自动组合规则</h4><p class="module-help-desc">修改节点会自动生成下一版审核副本；检查节点只产出问题或报告；汇总节点接收明确的问题集。普通模式不显示英文端口、不允许手工填写“输入/输出”。</p><h4>本流程的端口连接</h4>'+dagEdgesHtml(flow)+'</div></section></div>';
   }catch(e){pane.innerHTML='<div class="inspector-empty">读取 DAG 节点配置失败：'+esc(e.message||String(e))+'</div>'}
-}
-async function renderDagFlowComposer(){
-  const pane=document.getElementById('settingsPane');pane.innerHTML='<div class="settings-loading"><span class="spin"></span><p>正在读取 DAG 流程…</p></div>';
-  try{
-    const data=await loadDagStudioData(),flows=data.workflows||[];
-    if(!DAG_EDITOR.flowId)DAG_EDITOR.flowId=flows[0]&&flows[0].workflowId;
-    const flow=flows.find(f=>f.workflowId===DAG_EDITOR.flowId)||flows[0];
-    pane.innerHTML='<div class="studio-head"><div><h3 class="studio-title">流程编排</h3><p class="studio-desc">常用 DAG 已按验收流程固定。自定义 DAG 会保存为独立流程，不会改写旧线性配置。</p></div><div class="studio-actions"><button class="btn tiny" onclick="setSettingsTab(\'dag\')">打开专家模式</button></div></div><div class="gen-card"><div class="gen-row"><div class="gen-row-left"><div class="gen-row-name">当前流程</div><div class="gen-row-desc">查看节点顺序与自动连接关系。</div></div><div class="gen-row-right"><select class="gen-select" onchange="DAG_EDITOR.flowId=this.value;renderDagFlowComposer()">'+flows.map(f=>'<option value="'+esc(f.workflowId)+'"'+(f===flow?' selected':'')+'>'+esc(f.name)+'</option>').join('')+'</select></div></div></div><div class="detail-browser"><aside class="browser-list-panel"><div class="studio-panel-head"><b>流程节点</b><span>'+((flow.nodes||[]).length)+' 个</span></div><div class="browser-list-body">'+(flow.nodes||[]).map((n,i)=>'<div class="browser-item"><b>'+(i+1)+'. '+esc(n.displayName||n.nodeId)+'</b></div>').join('')+'</div></aside><section class="browser-detail-panel"><div class="browser-detail-content"><h4>数据流</h4>'+dagEdgesHtml(flow)+'<div class="module-help"><p class="module-help-title">自定义 DAG</p><p class="module-help-desc">自定义流程目前保持隐藏：请在“DAG 专家模式”复制内置流程、校验后保存。它与旧流程配置完全分离。</p></div></div></section></div>';
-  }catch(e){pane.innerHTML='<div class="inspector-empty">读取 DAG 流程失败：'+esc(e.message||String(e))+'</div>'}
 }
 
 /* ---- DAG 专家模式：端口化 JSON 图编辑。普通流程不再填写前序功能名。 ---- */
@@ -2260,8 +2243,12 @@ async function renderUpdates(){
       renderFaqList(body);
     }
   }catch(e){
+    /* Rust 版尚未实现 get_update_log/get_faq 接口：按子页给出准确的
+       静态说明，不显示原始接口错误。 */
     body.className='inspector-empty';
-    body.textContent='读取失败：'+(e&&e.message||e);
+    body.textContent=UPDATES_SUB==='log'
+      ?'Rust 版当前未随包分发更新日志；历史版本记录见随包文档。'
+      :'Rust 版常见问题内容整理中；使用问题可先参考“操作指引”页。';
   }
 }
 /* Linux 安装状态独立轮询；切换页签后不再改写页面，安装仍由后台完成。 */
@@ -2363,13 +2350,9 @@ async function pickLibreOfficeSource(folder){
   LO_INSTALL_PICKING=true;
   renderLibreOfficeInstall(LO_INSTALL);
   try{
-    let path='';
-    if(usesBrowserPathPicker()){
-      const paths=await pickPathViaBrowser({title:folder?'选择 LibreOffice DEBS 文件夹':'选择 LibreOffice Linux DEB .tar.gz 安装包',select:folder?'dir':'file',mode:folder?'':'libreoffice_archive',start:LO_INSTALL.source||''});
-      if(!paths.length)return;
-      path=paths[0];
-    }
-    LO_INSTALL=await bridge.api.choose_libreoffice_source(folder,path);
+    const picked=await pickPathSmart({title:folder?'选择 LibreOffice DEBS 文件夹':'选择 LibreOffice Linux DEB .tar.gz 安装包',select:folder?'dir':'file',mode:folder?'':'libreoffice_archive',start:LO_INSTALL.source||''});
+    if(!picked.paths.length)return;
+    LO_INSTALL=await bridge.api.choose_libreoffice_source(folder,picked.paths[0]);
   }catch(e){LO_INSTALL={...LO_INSTALL,message:'选择安装来源失败：'+(e&&e.message||e)}}
   finally{LO_INSTALL_PICKING=false;renderLibreOfficeInstall(LO_INSTALL)}
 }
@@ -2398,7 +2381,6 @@ async function kylinMaintenanceAction(action){
   catch(e){renderLibreOfficeInstall({...LO_INSTALL,message:'麒麟 V11 模式操作失败：'+(e&&e.message||e)})}
 }
 /* ---- S5 独立页面：共用样式、路径浏览与运行记录，独立表单状态 ---- */
-let s5EggClickTimes=[];
 let s5MaintenanceCurrentTool='';
 let s5MaintenanceVisible=false;
 let s5FileFilters={match:'',business:'',period:''};
@@ -2439,13 +2421,6 @@ function applyS5MaintenanceVisibility(){
   if(!unlocked){if(view)view.hidden=true;if(main)main.hidden=false;s5MaintenanceCurrentTool=''}
 }
 applyS5MaintenanceVisibility();
-function registerS5NavigationClick(){
-  const now=Date.now();s5EggClickTimes=s5EggClickTimes.filter(t=>now-t<2000);s5EggClickTimes.push(now);
-  if(s5EggClickTimes.length<5)return;
-  s5EggClickTimes=[];s5MaintenanceVisible=!s5MaintenanceVisible;const unlocked=s5MaintenanceUnlocked();
-  applyS5MaintenanceVisibility();
-  showToast(unlocked?'已显示 S5 配置维护工具':'已隐藏 S5 配置维护工具');
-}
 function openS5MaintenanceTool(tool){
   if(!s5MaintenanceUnlocked()){showToast('连续点击左侧 S5 导航 5 次以显示配置维护工具');return}
   const main=document.getElementById('s5-panel-f1'),view=document.getElementById('s5-maintenance-view');
@@ -2458,12 +2433,6 @@ function openS5MaintenanceTool(tool){
 function closeS5MaintenanceTool(){
   const main=document.getElementById('s5-panel-f1'),view=document.getElementById('s5-maintenance-view');
   if(main)main.hidden=false;if(view)view.hidden=true;s5MaintenanceCurrentTool='';
-}
-async function openS5Workbench(){
-  registerS5NavigationClick();
-  requestSystemNavigation('S5','configured');
-  if(!isSystemVisible('S5'))return;
-  await refresh();
 }
 function s5FormValues(){return {}}
 async function updateS5PreviousPeriod(value){
@@ -2482,14 +2451,10 @@ async function recognizeS5Template(){
 async function pickS5(field){
   if(state.busy)return;
   try{
-    let path='';
-    if(usesBrowserPathPicker()){
-      const folder=['input_dir','previous_dir','template_dir','output_dir'].includes(field);
-      const paths=await pickPathViaBrowser({title:'选择 S5 '+(folder?'目录':'文件'),select:folder?'dir':'file',mode:folder?'':'excel_ooxml',start:(state.s5||{})[field]||''});
-      if(!paths.length)return;
-      path=paths[0];
-    }
-    await bridge.api.choose_s5(field,path);
+    const folder=['input_dir','previous_dir','template_dir','output_dir'].includes(field);
+    const picked=await pickPathSmart({title:'选择 S5 '+(folder?'目录':'文件'),select:folder?'dir':'file',mode:folder?'':'excel_ooxml',start:(state.s5||{})[field]||''});
+    if(!picked.paths.length)return;
+    await bridge.api.choose_s5(field,picked.paths[0]);
     await refresh();
   }catch(e){showToast(e.message||String(e))}
 }
@@ -2586,15 +2551,10 @@ async function pickS5Maintenance(field){
   };
   const spec=map[field];if(!spec)return;
   try{
-    let chosen=[];
-    if(usesBrowserPathPicker()){
-      const current=(document.getElementById(spec.id).value||'').split(/\r?\n/)[0];
-      chosen=await pickPathViaBrowser({title:'选择输出目录',select:'dir',start:current||''});
-      if(!chosen.length)return;
-    }
-    const settings=usesBrowserPathPicker()
-      ?await bridge.api.choose_s5_maintenance(field,chosen)
-      :await bridge.api.choose_s5_maintenance(field);
+    const current=(document.getElementById(spec.id).value||'').split(/\r?\n/)[0];
+    const picked=await pickPathSmart({title:'选择输出目录',select:'dir',start:current||''});
+    if(!picked.paths.length)return;
+    const settings=await bridge.api.choose_s5_maintenance(field,picked.paths);
     const value=settings[spec.key];
     document.getElementById(spec.id).value=Array.isArray(value)?value.join('\n'):(value||'');
     await refresh();
@@ -2806,10 +2766,8 @@ function renderGeneral(){
   let html=''
     +group('交互')
     +card([
-      row('递归扫描深度','0 层=仅根目录；1 层=包含下一级文件夹，以此类推。',
-        '<select class="gen-select" id="setRecursiveDepth" onchange="setRecursiveDepth(this.value)">'
-        +'<option value="-1">最深处（默认）</option><option value="0">仅根目录（0 层）</option><option value="1">1 层</option><option value="2">2 层</option><option value="3">3 层</option><option value="4">4 层</option>'
-        +'</select>'),
+      row('递归扫描深度','<span class="cfg-warn">Rust 版当前固定按最深扫描；深度限制尚未接入。</span>',
+        '<select class="gen-select" disabled title="Rust 版当前固定按最深扫描；深度限制待接入"><option>最深处（默认）</option></select>'),
       row('执行前确认','点执行按钮先显示本次动作、输入、输出和文件摘要，确认后才开始运行。',toggle('setConfirmBeforeRun',!!s.confirmBeforeRun)),
       row('运行明细日志','开启后在页面显示已有的详细运行记录；关闭后仅显示简洁记录。',toggle('setShowRunDetailLogs',!!s.showRunDetailLogs)),
       row('导出运行日志 Excel','独立控制是否生成“流程名_运行日志_时间戳.xlsx”，不影响页面日志显示。',toggle('setExportRunLogs',!!s.exportRunLogs)),
@@ -2910,89 +2868,33 @@ function renderAdvanced(){
     +envSubgroup('deps','运行依赖',rowsEnvDeps)
     +'</div></div>';
   const rowsPicker=[
-    row('文件/目录选择方式','系统原生适合桌面外壳；Tk 依赖 python3-tk；浏览器内置支持粘贴路径。Flask 默认 Tk，桌面外壳默认系统原生。适用于全部功能的路径与文件选择弹窗。',
+    row('文件/目录选择方式','“自动”优先弹出系统原生对话框（Windows=系统文件对话框；Linux=桌面门户文件选择器），原生不可用时自动改用页面内目录浏览器并提示；“系统原生”仅用原生对话框；“浏览器内置”仅用页面内选择器。无论哪种方式，选择结果仍由后端按各业务规则校验。',
       '<select class="gen-select" id="setFilePickerMode" onchange="setFilePickerMode(this.value)">'
-      +'<option value="系统原生"'+(s.filePickerMode==='系统原生'?' selected':'')+(s.filePickerSystemNativeAvailable===false?' disabled title="Flask 浏览器外壳不提供系统原生对话框"':'')+'>系统原生（推荐桌面版）</option>'
-      +'<option value="Tk 对话框"'+(s.filePickerMode==='Tk 对话框'?' selected':'')+(s.filePickerTkAvailable===false?' disabled title="当前 Python 未安装 Tcl/Tk，请使用浏览器内置方式"':'')+'>Tk 对话框（推荐 Flask）</option>'
-      +'<option value="浏览器内置"'+(s.filePickerMode==='浏览器内置'?' selected':'')+'>浏览器内置（可粘贴路径）</option>'
+      +['自动','系统原生','浏览器内置'].map(function(item){
+        const label=item==='自动'?'自动（原生优先，页面内兜底）':item;
+        return '<option value="'+item+'"'+((s.filePickerMode||'自动')===item?' selected':'')+'>'+label+'</option>';
+      }).join('')
       +'</select>'),
   ].join('');
+  /* 旧 Python 管线的六个读写选项在 Rust 版为内置实现（Calamine 读取、
+     rust_xlsxwriter 写入、原生 COM 重算），不再提供可切换的空壳控件；
+     实际管线以“Rust 引擎（高级）”卡与本说明为准。 */
   const rowsAuditExcel=[
-    row('S1-F01 审核结果写入','仅影响新建的审核结果汇总工作簿；Rust 写入会保留工作表、表头样式、筛选、冻结及跳转到审核副本指定单元格的链接。自动模式优先 Rust xlsxwriter，缺少或写入失败时回退 OpenPyXL；不参与公式计算。',
-      '<select class="gen-select" id="setAuditResultWriter" onchange="setAuditResultWriter(this.value)">'
-      +'<option value="AUTO"'+(s.auditResultWriter==='AUTO'?' selected':'')+'>自动（Rust xlsxwriter 优先）</option>'
-      +(s.auditRustWriterAvailable||s.auditResultWriter==='RUST_XLSXWRITER'
-        ?'<option value="RUST_XLSXWRITER"'+(s.auditResultWriter==='RUST_XLSXWRITER'?' selected':'')+'>Rust xlsxwriter</option>'
-        :'<option value="RUST_XLSXWRITER" disabled>Rust xlsxwriter（当前程序未附带）</option>')
-      +'<option value="OPENPYXL"'+(s.auditResultWriter==='OPENPYXL'?' selected':'')+'>OpenPyXL（兼容）</option>'
-      +'</select>'),
-    row('公式校验复制方式','直接写入使用 zipfile、ElementTree 和 XML 文本处理复制公式、样式及合并信息；结构化模板还会通过 openpyxl 复制“审核规则”页。区域复制通过 Excel/WPS 接口执行。两种方式写入后仍需办公软件重算；Linux 固定使用 openpyxl 复制、LibreOffice 重算。',
-      nativePipeline?'<span>复制公式（openpyxl，固定）</span>':'<select class="gen-select" id="setFormulaRegionWriter" onchange="setFormulaRegionWriter(this.value)">'
-      +'<option value="DIRECT_OOXML"'+(s.formulaRegionWriter==='DIRECT_OOXML'?' selected':'')+'>直接写入（Python 标准库）</option>'
-      +'<option value="COM_RANGE"'+(s.formulaRegionWriter!=='DIRECT_OOXML'?' selected':'')+'>区域复制（Office）</option>'
-      +'</select>'),
-    row('外部文件添加方式','仅添加数据：使用 zipfile＋ElementTree 添加文本、数值和布尔值，不复制样式、批注、合并或图片，遇到公式等不支持内容会报错。复制工作表内容：使用 openpyxl 复制值、公式文本、基本样式、批注、合并及行列设置，不保证完整保留所有 Excel 对象。',
-      '<select class="gen-select" id="setExternalSheetWriter" onchange="setExternalSheetWriter(this.value)">'
-      +'<option value="DIRECT_OOXML"'+(s.externalSheetWriter!=='OPENPYXL'?' selected':'')+'>仅添加数据（Python 标准库）</option>'
-      +'<option value="OPENPYXL"'+(s.externalSheetWriter==='OPENPYXL'?' selected':'')+'>复制工作表内容（openpyxl）</option>'
-      +'</select>'),
-    row('汇总读取方式','读取已保存结果：使用 openpyxl 读取数据或公式缓存，不重新计算，缓存过期可能导致结果过期。Office 方式：Windows 通过 Excel/WPS 读取；Linux 由 LibreOffice 在临时副本上重算，再通过 openpyxl 读取。适用于汇总校验结果说明。',
-      '<select class="gen-select" id="setSummaryReadEngine" onchange="setSummaryReadEngine(this.value)">'
-      +summaryReaderOptions.map(function(item){return '<option value="'+esc(item.value)+'"'+(summaryReader===String(item.value)?' selected':'')+' title="'+esc(item.description||'')+'">'+esc(item.label||item.value)+'</option>';}).join('')
-      +'</select>'),
-    row('S1-F02 源数据读取器','只影响“汇总校验结果说明”的纯 Python 管线；模板命名区域、配置和 Office 公式缓存刷新不受影响。自动优先 Calamine，兼容失败回退 OpenPyXL；手动模式严格使用所选读取器。',
-      '<select class="gen-select" id="setSummarySourceReader" onchange="setSummarySourceReader(this.value)">'
-      +'<option value="AUTO"'+(s.summarySourceReader==='AUTO'?' selected':'')+'>自动（Calamine 优先）</option>'
-      +'<option value="CALAMINE"'+(s.summarySourceReader==='CALAMINE'?' selected':'')+'>Calamine（Rust）</option>'
-      +'<option value="OPENPYXL"'+(s.summarySourceReader==='OPENPYXL'?' selected':'')+'>OpenPyXL（兼容）</option>'
-      +'</select>'),
-    row('S1-F02 汇总结果写入','只影响新建汇总结果工作簿。自动模式在附带 Rust 写入器时优先 Rust xlsxwriter，否则使用 OpenPyXL；不用于编辑已有工作簿。',
-      '<select class="gen-select" id="setSummaryResultWriter" onchange="setSummaryResultWriter(this.value)">'
-      +'<option value="AUTO"'+(s.summaryResultWriter==='AUTO'?' selected':'')+'>自动（Rust xlsxwriter 优先）</option>'
-      +(s.summaryRustWriterAvailable||s.summaryResultWriter==='RUST_XLSXWRITER'
-        ?'<option value="RUST_XLSXWRITER"'+(s.summaryResultWriter==='RUST_XLSXWRITER'?' selected':'')+'>Rust xlsxwriter</option>'
-        :'<option value="RUST_XLSXWRITER" disabled>Rust xlsxwriter（当前程序未附带）</option>')
-      +'<option value="OPENPYXL"'+(s.summaryResultWriter==='OPENPYXL'?' selected':'')+'>OpenPyXL</option>'
-      +'</select>'),
+    row('审核结果写入','Rust 版内置 rust_xlsxwriter 写入：保留工作表、表头样式、筛选、冻结与审核副本跳转链接；不参与公式计算。','<span>Rust xlsxwriter（内置）</span>'),
+    row('公式重算','按“Rust 引擎（高级）”卡所选引擎执行真实重算；计算完成后独立校验公式缓存与结果可读性，未通过不发布。','<span>原生 COM / LibreOffice（按设置）</span>'),
+    row('条件格式','OOXML 规则求值：直接读取规则并在 Rust 内求值判定，不依赖 Office 渲染。','<span>OOXML 规则求值（内置）</span>'),
   ].join('');
   const rowsPeriodExcel=[
-    row('大集中数据读取方式','仅影响 S2-F01 外部大集中工作簿。自动模式优先使用 Calamine（Rust 原生读取），遇到不兼容时记录原因并回退 OpenPyXL；手动指定的引擎失败时会明确报错。普通报表/时序格式及机构参照读取规则不变。',
-      '<select class="gen-select" id="setPeriodExternalReader" onchange="setPeriodExternalReader(this.value)">'
-      +'<option value="AUTO"'+(s.periodExternalReader==='AUTO'?' selected':'')+'>自动（Calamine 优先）</option>'
-      +'<option value="CALAMINE"'+(s.periodExternalReader==='CALAMINE'?' selected':'')+'>Calamine（Rust）</option>'
-      +'<option value="OPENPYXL"'+(s.periodExternalReader==='OPENPYXL'?' selected':'')+'>OpenPyXL（兼容）</option>'
-      +'</select>'),
+    row('大集中数据读取方式','Rust 版内置 Calamine（Rust 原生 XLSX/CSV 读取），不依赖 Office；不兼容时记录原因并明确报错，不静默回退。','<span>Calamine（内置）</span>'),
   ].join('');
   const rowsCentralExcel=[
-    row('大集中导数读取方式','影响 S3-F01 两期比较和 S3-F04 本期数值核对的 XLSX 导数。自动模式优先使用 Calamine，读取失败时记录原因并回退 OpenPyXL；手动指定的引擎失败会明确报错。CSV 与 XLS 仍使用原读取方式。',
-      '<select class="gen-select" id="setCentralDataReader" onchange="setCentralDataReader(this.value)">'
-      +'<option value="AUTO"'+(s.centralDataReader==='AUTO'?' selected':'')+'>自动（Calamine 优先）</option>'
-      +'<option value="CALAMINE"'+(s.centralDataReader==='CALAMINE'?' selected':'')+'>Calamine（Rust）</option>'
-      +'<option value="OPENPYXL"'+(s.centralDataReader==='OPENPYXL'?' selected':'')+'>OpenPyXL（兼容）</option>'
-      +'</select>'),
-    row('比较结果写入方式','仅影响 S3-F01 新建比较结果工作簿。自动模式在附带 Rust 写入器时优先使用 Rust xlsxwriter，失败后安全回退 OpenPyXL；手动指定失败会明确报错。',
-      '<select class="gen-select" id="setCentralComparisonWriter" onchange="setCentralComparisonWriter(this.value)">'
-      +'<option value="AUTO"'+(s.centralComparisonWriter==='AUTO'?' selected':'')+'>自动（Rust xlsxwriter 优先）</option>'
-      +(s.centralRustWriterAvailable||s.centralComparisonWriter==='RUST_XLSXWRITER'
-        ?'<option value="RUST_XLSXWRITER"'+(s.centralComparisonWriter==='RUST_XLSXWRITER'?' selected':'')+'>Rust xlsxwriter</option>'
-        :'<option value="RUST_XLSXWRITER" disabled>Rust xlsxwriter（当前程序未附带）</option>')
-      +'<option value="OPENPYXL"'+(s.centralComparisonWriter==='OPENPYXL'?' selected':'')+'>OpenPyXL</option>'
-      +'</select>'),
+    row('大集中导数读取方式','Rust 版内置 Calamine 读取两期导数（CSV/XLSX/XLS）。','<span>Calamine（内置）</span>'),
+    row('比较结果写入方式','Rust 版内置 rust_xlsxwriter 写入比较结果工作簿。','<span>rust_xlsxwriter（内置）</span>'),
   ].join('');
+  /* 旧 Python 管线的“计算引擎/条件格式读取/判定”选项在 Rust 版为内置实现
+     （OOXML 规则求值；重算引擎见“Rust 引擎（高级）”卡），不再提供空壳控件。 */
   const rowsAuditCalc=[
-    row('计算引擎','自动模式会选择当前可用的计算引擎；不可用项不可选择。指定引擎后不再自动切换。适用于逐笔统计审核公式重算、检查模板公式与汇总的 Office 刷新。',
-      '<select class="gen-select" id="setEngine" onchange="setEngine(this.value)">'+engineOptions+'</select>'),
-    row('条件格式规则读取方式','直接读取使用 zipfile＋ElementTree 提取公式、作用区域、优先级和相关样式；工作簿读取使用 openpyxl 对象。此处只决定如何读规则，是否触发由“条件格式判定方式”决定。Linux 固定直接读取规则。',
-      nativePipeline?'<span>直接读取规则（Python 标准库，固定）</span>':'<select class="gen-select" id="setConditionalFormatReader" onchange="setConditionalFormatReader(this.value)">'
-      +'<option value="DIRECT_OOXML"'+(s.conditionalFormatRuleReader==='DIRECT_OOXML'?' selected':'')+'>直接读取规则（Python 标准库）</option>'
-      +'<option value="OPENPYXL"'+(s.conditionalFormatRuleReader==='OPENPYXL'?' selected':'')+'>通过工作簿读取规则（openpyxl）</option>'
-      +'</select>'),
-    row('条件格式判定方式','<span id="cfEvaluatorDesc"></span>',
-      '<select class="gen-select" id="setConditionalFormatEvaluator" onchange="setConditionalFormatEvaluator(this.value)">'
-      +'<option value="PYTHON"'+(s.conditionalFormatEvaluator==='PYTHON'?' selected':'')+'>Python 规则求值（推荐）</option>'
-      +'<option value="COM_EVALUATE"'+(s.conditionalFormatEvaluator==='COM_EVALUATE'?' selected':'')+'>Office 公式计算（兼容）</option>'
-      +'<option value="COM_DISPLAY"'+(s.conditionalFormatEvaluator==='COM_DISPLAY'?' selected':'')+'>Office 公式渲染（兼容）</option>'
-      +'</select>'),
+    row('条件格式判定方式','Rust 版内置 OOXML 规则求值：直接读取规则、在 Rust 内求值并判定触发，不依赖 Office 公式引擎或渲染。','<span>OOXML 规则求值（内置）</span>'),
   ].join('');
   const adv=s.advancedSettings||{};
   const rustCalcValue=String(adv.calcEngine||'auto');
@@ -3014,23 +2916,10 @@ function renderAdvanced(){
       '<select class="gen-select" id="setRustEditEngine" onchange="setRustEditEngine(this.value)">'+rustEditOptions+'</select>'),
   ].join('');
   const rowsCentralForm=[
-    row('生成文件方式','直接填充使用 zipfile、ElementTree 和 XML 文本处理修改金融表单模板，准备阶段可能配合 openpyxl；工作簿生成通过 openpyxl 对象填充数据、设置格式并保存。两种方式都不计算公式。适用于比较文件生成金融表单。',
-      '<select class="gen-select" id="setXlsxRenderMode" onchange="setXlsxRenderMode(this.value)">'
-      +'<option value="FAST_OOXML"'+(s.xlsxRenderMode!=='OPENPYXL'?' selected':'')+'>直接填充模板（Python 标准库）</option>'
-      +'<option value="OPENPYXL"'+(s.xlsxRenderMode==='OPENPYXL'?' selected':'')+'>通过工作簿生成（openpyxl）</option>'
-      +'</select>'),
+    row('生成文件方式','Rust 版由 Excel-Core 修改引擎（见“Rust 引擎（高级）”卡）填充并生成金融表单工作簿；不计算公式。','<span>Excel-Core 修改引擎（内置）</span>'),
   ].join('');
   const rowsCentralExpr=[
-    row('表达式处理方式','SBE 先代入引用再整体求值；LAE 保留 AST 惰性求值（IF/AND/OR 短路、AST 缓存）。适用于大集中执行比较与本期数值核对的表达式校验。',
-      '<select class="gen-select" id="setExpressionMode" onchange="setExpressionEvaluation(this.value,null)">'
-      +'<option value="SBE"'+(s.expressionEvaluationMode!=='LAE'?' selected':'')+'>SBE（字符串代入，推荐）</option>'
-      +'<option value="LAE"'+(s.expressionEvaluationMode==='LAE'?' selected':'')+'>LAE（惰性 AST）</option>'
-      +'</select>'),
-    row('表达式求值方式','Python 为跨平台内置求值；Office 自动路由：Windows Excel→WPS，UOS LibreOffice Calc（每条一次重算，适合验证）。适用于大集中执行比较与本期数值核对的表达式校验。',
-      '<select class="gen-select" id="setExpressionBackend" onchange="setExpressionEvaluation(null,this.value)">'
-      +'<option value="PYTHON"'+(s.expressionEvaluationBackend!=='OFFICE'?' selected':'')+'>Python 求值（推荐）</option>'
-      +'<option value="OFFICE"'+(s.expressionEvaluationBackend==='OFFICE'?' selected':'')+'>Office 求值（自动路由）</option>'
-      +'</select>'),
+    row('表达式求值','Rust 版内置代入求值：先代入指标引用再整体求值；不依赖 Office。','<span>Rust 内置求值（内置）</span>'),
     row('3.1 表达式规则语法','用于大集中统计系统执行比较的表达式规则。5段式读取「表达式校验」（机构/地区为规则级作用域列，主推）；兼容8段式读取「表达式校验（兼容）」。修改后下一次任务生效。',
       '<select class="gen-select" id="setCentralExpressionSchema" onchange="setCentralExpressionSchema(this.value)">'
       +'<option value="FIVE_SEGMENT_V1"'+(s.centralExpressionSchema!=='LEGACY_8'?' selected':'')+'>表达式校验（五段式，推荐）</option>'
@@ -3107,39 +2996,10 @@ function syncGeneralControls(){
   const busy=!!s.busy;
   const syncSel=(id,value)=>{const el=document.getElementById(id);if(el){el.value=String(value);if(el.selectedIndex<0)el.value=el.options[0]?el.options[0].value:'';el.disabled=busy}};
   const syncToggle=(id,on)=>{const el=document.getElementById(id);if(el){el.classList.toggle('on',!!on);el.setAttribute('aria-pressed',on?'true':'false');el.disabled=busy}};
-  syncSel('setRecursiveDepth',(s.recursiveDepth===undefined||s.recursiveDepth===null)?-1:s.recursiveDepth);
-  syncSel('setEngine',String(s.calculationEngine||'自动'));
-  syncSel('setSummaryReadEngine',String(s.summaryReadEngine||'纯 Python'));
-  syncSel('setSummarySourceReader',String(s.summarySourceReader||'AUTO'));
-  syncSel('setSummaryResultWriter',String(s.summaryResultWriter||'AUTO'));
-  syncSel('setAuditResultWriter',String(s.auditResultWriter||'AUTO'));
-  syncSel('setConditionalFormatReader',String(s.conditionalFormatRuleReader||'DIRECT_OOXML'));
-  syncSel('setFormulaRegionWriter',String(s.formulaRegionWriter||'DIRECT_OOXML'));
-  syncSel('setExternalSheetWriter',String(s.externalSheetWriter||'DIRECT_OOXML'));
-  syncSel('setCentralDataReader',String(s.centralDataReader||'AUTO'));
-  syncSel('setCentralComparisonWriter',String(s.centralComparisonWriter||'AUTO'));
-  syncSel('setConditionalFormatEvaluator',String(s.conditionalFormatEvaluator||'PYTHON'));
-  syncSel('setXlsxRenderMode',String(s.xlsxRenderMode||'FAST_OOXML'));
-  syncSel('setExpressionMode',String(s.expressionEvaluationMode||'SBE'));
-  syncSel('setExpressionBackend',String(s.expressionEvaluationBackend||'PYTHON'));
+  /* 仅同步仍然存在的可见控件；旧 Python 管线行已替换为内置说明，不再同步。 */
   syncSel('setCentralExpressionSchema',String(s.centralExpressionSchema||'FIVE_SEGMENT_V1'));
   syncSel('setUiTheme',String(s.uiTheme||'日间'));
-  syncSel('setFilePickerMode',String(s.filePickerMode||'系统原生'));
-  const cfEvaluatorSelect=document.getElementById('setConditionalFormatEvaluator');
-  if(cfEvaluatorSelect){
-    // 当前原生办公套件无法提供等价的条件格式显示读取，两个 Office
-    // 兼容模式仅在可用的 Windows Office 适配器下开放。
-    const comOption=cfEvaluatorSelect.querySelector('option[value="COM_EVALUATE"]');
-    const displayOption=cfEvaluatorSelect.querySelector('option[value="COM_DISPLAY"]');
-    if(comOption)comOption.disabled=s.conditionalFormatNativeAvailable===false;
-    if(displayOption)displayOption.disabled=s.conditionalFormatNativeAvailable===false;
-  }
-  const cfDesc=document.getElementById('cfEvaluatorDesc');
-  if(cfDesc){
-    cfDesc.textContent=String(s.conditionalFormatEvaluator)==='COM_DISPLAY'
-      ?'Office 读取单元格实际显示状态；此模式下规则读取仅用于规则描述和匹配，不参与触发判定。'
-      :'决定如何判断条件格式规则是否实际触发；规则由上方所选读取方式提供。';
-  }
+  syncSel('setFilePickerMode',String(s.filePickerMode||'自动'));
   syncToggle('setShowRunDetailLogs',!!s.showRunDetailLogs);
   syncToggle('setExportRunLogs',!!s.exportRunLogs);
   syncToggle('setShowPerformanceDiagnostics',!!s.showPerformanceDiagnostics);
@@ -3149,25 +3009,14 @@ function syncGeneralControls(){
 async function appendExtraFiles(){
   if(state&&state.busy)return;
   try{
-    if(usesBrowserPathPicker()){
-      const paths=await pickPathViaBrowser({title:'追加待处理文件',select:'multi',mode:'excel_ooxml',start:state.input||''});
-      if(paths.length)await bridge.api.append_extra_files(paths);
-    }else await bridge.api.append_extra_files();
+    const picked=await pickPathSmart({title:'追加待处理文件',select:'multi',mode:'excel_ooxml',start:state.input||''});
+    if(picked.paths.length)await bridge.api.append_extra_files(picked.paths);
   }catch(e){ alert('追加文件失败：'+((e&&e.message)?e.message:String(e))); }
   await refresh();
 }
 async function removeExtraFile(path){
   if(state&&state.busy)return;
   try{ await bridge.api.remove_extra_file(path); }catch(e){ alert('移除失败：'+((e&&e.message)?e.message:String(e))); }
-  await refresh();
-}
-async function setRecursiveDepth(value){
-  const depth=parseInt(value,10);
-  await bridge.api.update({recursiveDepth:isNaN(depth)?-1:depth});
-  await refresh();
-}
-async function setFilePickerMode(value){
-  await bridge.api.update({filePickerMode:value});
   await refresh();
 }
 async function setWriteFlowLogs(checked){
@@ -3198,24 +3047,9 @@ async function setShowPerformanceDiagnostics(checked){
 }
 async function setConfirmBeforeRun(checked){await bridge.api.update({confirmBeforeRun:checked});await refresh()}
 
-async function setExpressionEvaluation(modeValue,backendValue){
-  const payload={};
-  if(modeValue!==null&&modeValue!==undefined)payload.expressionEvaluationMode=modeValue;
-  if(backendValue!==null&&backendValue!==undefined)payload.expressionEvaluationBackend=backendValue;
-  try{ await bridge.api.update(payload); }
-  catch(e){ alert('切换表达式执行方式失败：'+((e&&e.message)?e.message:String(e))); }
-  await refresh();
-  if(CFG.tab==='general')renderGeneral();
-}
 async function setCentralExpressionSchema(value){
   try{ await bridge.api.update({centralExpressionSchema:value}); }
   catch(e){ alert('切换 3.1 表达式规则语法失败：'+((e&&e.message)?e.message:String(e))); }
-  await refresh();
-  if(CFG.tab==='general')renderGeneral();
-}
-async function setXlsxRenderMode(value){
-  try{ await bridge.api.update({xlsxRenderMode:value}); }
-  catch(e){ alert('切换生成文件方式失败：'+((e&&e.message)?e.message:String(e))); }
   await refresh();
   if(CFG.tab==='general')renderGeneral();
 }
@@ -3227,91 +3061,6 @@ async function setUiTheme(value){
     showToast('界面模式未保存：与后台服务失去连接，请重新启动审核工具');
   }
 }
-async function setConditionalFormatEvaluator(value){
-  if(state&&state.busy)return;
-  try{await bridge.api.update({conditionalFormatEvaluator:value})}
-  catch(e){ alert('切换条件格式判定方式失败：'+((e&&e.message)?e.message:String(e))); }
-  if(state)state.conditionalFormatEvaluator=value;
-}
-async function setConditionalFormatReader(value){
-  if(state&&state.busy)return;
-  try{await bridge.api.update({conditionalFormatRuleReader:value})}
-  catch(e){ alert('切换条件格式规则读取方式失败：'+((e&&e.message)?e.message:String(e))); }
-  if(state)state.conditionalFormatRuleReader=value;
-}
-async function setFormulaRegionWriter(value){
-  if(state&&state.busy)return;
-  try{await bridge.api.update({formulaRegionWriter:value})}
-  catch(e){ alert('切换公式校验复制方式失败：'+((e&&e.message)?e.message:String(e))); }
-  if(state)state.formulaRegionWriter=value;
-}
-async function setExternalSheetWriter(value){
-  if(state&&state.busy)return;
-  try{await bridge.api.update({externalSheetWriter:value})}
-  catch(e){ alert('切换外部文件添加方式失败：'+((e&&e.message)?e.message:String(e))); }
-  if(state)state.externalSheetWriter=value;
-}
-async function setPeriodExternalReader(value){
-  if(state&&state.busy)return;
-  try{
-    const next=await bridge.api.update({periodExternalReader:value});
-    if(next&&typeof next==='object')state=next;
-  }catch(e){
-    await refresh();
-    return;
-  }
-  if(CFG.tab==='advanced')renderAdvanced();
-}
-async function setCentralDataReader(value){
-  if(state&&state.busy)return;
-  try{
-    const next=await bridge.api.update({centralDataReader:value});
-    if(next&&typeof next==='object')state=next;
-  }catch(e){
-    await refresh();
-    return;
-  }
-  if(CFG.tab==='advanced')renderAdvanced();
-}
-async function setCentralComparisonWriter(value){
-  if(state&&state.busy)return;
-  try{
-    const next=await bridge.api.update({centralComparisonWriter:value});
-    if(next&&typeof next==='object')state=next;
-  }catch(e){
-    await refresh();
-    return;
-  }
-  if(CFG.tab==='advanced')renderAdvanced();
-}
-async function setEngine(value){
-  if(state&&state.busy)return;
-  try{await bridge.api.update({calculationEngine:value})}catch(e){}
-  if(state)state.calculationEngine=value;
-}
-async function setSummaryReadEngine(value){
-  if(state&&state.busy)return;
-  try{
-    const next=await bridge.api.update({summaryReadEngine:value});
-    if(next&&typeof next==='object')state=next;
-  }catch(e){
-    await refresh();
-    return;
-  }
-  renderGeneral();
-}
-async function setSummarySourceReader(value){
-  if(state&&state.busy)return;
-  try{const next=await bridge.api.update({summarySourceReader:value});if(next&&typeof next==='object')state=next;}
-  catch(e){await refresh();return;}
-  if(CFG.tab==='advanced')renderAdvanced();
-}
-async function setSummaryResultWriter(value){
-  if(state&&state.busy)return;
-  try{const next=await bridge.api.update({summaryResultWriter:value});if(next&&typeof next==='object')state=next;}
-  catch(e){await refresh();return;}
-  if(CFG.tab==='advanced')renderAdvanced();
-}
 async function setRustCalcEngine(value){
   if(state&&state.busy)return;
   try{const next=await bridge.api.update({advancedSettings:{calcEngine:value}});if(next&&typeof next==='object')state=next;}
@@ -3322,12 +3071,6 @@ async function setRustEditEngine(value){
   if(state&&state.busy)return;
   try{const next=await bridge.api.update({advancedSettings:{editEngine:value}});if(next&&typeof next==='object')state=next;}
   catch(e){await refresh();showToast(e&&e.message?e.message:String(e));return;}
-  if(CFG.tab==='advanced')renderAdvanced();
-}
-async function setAuditResultWriter(value){
-  if(state&&state.busy)return;
-  try{const next=await bridge.api.update({auditResultWriter:value});if(next&&typeof next==='object')state=next;}
-  catch(e){await refresh();return;}
   if(CFG.tab==='advanced')renderAdvanced();
 }
 /* ---- 模块说明：模块由代码实现，只读展示 ---- */
@@ -3770,28 +3513,9 @@ function deleteCombinePlan(){
 }
 /* ---- 保存 ---- */
 async function saveSettings(){
-  if(CFG.saving||(state&&state.busy))return;
-  CFG.saving=true;updateSaveBtn();
-  try{
-    const draft={customModules:CFG.draft.customModules,customFlows:CFG.draft.customFlows,flowDisplay:CFG.draft.flowDisplay,combineSheetsPlans:combinePlanDicts(CFG.draft.combineSheetsPlans),activeCombineSheetsPlanId:String(CFG.draft.activeCombineSheetsPlanId||'')};
-    const validation=await bridge.api.validate_config_editor_draft(draft);
-    if(!validation.valid){showSettingsErrors(validation.errors||['设置不合法']);return}
-    const saved=await bridge.api.save_config_editor_draft(draft);
-    if(!saved.ok){showSettingsErrors(saved.errors||['保存失败']);return}
-    if(saved.data)CFG.data=saved.data;
-    CFG.draft={customModules:draftModulesFrom(CFG.data),customFlows:deepCopy([].concat(CFG.data.defaultFlows||[],CFG.data.customFlows||[])),flowDisplay:deepCopy(CFG.data.flowDisplay||{}),combineSheetsPlans:combinePlanDrafts(CFG.data.combineSheetsPlans),activeCombineSheetsPlanId:String((CFG.data&&CFG.data.activeCombineSheetsPlanId)||'')};
-    CFG.origCombinePlanId=String((CFG.data&&CFG.data.activeCombineSheetsPlanId)||'');
-    CFG.emptyFlows=[];CFG.dirty=false;
-    const dirtyEl=document.getElementById('settingsDirty');if(dirtyEl)dirtyEl.hidden=true;
-    CFG.selModule=-1;CFG.selFlow=null;CFG.selStep=-1;
-    showSettingsStatus('设置已保存');
-    setSettingsTab(CFG.tab);
-    refresh();
-  }catch(e){
-    showSettingsErrors([(e&&e.message)?e.message:String(e)]);
-  }finally{
-    CFG.saving=false;updateSaveBtn();
-  }
+  /* 常规与高级设置在修改时即时保存（update → 用户设置 JSON）；本按钮保留
+     用于显式确认，不再调用已随 DAG 编辑器暂缓的草稿校验/保存接口。 */
+  showSettingsStatus('可见设置在修改时已即时保存，下次启动自动恢复。');
 }
 async function toggleOutputPin(){const v=!state.outputPinned;await bridge.api.update({outputPinned:v});await refresh()}
 async function togglePcOutputPin(){await bridge.api.toggle_period_output_pin();await refresh()}
@@ -3893,12 +3617,6 @@ function openCentralPath(key){
 }
 async function pickCentral(key){
   if(state&&state.busy)return;
-  if(!usesBrowserPathPicker()){
-    try{await bridge.api.choose_central(key);}
-    catch(e){alert('选择失败：'+((e&&e.message)?e.message:String(e)));}
-    await refresh();
-    return;
-  }
   const fileKinds={centralCur:'central_data',centralPre:'central_data',centralCrossCur:'central_data',centralCompareFile:'excel_ooxml',centralExplainFile:'excel_ooxml',centralCommonConfig:'config',centralComparisonConfig:'config',centralCrossConfig:'config',centralFormsConfig:'config'};
   const isFile=key in fileKinds;
   const titles={centralCur:'选择本期大集中导数文件（CSV/XLSX）',centralPre:'选择上期导数文件（CSV/XLSX）',centralCrossCur:'选择本期数值核对文件（CSV/XLSX/XLS）',
@@ -3906,13 +3624,13 @@ async function pickCentral(key){
     centralFormOutput:'选择转表输出目录',
     centralCommonConfig:'选择3.0大集中通用配置.xlsx',centralComparisonConfig:'选择3.1大集中执行比较_配置.xlsx',
     centralCrossConfig:'选择3.2大集中本期数值核对_配置.xlsx',centralFormsConfig:'选择3.3大集中指标比较拆分_配置.xlsx'};
-  const paths=await pickPathViaBrowser({
+  const picked=await pickPathSmart({
     title:titles[key]||'选择位置',
     select:isFile?'file':'dir',
     mode:isFile?fileKinds[key]:'',
     start:state[key]||state.input||'',
   });
-  const v=paths[0];
+  const v=picked.paths[0];
   if(v){
     try{ await bridge.api.choose_central(key,v); }
     catch(e){ alert("选择失败："+((e&&e.message)?e.message:String(e))); }
@@ -3981,10 +3699,8 @@ function runCentralExplanationExport(){
 async function runCentralExplanationImport(){
   if(!(state&&state.centralExplainFile)){alert("请先选择或导出：说明文件.xlsx");return}
   try{
-    if(usesBrowserPathPicker()){
-      const paths=await pickPathViaBrowser({title:'批量选择机构反馈说明文件',select:'multi',mode:'excel_ooxml',start:state.centralExplainFile});
-      if(paths.length)await bridge.api.import_central_explanation_feedback(paths);
-    }else await bridge.api.import_central_explanation_feedback();
+    const picked=await pickPathSmart({title:'批量选择机构反馈说明文件',select:'multi',mode:'excel_ooxml',start:state.centralExplainFile});
+    if(picked.paths.length)await bridge.api.import_central_explanation_feedback(picked.paths);
   }catch(e){alert("批量导入说明失败："+((e&&e.message)?e.message:String(e)));}
   await refresh();
 }
@@ -4336,19 +4052,13 @@ function createTemplateMerge(){
 }
 async function doCreateTemplateMerge(){
   try{
-    if(!usesBrowserPathPicker()){
-      // WebView 桌面版让后端连续唤起两次原生系统文件对话框。
-      await bridge.api.create_template_merge();
-      await refresh();
-      return;
-    }
-    // 两步选择改走浏览器目录浏览：先选基准模板，再多选并入模板。
+    // 两步选择：先选基准模板，再多选并入模板；原生优先，页面内兜底。
     const start=state.templateDir||'';
-    const base=await pickPathViaBrowser({title:'第 1 步/2：选择基准模板',select:'file',mode:'excel_ooxml',start});
-    if(!base[0]){alert('已取消制作联合模板：未选择底稿模板');return}
-    const picked=await pickPathViaBrowser({title:'第 2 步/2：批量选择要并入的模板',select:'multi',mode:'excel_ooxml',start:base[0]});
-    if(!picked.length){alert('已取消制作联合模板：未选择待复制工作簿');return}
-    await bridge.api.create_template_merge(base[0],picked);
+    const basePicked=await pickPathSmart({title:'第 1 步/2：选择基准模板',select:'file',mode:'excel_ooxml',start});
+    if(!basePicked.paths[0]){alert('已取消制作联合模板：未选择底稿模板');return}
+    const picked=await pickPathSmart({title:'第 2 步/2：批量选择要并入的模板',select:'multi',mode:'excel_ooxml',start:basePicked.paths[0]});
+    if(!picked.paths.length){alert('已取消制作联合模板：未选择待复制工作簿');return}
+    await bridge.api.create_template_merge(basePicked.paths[0],picked.paths);
   }catch(e){
     const msg=(e&&e.message)?e.message:String(e);
     alert('制作联合模板失败：'+msg);
@@ -4533,23 +4243,17 @@ function openPcPath(key){
 }
 async function pickPc(key){
   if(state&&state.busy)return;
-  if(!usesBrowserPathPicker()){
-    try{await bridge.api.choose_period_compare(key);}
-    catch(e){alert('选择失败：'+((e&&e.message)?e.message:String(e)));}
-    await refresh();
-    return;
-  }
   const fileKinds={pcCentral:'report_data',pcConfig:'excel_ooxml'};
   const isFile=key in fileKinds;
   const titles={pcCurDir:'选择当期（本期）数据目录',pcPreDir:'选择上期数据目录',
     pcCentral:'选择大集中数据文件',pcConfig:'选择跨期比较配置.xlsx',pcOutput:'选择输出目录'};
-  const paths=await pickPathViaBrowser({
+  const picked=await pickPathSmart({
     title:titles[key]||'选择位置',
     select:isFile?'file':'dir',
     mode:isFile?fileKinds[key]:'',
     start:state[key]||state.input||'',
   });
-  const v=paths[0];
+  const v=picked.paths[0];
   if(v){
     try{
       await bridge.api.choose_period_compare(key,v);
@@ -4960,10 +4664,6 @@ function dagBusinessConfigHtml(){
 function renderDagBusinessConfig(){
   const pane=document.getElementById('settingsPane');pane.innerHTML=dagBusinessConfigHtml();
 }
-async function renderDagFlowComposer(){
-  const pane=document.getElementById('settingsPane');pane.innerHTML='<div class="settings-loading"><span class="spin"></span><p>正在读取流程…</p></div>';
-  try{const data=await loadDagStudioData(),customs=(data.workflows||[]).filter(w=>String(w.workflowId||'').startsWith('custom:'));pane.innerHTML='<div class="studio-head"><div><h3 class="studio-title">流程编排</h3><p class="studio-desc">这里配置组合工作表：先设定分组方案，再为该方案创建可运行的流程。无需填写端口或 JSON。</p></div></div>'+dagBusinessConfigHtml()+'<div class="gen-card"><p class="gen-card-title">新建组合工作表流程</p><div class="gen-row"><div class="gen-row-left"><div class="gen-row-name">流程名称</div><div class="gen-row-desc">创建后显示在逐笔统计系统的自定义功能区。</div></div><div class="gen-row-right"><input class="gen-select" id="regularFlowName" value="自定义组合工作表"></div></div><div class="gen-row"><div class="gen-row-left"><div class="gen-row-name">使用方案</div><div class="gen-row-desc">流程运行时固定使用此方案，不会受之后切换当前方案影响。</div></div><div class="gen-row-right"><select class="gen-select" id="regularPlanId">'+dagPlanOptions(CFG.draft.activeCombineSheetsPlanId)+'</select></div></div><div class="inspector-actions"><button class="btn primary" onclick="createRegularCombineWorkflow()">创建流程</button></div></div><div class="gen-card"><p class="gen-card-title">已保存的组合工作表流程</p>'+(customs.length?customs.map(w=>'<div class="gen-row"><div class="gen-row-left"><div class="gen-row-name">'+esc(w.name)+'</div><div class="gen-row-desc">组合工作表 · '+esc(String((w.nodes&&w.nodes[0]&&w.nodes[0].parameters&&w.nodes[0].parameters.plan_id)||'当前方案'))+'</div></div><div class="gen-row-right"><button class="btn tiny primary" onclick="startDagFlow(\''+esc(w.workflowId)+'\')">运行</button><button class="btn tiny" onclick="openCustomDagEditor(\''+esc(w.workflowId)+'\')">高级编辑</button><button class="btn tiny danger" onclick="deleteRegularDagWorkflow(\''+esc(w.workflowId)+'\',\''+esc(w.name)+'\')">删除</button></div></div>').join(''):'<p class="module-help-hint">暂无自定义流程。</p>')+'</div>'}catch(e){pane.innerHTML='<div class="inspector-empty">读取流程失败：'+esc(e.message||String(e))+'</div>'}
-}
 async function createRegularCombineWorkflow(){const name=(document.getElementById('regularFlowName').value||'').trim();const planId=document.getElementById('regularPlanId').value;if(CFG.dirty){alert('分组方案有未保存的修改，请先点击“保存设置”后再创建流程。');return}if(!name){alert('请填写流程名称');return}const id='custom:'+Date.now();const payload={schemaVersion:'2',workflowId:id,name,version:'1',description:'普通编排创建：按已选分组方案组合工作表。',settings:{flow_name:name,template:'combine_sheets'},nodes:[{nodeId:'combine-sheets',moduleId:'excel.combine_sheets',displayName:'组合工作表',enabled:true,parameters:{flow_name:name,plan_id:planId},failurePolicy:'FAIL_WORKFLOW',outputPolicies:{},uiPosition:{}}],edges:[],inputBindings:[],outputBindings:[{name:'result',nodeId:'combine-sheets',port:'result'}]};const check=await bridge.api.validate_dag_workflow(payload);if(!check.valid){alert('流程校验失败：\n'+check.errors.join('\n'));return}const saved=await bridge.api.save_dag_workflow(payload);if(!saved.ok){alert('保存失败：\n'+saved.errors.join('\n'));return}showSettingsStatus('已创建流程：'+name);renderDagFlowComposer();if(auditExtrasUnlocked())renderDagExtras()}
 async function deleteRegularDagWorkflow(id,name){if(!confirm('确定删除自定义流程“'+name+'”？此操作不会删除已输出的 Excel 文件。'))return;const result=await bridge.api.delete_dag_workflow(id);if(!result.ok){alert('删除失败：'+((result.errors||[]).join('；')||'未知错误'));return}showSettingsStatus('已删除流程：'+name);await renderDagFlowComposer();if(auditExtrasUnlocked())renderDagExtras()}
 function expertCompatibleEdges(){const data=DAG_EDITOR.data||{},draft=DAG_EDITOR.draft||{},byId=Object.fromEntries((data.modules||[]).map(m=>[m.moduleId,m])),options=[];(draft.nodes||[]).forEach(a=>{const source=byId[a.moduleId]||{};(source.outputs||[]).forEach(out=>(draft.nodes||[]).forEach(b=>{if(a.nodeId===b.nodeId)return;const target=byId[b.moduleId]||{};(target.inputs||[]).forEach(input=>{if(out.type===input.type)options.push({a,out,b,input})})}))});return options}
@@ -5030,12 +4730,16 @@ function flowDesignerSetMode(mode){
   BUSINESS_FLOW_EDITOR.mode='normal';renderDagFlowComposer()
 }
 async function renderDagFlowComposer(){
-  BUSINESS_FLOW_EDITOR.mode='normal';
-  const pane=document.getElementById('settingsPane');pane.innerHTML='<div class="settings-loading"><span class="spin"></span><p>正在读取流程…</p></div>';
-  try{
-    await loadDagStudioData();
-    pane.innerHTML=dagBusinessConfigHtml();
-  }catch(e){pane.innerHTML='<div class="inspector-empty">读取流程失败：'+esc(e.message||String(e))+'</div>'}
+  const pane=document.getElementById('settingsPane');
+  pane.innerHTML='<div class="advanced-zone">'
+    +'<div class="gen-card"><p class="gen-card-title">组合工作表配置（暂缓）</p>'
+    +'<div class="gen-row"><div class="gen-row-left"><div class="gen-row-name">业务状态</div>'
+    +'<div class="gen-row-desc">组合工作表（S1-F3/F4）业务当前处于暂缓状态：分组方案与流程编排界面保留为说明页，不提供创建、运行或删除入口；相关审核流程未接入 Rust 后端。</div></div></div>'
+    +'<div class="gen-row"><div class="gen-row-left"><div class="gen-row-name">既有能力</div>'
+    +'<div class="gen-row-desc">逐笔统计系统的 S1-F1（汇总核查表校验）、S1-F2（汇总校验结果说明）与人工重算恢复已按独立功能提供，不依赖本页。</div></div></div>'
+    +'<div class="gen-row"><div class="gen-row-left"><div class="gen-row-name">后续计划</div>'
+    +'<div class="gen-row-desc">组合工作表业务恢复时间待定；恢复时本页将替换为方案与流程管理界面。</div></div></div>'
+    +'</div></div>';
 }
 function openCustomDagEditor(id){DAG_EDITOR.selected=id;DAG_EDITOR.draft=null;openSettingsWorkbench();setTimeout(()=>setSettingsTab('dag'),0)}
 async function renderDagModuleCatalog(){

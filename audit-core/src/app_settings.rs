@@ -15,9 +15,12 @@
 //! so test and acceptance runs stay isolated with the same env var. Missing
 //! or unreadable files fall back to defaults; saving is atomic.
 
-use anyhow::{Context, Result};
+use anyhow::{ensure, Context, Result};
 use serde::{Deserialize, Serialize};
-use std::{fs, path::PathBuf};
+use std::{
+    collections::BTreeMap,
+    fs, path::PathBuf,
+};
 
 pub const CALC_ENGINE_VALUES: [&str; 4] = ["auto", "excel", "wps", "libreoffice"];
 pub const EDIT_ENGINE_VALUES: [&str; 2] = ["umya", "openpyxl"];
@@ -116,10 +119,15 @@ impl EditEngine {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct AppSettings {
     pub calc_engine: CalcEngine,
     pub edit_engine: EditEngine,
+    /// 用户级偏好与最近选择（界面偏好、路径记忆）。按
+    /// [`PREFERENCE_SPECS`] 白名单读写：未知键保留（前向兼容）、
+    /// 类型不符的键在应用回状态时跳过、无效路径在应用回状态时清空。
+    #[serde(default)]
+    pub preferences: BTreeMap<String, serde_json::Value>,
 }
 
 impl Default for AppSettings {
@@ -127,6 +135,103 @@ impl Default for AppSettings {
         Self {
             calc_engine: CalcEngine::Auto,
             edit_engine: EditEngine::UmYa,
+            preferences: BTreeMap::new(),
+        }
+    }
+}
+
+/// 用户偏好键的白名单与校验类别。路径类字段在启动应用回状态时按
+/// 存在性校验：目录必须 is_dir、文件必须 is_file，无效时清空该字段
+/// （对应旧 Python 的跨平台路径清理语义），不影响其他字段与启动。
+pub enum PreferenceKind {
+    Directory,
+    File,
+    Boolean,
+    Enumeration(&'static [&'static str]),
+}
+
+pub struct PreferenceSpec {
+    pub key: &'static str,
+    pub kind: PreferenceKind,
+}
+
+macro_rules! preference_specs {
+    ($($key:literal => $kind:expr),* $(,)?) => {
+        &[$(PreferenceSpec { key: $key, kind: $kind }),*]
+    };
+}
+
+pub const PREFERENCE_SPECS: &[PreferenceSpec] = preference_specs! {
+    "input" => PreferenceKind::Directory,
+    "templateDir" => PreferenceKind::Directory,
+    "template" => PreferenceKind::File,
+    "external" => PreferenceKind::File,
+    "output" => PreferenceKind::Directory,
+    "outputPinned" => PreferenceKind::Boolean,
+    "historyConfig" => PreferenceKind::File,
+    "confirmBeforeRun" => PreferenceKind::Boolean,
+    "showRunDetailLogs" => PreferenceKind::Boolean,
+    "showPerformanceDiagnostics" => PreferenceKind::Boolean,
+    "exportRunLogs" => PreferenceKind::Boolean,
+    "uiTheme" => PreferenceKind::Enumeration(&["日间", "日间纯白", "夜间"]),
+    "filePickerMode" => {
+        PreferenceKind::Enumeration(&["自动", "系统原生", "浏览器内置"])
+    },
+    "uiAccent" => PreferenceKind::Enumeration(&[
+        "默认蓝", "青", "绿", "紫", "金", "橙", "玫", "靛",
+    ]),
+    "centralCommonConfig" => PreferenceKind::File,
+    "centralFormsConfig" => PreferenceKind::File,
+    "centralCompareFile" => PreferenceKind::File,
+    "centralExplainFile" => PreferenceKind::File,
+    "centralComparisonConfig" => PreferenceKind::File,
+    "centralCrossConfig" => PreferenceKind::File,
+    "centralCrossCur" => PreferenceKind::File,
+    "centralCur" => PreferenceKind::File,
+    "centralPre" => PreferenceKind::File,
+    "centralOutput" => PreferenceKind::Directory,
+    "centralFormOutput" => PreferenceKind::Directory,
+    "pcCurDir" => PreferenceKind::Directory,
+    "pcPreDir" => PreferenceKind::Directory,
+    "pcCentral" => PreferenceKind::File,
+    "pcConfig" => PreferenceKind::File,
+    "pcOutput" => PreferenceKind::Directory,
+};
+
+pub fn preference_spec(key: &str) -> Option<&'static PreferenceSpec> {
+    PREFERENCE_SPECS.iter().find(|spec| spec.key == key)
+}
+
+/// 校验一个偏好值是否符合其键的类别；返回标准化后的值。
+pub fn validate_preference(key: &str, value: &serde_json::Value) -> Result<serde_json::Value> {
+    let spec = preference_spec(key)
+        .with_context(|| format!("未知的用户设置键：{key}"))?;
+    match &spec.kind {
+        PreferenceKind::Boolean => {
+            ensure!(
+                value.is_boolean(),
+                "用户设置 {key} 必须是布尔值"
+            );
+            Ok(value.clone())
+        }
+        PreferenceKind::Directory | PreferenceKind::File => {
+            let text = value
+                .as_str()
+                .with_context(|| format!("用户设置 {key} 必须是字符串路径"))?
+                .trim()
+                .to_owned();
+            Ok(serde_json::Value::String(text))
+        }
+        PreferenceKind::Enumeration(allowed) => {
+            let text = value
+                .as_str()
+                .with_context(|| format!("用户设置 {key} 必须是字符串"))?;
+            ensure!(
+                allowed.contains(&text),
+                "用户设置 {key} 必须是以下之一：{}",
+                allowed.join("、")
+            );
+            Ok(serde_json::Value::String(text.to_owned()))
         }
     }
 }
@@ -154,7 +259,30 @@ impl AppSettings {
         let settings = Self {
             calc_engine: CalcEngine::parse(calc_engine)?,
             edit_engine: EditEngine::parse(edit_engine)?,
+            preferences: Self::load().preferences,
         };
+        Self::write(settings)
+    }
+
+    /// 校验并合并一批用户偏好（仅白名单键），与引擎选择一并原子写入。
+    pub fn store_preferences(
+        calc_engine: &str,
+        edit_engine: &str,
+        preferences: BTreeMap<String, serde_json::Value>,
+    ) -> Result<Self> {
+        let mut settings = Self {
+            calc_engine: CalcEngine::parse(calc_engine)?,
+            edit_engine: EditEngine::parse(edit_engine)?,
+            preferences: Self::load().preferences,
+        };
+        for (key, value) in &preferences {
+            let normalized = validate_preference(key, value)?;
+            settings.preferences.insert(key.clone(), normalized);
+        }
+        Self::write(settings)
+    }
+
+    fn write(settings: AppSettings) -> Result<AppSettings> {
         let path = Self::settings_path()?;
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)
@@ -173,6 +301,49 @@ impl AppSettings {
         Self::settings_path()
             .map(|path| path.display().to_string())
             .unwrap_or_else(|_| "状态目录不可用".to_owned())
+    }
+}
+
+/// 将持久化的偏好应用回 GUI 状态：
+/// - 布尔/枚举：类型与取值合法才覆盖；
+/// - 目录/文件：必须是非空字符串且路径存在，否则清空对应字段
+///   （跨平台路径无效时只清理该字段，不影响其他设置与启动）；
+/// - 未知键跳过（前向兼容）。
+pub fn apply_preferences_to_state(state: &mut serde_json::Value) {
+    let preferences = AppSettings::load().preferences;
+    let Some(state_object) = state.as_object_mut() else {
+        return;
+    };
+    for (key, value) in &preferences {
+        let Some(spec) = preference_spec(key) else {
+            continue;
+        };
+        match &spec.kind {
+            PreferenceKind::Boolean => {
+                if value.is_boolean() {
+                    state_object.insert(key.clone(), value.clone());
+                }
+            }
+            PreferenceKind::Directory | PreferenceKind::File => {
+                let Some(text) = value.as_str() else {
+                    continue;
+                };
+                let trimmed = text.trim();
+                let path = PathBuf::from(trimmed);
+                let valid = !trimmed.is_empty() && path.exists();
+                state_object.insert(
+                    key.clone(),
+                    serde_json::Value::String(if valid { trimmed.to_owned() } else { String::new() }),
+                );
+            }
+            PreferenceKind::Enumeration(allowed) => {
+                if let Some(text) = value.as_str() {
+                    if allowed.contains(&text) {
+                        state_object.insert(key.clone(), serde_json::Value::String(text.to_owned()));
+                    }
+                }
+            }
+        }
     }
 }
 

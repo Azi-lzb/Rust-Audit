@@ -16,6 +16,7 @@ pub mod discovery;
 pub mod excel_route;
 pub mod models;
 pub mod name_config;
+pub mod native_file_dialog;
 #[cfg(windows)]
 pub mod native_office_com;
 #[cfg(windows)]

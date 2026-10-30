@@ -15,6 +15,9 @@ license = "MIT"
 
 [workspace.dependencies]
 anyhow = "1"
+# Linux 原生文件选择器：XDG Desktop Portal（zbus 纯 Rust D-Bus，不引入
+# libdbus/GTK 系统依赖）；仅 audit-core 的 Linux 目标启用。
+ashpd = { version = "0.13", default-features = false, features = ["file_chooser", "tokio"] }
 axum = "0.8"
 calamine = "=0.37.0"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
@@ -29,8 +32,11 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha1 = "0.10"
 sha2 = "0.10"
-tokio = { version = "1", features = ["macros", "net", "rt-multi-thread"] }
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "time"] }
 umya-spreadsheet = "=3.1.1"
+# Windows 原生文件选择器：IFileOpenDialog（COM）；default-features=false
+# 以排除 Linux 门户/wayland 依赖，Windows 目标只编译 win32 后端。
+rfd = { version = "0.17", default-features = false }
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Storage_FileSystem",

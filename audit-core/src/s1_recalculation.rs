@@ -615,6 +615,114 @@ pub fn validate_s1_formula_cache_mode(
     Ok(())
 }
 
+/// Linux 批次重算：一次 sidecar 调用（`recalculate-batch`）顺序处理整批
+/// 工作簿——单次 LibreOffice 启动完成全部转换（rules/13 §4.5 的批次会话
+/// 复用）。每本的公式缓存清理、重算标记、规范化、验证与不覆盖发布均在
+/// sidecar 内完成；父级随后对本批成功项再执行 `validate_recalculated_copy`
+/// 复核，保证检查不因批量化而减少。返回与 pairs 等长的结果数组：成功项
+/// 为 Some(报告)，失败项为 None（由调用方决定逐本回退）。
+pub fn recalculate_s1_formula_copy_batch(
+    sidecar_path: impl AsRef<Path>,
+    pairs: &[(PathBuf, PathBuf)],
+    engine_request: &str,
+) -> Result<Vec<Option<S1RecalculationReport>>> {
+    ensure!(
+        engine_request == "auto" || engine_request == "lo",
+        "S1 批次重算仅支持 auto/lo（LibreOffice）：{engine_request}"
+    );
+    ensure!(!pairs.is_empty(), "S1 批次重算没有输入工作簿");
+    let sidecar_path = fs::canonicalize(sidecar_path.as_ref())
+        .with_context(|| format!("读取公式重算 sidecar：{}", sidecar_path.as_ref().display()))?;
+    ensure!(sidecar_path.is_file(), "公式重算 sidecar 不是文件");
+    for (input, output) in pairs {
+        ensure!(input.is_file(), "S1 批次重算输入不是文件：{}", input.display());
+        ensure!(is_xlsx(input), "S1 批次重算输入必须为 .xlsx");
+        ensure!(is_xlsx(output), "S1 批次重算输出必须为 .xlsx");
+        ensure!(
+            !output.exists(),
+            "拒绝覆盖 S1 批次重算输出：{}",
+            output.display()
+        );
+    }
+    let started = Instant::now();
+    let pairs_file = unique_pairs_file(pairs)?;
+    let command = Command::new(&sidecar_path)
+        .arg("recalculate-batch")
+        .arg("--pairs")
+        .arg(&pairs_file)
+        .arg("--engine")
+        .arg(engine_request)
+        .output()
+        .with_context(|| format!("启动批次公式重算 sidecar：{}", sidecar_path.display()))?;
+    let _ = fs::remove_file(&pairs_file);
+    if !command.status.success() {
+        bail!(
+            "S1 批次公式重算失败（sidecar exit={}）：{}{}",
+            command.status,
+            String::from_utf8_lossy(&command.stderr).trim(),
+            stdout_suffix(&command.stdout)
+        );
+    }
+    let report: Value = serde_json::from_slice(&command.stdout)
+        .context("解析批次公式重算 sidecar 的 JSON 结果")?;
+    let books = report
+        .get("books")
+        .and_then(Value::as_array)
+        .context("批次公式重算结果缺少 books 数组")?;
+    anyhow::ensure!(
+        books.len() == pairs.len(),
+        "批次公式重算返回的本数不一致：{} / {}",
+        books.len(),
+        pairs.len()
+    );
+    let mut outcomes = Vec::with_capacity(pairs.len());
+    for (index, book) in books.iter().enumerate() {
+        let (input, output) = &pairs[index];
+        if book.get("status").and_then(Value::as_str) != Some("recalculated") {
+            outcomes.push(None);
+            continue;
+        }
+        let engine = book
+            .get("engine")
+            .and_then(Value::as_str)
+            .context("批次重算结果缺少引擎名")?
+            .to_owned();
+        validate_s1_engine(&engine)?;
+        validate_recalculated_copy(input, output)?;
+        outcomes.push(Some(S1RecalculationReport {
+            engine,
+            input: input.clone(),
+            output: output.clone(),
+            elapsed_ms: started.elapsed().as_millis(),
+        }));
+    }
+    Ok(outcomes)
+}
+
+/// 把批次输入/输出对写入临时 TSV（tab 分隔；路径含 tab/换行时明确拒绝）。
+fn unique_pairs_file(pairs: &[(PathBuf, PathBuf)]) -> Result<PathBuf> {
+    let mut content = String::new();
+    for (input, output) in pairs {
+        let input = input.to_string_lossy();
+        let output = output.to_string_lossy();
+        ensure!(
+            !input.contains(['\t', '\n', '\r']) && !output.contains(['\t', '\n', '\r']),
+            "工作簿路径包含批次清单不允许的制表/换行字符"
+        );
+        content.push_str(&format!("{input}\t{output}\n"));
+    }
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!(
+        "audit-s1-batch-pairs-{}-{nonce}.tsv",
+        std::process::id()
+    ));
+    fs::write(&path, content).context("写入批次重算清单")?;
+    Ok(path)
+}
+
 /// Recalculate an existing S1 formula copy through the separately built
 /// `lo-convert` sidecar, then publish the validated output without overwriting.
 ///

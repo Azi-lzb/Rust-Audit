@@ -23,7 +23,8 @@ use audit_core::{
     },
     s1_issue_chain::{merge_s1_issue_sources, S1IssueFilePair},
     s1_recalculation::{
-        recalculate_s1_formula_copy, s1_recalculated_filename, S1RecalculationSession,
+        recalculate_s1_formula_copy, recalculate_s1_formula_copy_batch,
+        s1_recalculated_filename, S1RecalculationSession,
     },
     s1_region_summary::summarize_s1_named_regions,
     s1_result_workbook::write_s1_result_workbook,
@@ -3113,6 +3114,48 @@ fn run_s1_audit_directory(arguments: S1AuditDirectoryArgs) -> Result<()> {
         } else {
             None
         };
+        // Linux：整批一次 LibreOffice 会话（recalculate-batch，rules/13 §4.5）
+        // ——单次引擎启动完成全部工作簿转换；批次失败或单本缺结果时，该本
+        // 回退到旧的逐本 sidecar 路径（每本各自启动 LibreOffice）。
+        let mut batch_reports = if !cfg!(windows) {
+            match recalculation_sidecar.as_deref() {
+                Some(sidecar) => {
+                    let pairs = accepted_inputs
+                        .iter()
+                        .enumerate()
+                        .map(|(index, input)| {
+                            let source_key = s1_path_identity(&input.source_file);
+                            let original_copy = pair_by_source
+                                .get(&source_key)
+                                .with_context(|| {
+                                    format!(
+                                        "公式审核副本清单缺少源文件 {}",
+                                        input.source_file.display()
+                                    )
+                                })?
+                                .clone();
+                            let output_copy = output_dir.join(s1_recalculated_filename(
+                                index + 1,
+                                &input.source_file,
+                            )?);
+                            Ok((original_copy, output_copy))
+                        })
+                        .collect::<anyhow::Result<Vec<(std::path::PathBuf, std::path::PathBuf)>>>()?;
+                    match recalculate_s1_formula_copy_batch(sidecar, &pairs, "auto") {
+                        Ok(reports) => Some(reports),
+                        Err(error) => {
+                            eprintln!(
+                                "S1-F01 Linux 批次公式重算失败，回退逐本 sidecar 路径：{error:#}"
+                            );
+                            None
+                        }
+                    }
+                }
+                None => None,
+            }
+        } else {
+            None
+        };
         for (index, input) in accepted_inputs.iter().enumerate() {
             let source_key = s1_path_identity(&input.source_file);
             let original_copy = pair_by_source
@@ -3144,6 +3187,8 @@ fn run_s1_audit_directory(arguments: S1AuditDirectoryArgs) -> Result<()> {
             let recalculation_started = Instant::now();
             let recalculation = if let Some(session) = recalculation_session.as_mut() {
                 session.recalculate(&original_copy, &output_copy)
+            } else if let Some(report) = batch_reports.as_mut().and_then(|r| r[index].take()) {
+                Ok(report)
             } else {
                 recalculate_s1_formula_copy(
                     recalculation_sidecar

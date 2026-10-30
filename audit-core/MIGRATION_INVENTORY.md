@@ -902,3 +902,31 @@ S1-F1 结构化模板的“审核规则”表现按 Python 整表复制语义；
 ### 2026-10-30 Codex 增量：S1-F1 acceptance 阶段计时
 
 S1-F1 验收输出新增微秒阶段计时，覆盖请求/目录扫描、模板档案与匹配、模板预检、结构对比、Excel-Core 修改、真实重算、公式与条件格式异常提取、结果写出以及专用 Excel 会话退出，并记录逐文件耗时。定向 `s1_f1_` 测试 4 passed、0 failed、2 ignored；Release 构建通过。单轮诊断显示 Excel 重算 3.381 s、会话关闭 2.929 s，其他业务阶段远低于 0.2 s；测量与三轮粗复测期间有 Rust-Tools COM 基准及多个 Excel 实例并行，因此不改正式倍率基线，也不据此放松 Excel 隔离或清理。原始 clean-run JSON 因复跑使用固定路径而被覆盖；历史 Markdown 与性能历史保留 clean-run 结果/逐轮总耗时，现新增明确标记的恢复摘要和并发探针文件；驱动默认已改用唯一 UTC 时间戳输出。原始 clean-run Python 阶段日志和逐轮内存/输入哈希不再可恢复。详见 `PERFORMANCE_HISTORY.md`、`PERFORMANCE_BASELINE.md`、`probe/reports/s1f1_stage_profile_20261030.md` 与 `probe/reports/s1f1_full_chain_20261030.md`。工作区仍未提交；无 push。
+
+### 2026-10-31 增量：GUI 导航与设置中心交互修复（未编译验证）
+
+主界面左侧导航移除“S5 逐笔统计系统（配置版）”入口及配套导航 JS（`openS5Workbench`、`registerS5NavigationClick`、`s5EggClickTimes`）；S5 面板 HTML、CLI、API 与业务模块全部保留。设置中心五个子页接入当前真实能力：常规页递归扫描深度改为禁用说明（深度限制未接入扫描路径）；帮助与更新页在 `get_update_log`/`get_faq` 未实现时按子页显示准确静态说明；组合工作表配置页改为 S1-F3/F4 暂缓状态说明页（`renderDagFlowComposer` 三个重复定义收敛为一个静态实现）；高级页旧 Python 管线死控件（计算引擎/条件格式读取判定/六个读写器/大集中读写器/金融表单生成方式/表达式求值方式）替换为 Rust 内置管线说明，保留真实生效的 Rust 引擎卡与 3.1 表达式语法选择；文件选择方式固定为浏览器内置。`loadSettingsData`/`saveSettings` 不再调用后端不存在的 DAG 草稿接口；`loadDagStudioData` 失败回退空数据。
+
+设置持久化：`app_settings.rs` 的 `AppSettings` 新增 `preferences` 白名单映射（29 键：目录/文件/布尔/枚举），`validate_preference`/`store_preferences`/`apply_preferences_to_state`；设置文件在 `AUDIT_STATE_DIR` 或 `%LOCALAPPDATA%/open-data-audit/settings.json`，原子 tmp+rename 写入。`web_bridge.rs` 启动时按存在性校验路径并把合法偏好叠加回 GUI 状态；`update_state` 与 `choose_history_config`/`choose_central`/`choose_period_compare` 成功后把白名单键快照写入设置文件，失败明确报错。修复了一处在持锁状态下调用会重新加锁的持久化函数导致的死锁点。
+
+本轮修复过程说明：前一attempt 的 index.html 编辑曾误删约 2,932 行前端定义（renderGeneral/renderGuide/renderUpdates/renderAdvanced/saveSettings/openSettingsWorkbench 等丢失而调用方仍在），本轮从 HEAD `cb966f6` 恢复后以行级手术加断言方式重新实施全部修复，损坏副本备份于会话临时目录。验证方式：`node --check` 提取脚本语法通过；19 个移除标识符零残留；被调用函数与定义对齐核查通过；Rust 侧仅静态审查（导入、锁顺序、结构体构造点），未运行 cargo build/check/test（未获授权）。未提交、未 push。已知未完成：常规页“打开/设为默认/重置”等配置工作簿按钮依赖的 `open_config_file`/`reset_*`/`set_*_default` 后端接口仍未实现，点击会明确报错；帮助与更新的 LibreOffice 安装子页在 Windows 显示“仅 Linux 支持”属预期。
+
+### 2026-10-31 增量：跨平台文件选择器（原生优先、页面内兜底，未编译验证）
+
+GUI 文件/目录选择改为“系统原生优先，页面内目录浏览器固定兜底”。后端新增 `native_file_dialog.rs`：Windows 走 rfd 0.17 的 IFileOpenDialog（COM，`spawn_blocking` 执行，不阻塞 Tokio 工作线程）；Linux 走 ashpd 0.13 的 XDG Desktop Portal FileChooser（zbus 纯 Rust D-Bus，运行时才连接会话总线，二进制加载不依赖 libdbus/GTK；评估时确认 rfd 的 Linux 门户后端为手写 FFI 硬链接 libdbus，会造成启动期强制系统库依赖，因此 Linux 端不用 rfd 而用 ashpd）。统一契约：用户取消返回 `canceled=true`（前端不再回退）；能力不可用/超时（600 秒安全超时）返回带可读诊断的空结果（无 D-Bus 会话、门户服务缺失分别映射独立诊断），前端提示后回退页面内选择器。新增 `pick_paths` API 在 `call_api` 中于同步分发前 await 处理；过滤器复用 `browse_extensions` 模式映射；起始路径归一化（文件→父目录，不存在→系统默认并提示）；选中的路径仍全部经由既有 `choose_file`/`choose_folder`/`choose_central`/`choose_period_compare`/`choose_history_config` 等接口校验，本轮未改任何业务规则。
+
+前端将 `usesBrowserPathPicker()` 双分支模式收敛为公共入口 `pickPathSmart`（自动=原生优先+失败回退；系统原生=失败提示后回退；浏览器内置=仅页面内），重接全部 11 个函数共 12 处选择入口（S1 pick/pickHistoryConfig/appendExtraFiles/联合模板两步、S2 pickPc、S3 pickCentral/说明反馈批量导入、S5 pickS5/维护工具输出、LibreOffice 安装源）；`filePickerMode` 设置恢复为三值（自动/系统原生/浏览器内置，默认自动），走 `update_state` 即时保存并加入 `app_settings.rs` 偏好白名单（29→30 键）跨启动恢复；高级设置页恢复实时下拉。Cargo 新增目标平台限定依赖：Windows `rfd`（default-features=false，其 win32 后端使用的 windows-sys 0.61 与项目现有钉版一致）、Linux `ashpd`（default-features=false + file_chooser/tokio，无系统库）；workspace tokio 显式补 `time` feature。
+
+验证方式：`node --check` 通过；`usesBrowserPathPicker` 零残留；12 处入口改接逐一断言；后端多选路径校验链静态核对（S3-F03 反馈导入逐文件 .xlsx 校验保留）。未运行 cargo build/check/test（未获授权）；rfd/ashpd 尚未进入 Cargo.lock，首次构建需可解析新依赖；ashpd 0.13 与 rfd 0.17 的少量 API 签名（FileFilter::glob 所有权风格、FileDialog 消费式构建器、Request::response）以 docs.rs 0.17.2/0.13.13 文档为准，需编译确认。未提交、未 push。待人工验收：Windows 单/多文件、目录、取消、扩展名过滤；Linux Portal 可用/不可用/取消/回退；起始路径不存在、含空格或中文路径；确认离线 DEB 无新增系统依赖。
+
+### 2026-10-31 增量：S1-F01 Linux LibreOffice 批次会话复用（WSL Ubuntu 24.04 实测）
+
+Linux S1-F01 公式重算按 rules/13 §4.5 实现批次会话复用，替代“每本各启动一次 soffice --convert-to”。两条已实测路径：CLI/验收流（open-data-audit，重算清单在循环前已知）走 `recalculate_s1_formula_copy_batch` → sidecar 新命令 `recalculate-batch --pairs <tsv>`，单次 LibreOffice 启动顺序转换整批（`lo_batch::run_batch_convert`），逐本完成清缓存、重算标记、规范化、验证与不覆盖发布，父级对本批成功项复核 `validate_recalculated_copy` 后发布报告；批次级失败或单本缺结果时该本回退旧逐本路径，保持既有失败语义。GUI 流（web_bridge）的审核副本逐本创建并与人工恢复语义耦合，本轮保持逐本重算，但走新增的 `recalculate-session --engine lo` Linux 持久会话（`LoWarmProfileSession`）：profile 只初始化一次并排空残留进程，每本用暖 profile 转换，省去每本首启成本。Windows 原生 COM 路径与单发 sidecar 命令未改动。
+
+方案决策记录：Rust 直控 UNO（URP）无可用绑定、C++ UNO SDK 会引入版本锁定运行时依赖，均否决；rfd 0.17 的 Linux 门户后端为手写 FFI 硬链接 libdbus，违反启动期零新增系统库约束（与本次无关，仅评估记录）。曾实现的 StarBasic 批次驱动（宏轮询任务文件）在实测中不可靠：全新 profile 首启会重写 Standard 库索引导致宏失联（改预置 Module1 后仍复现）；任务行存在时宏静默终止、无任何诊断输出（空任务则正常循环），不满足“失败必须有明确诊断”，已整体放弃并记录。因此 GUI 暖 profile 会话与 CLI 批次均使用 `--convert-to` 通道（与既有逐本路径同一转换语义：清缓存 + fullCalcOnLoad/forceFullCalc 标记）。
+
+已知竞态与处理（WSL Ubuntu 24.04 / LibreOffice 24.2.7.2 实测）：`--terminate_after_init` 的 wrapper 进程先于 soffice.bin 退出，oosplash fork soffice.bin 的窗口在 wrapper 退出后 0.3–1.4s，宏启动会经单实例通道把 URL 转发给残留实例后秒退。处理：初始化后沉降 2 秒，再以 pkill/pgrep（仅匹配本任务 profile 参数，绝不按进程名）清理并确认排空；WSL 的 `/usr/bin/kill -0 -PGID` 对已消失的进程组仍返回 0，进程组存在性原语不可靠，故未采用。
+
+实测（WSL Ubuntu 24.04，LibreOffice 24.2.7.2，合成 400 行公式工作簿，预热 1 轮 + 3 测量轮，输入 SHA-256 前后一致，输出可用 openpyxl 重开且表名/公式数与输入一致）：2 本逐本 3.07s / 批次 3.69s（批次含 profile 初始化与 2s 沉降固定成本，约 3 本起收益为正）；10 本 15.34s → 4.29s（省 72%）；33 本 50.58s → 6.42s（省 87%，平均每本 1.53s → 0.19s）。批次内每本阶段计时不可得（convert-to 单进程顺序转换），按批记录 convert_ms 与逐本状态。报告见 `probe/reports/s1f1_lo_batch_convert_20261031.json`，复跑入口 `tests/compare/perf_s1f1_lo_batch_session_20261031.py` 与 `tests/compare/wsl_run_perf_full.sh`。
+
+验证与边界：Windows host 与 WSL Linux 双侧 `cargo check`/`cargo build --release` 通过；`cargo test -p lo-convert` 21/21、`audit-core --lib` 定向 s1_recalculation 5/5、s1_f1 4/4（2 ignored 为 Windows COM 前置）、served_page 1/1。未运行全 workspace 回归、真实机构输入与麒麟/UOS 目标机验证；WSL 实测不等同 Kylin/UOS 验收。未提交、未 push。
