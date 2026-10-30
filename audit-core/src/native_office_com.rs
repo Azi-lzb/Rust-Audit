@@ -31,8 +31,8 @@ use windows_sys::{
             },
             Ole::DISPID_PROPERTYPUT,
             Threading::{
-                GetProcessTimes, OpenProcess, TerminateProcess, PROCESS_QUERY_LIMITED_INFORMATION,
-                PROCESS_TERMINATE,
+                GetProcessTimes, OpenProcess, TerminateProcess, WaitForSingleObject,
+                PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
             },
             Variant::{VariantClear, VARIANT, VT_BOOL, VT_BSTR, VT_DISPATCH, VT_I2, VT_I4},
         },
@@ -47,6 +47,8 @@ const XL_CALCULATION_AUTOMATIC: i32 = -4105;
 const XL_CALCULATION_MANUAL: i32 = -4135;
 const XL_DONE: i32 = 0;
 const XL_PENDING: i32 = 2;
+const PROCESS_SYNCHRONIZE_ACCESS: u32 = 0x0010_0000;
+const WAIT_OBJECT_0: u32 = 0;
 
 #[repr(C)]
 struct DispatchInterface {
@@ -300,11 +302,13 @@ pub struct ExcelComSession {
     application_name: String,
     process_id: Option<u32>,
     owns_process: bool,
+    initialization_timings: serde_json::Value,
 }
 
 impl ExcelComSession {
     pub fn create(application_names: &[&str]) -> Result<Self> {
-        let (apartment, app, application_name, process_id) =
+        let create_started = Instant::now();
+        let (apartment, app, application_name, process_id, mut initialization_timings) =
             create_isolated_application(application_names)?;
 
         let mut session = Self {
@@ -313,8 +317,13 @@ impl ExcelComSession {
             application_name,
             process_id: Some(process_id),
             owns_process: true,
+            initialization_timings: serde_json::Value::Null,
         };
-        session.configure()?;
+        let configuration_timings = session.configure()?;
+        initialization_timings["application_configuration"] = configuration_timings;
+        initialization_timings["session_create_ms"] =
+            serde_json::json!(create_started.elapsed().as_millis());
+        session.initialization_timings = initialization_timings;
         Ok(session)
     }
 
@@ -332,6 +341,40 @@ impl ExcelComSession {
 
     pub fn owns_process(&self) -> bool {
         self.owns_process
+    }
+
+    pub fn initialization_timings(&self) -> &serde_json::Value {
+        &self.initialization_timings
+    }
+
+    /// Quit the private Office application and release this thread's COM
+    /// apartment before the worker process exits. Returns per-stage timings
+    /// and the Quit error, if Office refused the request.
+    pub fn shutdown(&mut self) -> (serde_json::Value, Option<String>) {
+        let shutdown_started = Instant::now();
+        let mut quit_call_ms = 0_u64;
+        let mut interface_release_ms = 0_u64;
+        let quit_error = if let Some(app) = self.app.take() {
+            let quit_started = Instant::now();
+            let result = app.invoke_method("Quit", &[]);
+            quit_call_ms = quit_started.elapsed().as_millis() as u64;
+            let release_started = Instant::now();
+            drop(app);
+            interface_release_ms = release_started.elapsed().as_millis() as u64;
+            result.err().map(|error| format!("{error:#}"))
+        } else {
+            None
+        };
+        let uninitialize_started = Instant::now();
+        self._apartment.uninitialize();
+        let com_uninitialize_ms = uninitialize_started.elapsed().as_millis() as u64;
+        let shutdown_stages = serde_json::json!({
+            "quit_call_ms": quit_call_ms,
+            "interface_release_ms": interface_release_ms,
+            "com_uninitialize_ms": com_uninitialize_ms,
+            "total_ms": shutdown_started.elapsed().as_millis() as u64,
+        });
+        (shutdown_stages, quit_error)
     }
 
     /// Convert a spreadsheet through the same private native COM instance.
@@ -399,26 +442,39 @@ impl ExcelComSession {
         result.map(|(stages,)| stages)
     }
 
-    fn configure(&mut self) -> Result<()> {
+    fn configure(&mut self) -> Result<serde_json::Value> {
         let app = self.app.as_ref().expect("COM app initialized");
-        app.set("Visible", OwnedVariant::boolean(false))?;
-        app.set("DisplayAlerts", OwnedVariant::boolean(false))?;
+        let total_started = Instant::now();
+        let visible_ms = set_timed(app, "Visible", OwnedVariant::boolean(false))?;
+        let display_alerts_ms = set_timed(app, "DisplayAlerts", OwnedVariant::boolean(false))?;
         // 与旧 Python 生产通道一致的 Excel 端开销配置：关闭屏幕刷新与事件、
         // AskToUpdateLinks 关闭（UpdateLinks 已在 Open 参数显式控制）、
         // 计算模式设为手动以消除 Workbooks.Open 对脏公式的隐式自动重算
         // （审核副本全部公式为待算状态；显式 Calculate 随后一次性同步完成，
         // 旧 Python 生产语义与此完全一致，Calculation 为应用级属性不随
         // SaveAs 写入输出文件）。
-        app.set("ScreenUpdating", OwnedVariant::boolean(false))?;
-        app.set("EnableEvents", OwnedVariant::boolean(false))?;
-        app.set("AskToUpdateLinks", OwnedVariant::boolean(false))?;
+        let screen_updating_ms = set_timed(app, "ScreenUpdating", OwnedVariant::boolean(false))?;
+        let enable_events_ms = set_timed(app, "EnableEvents", OwnedVariant::boolean(false))?;
+        let ask_to_update_links_ms =
+            set_timed(app, "AskToUpdateLinks", OwnedVariant::boolean(false))?;
         // 某些含数据模型/OLAP 连接的 Excel 实例禁止通过 COM 修改
         // Application.Calculation（0x800A03EC）；与旧 Python 一致降级忽略，
         // 显式 Calculate 仍完成重算。
-        if let Err(error) = app.set("Calculation", OwnedVariant::i32(XL_CALCULATION_MANUAL)) {
-            let _ = error;
-        }
-        Ok(())
+        let calculation_started = Instant::now();
+        let calculation_manual_succeeded = app
+            .set("Calculation", OwnedVariant::i32(XL_CALCULATION_MANUAL))
+            .is_ok();
+        let calculation_manual_ms = calculation_started.elapsed().as_millis() as u64;
+        Ok(serde_json::json!({
+            "visible_ms": visible_ms,
+            "display_alerts_ms": display_alerts_ms,
+            "screen_updating_ms": screen_updating_ms,
+            "enable_events_ms": enable_events_ms,
+            "ask_to_update_links_ms": ask_to_update_links_ms,
+            "calculation_manual_ms": calculation_manual_ms,
+            "calculation_manual_succeeded": calculation_manual_succeeded,
+            "total_ms": total_started.elapsed().as_millis() as u64,
+        }))
     }
 
     fn recalculate_inner(
@@ -476,7 +532,9 @@ impl ExcelComSession {
                 let worksheet = sheets
                     .invoke_method("Item", &[OwnedVariant::i32(sheet_index)])?
                     .into_dispatch()
-                    .with_context(|| format!("Excel COM Worksheets.Item({sheet_index}) 未返回工作表"))?;
+                    .with_context(|| {
+                        format!("Excel COM Worksheets.Item({sheet_index}) 未返回工作表")
+                    })?;
                 worksheet.invoke_method("Calculate", &[])?;
             }
             record("sheets_calculate", calc_started);
@@ -559,7 +617,7 @@ pub struct WordComSession {
 
 impl WordComSession {
     pub fn create(application_names: &[&str]) -> Result<Self> {
-        let (apartment, app, _, _) = create_isolated_application(application_names)?;
+        let (apartment, app, _, _, _) = create_isolated_application(application_names)?;
         let session = Self {
             app: Some(app),
             _apartment: apartment,
@@ -630,14 +688,13 @@ impl Drop for WordComSession {
 
 impl Drop for ExcelComSession {
     fn drop(&mut self) {
-        if let Some(app) = self.app.take() {
-            let _ = app.invoke_method("Quit", &[]);
-            drop(app);
-        }
+        let _ = self.shutdown();
     }
 }
 
-struct ComApartment;
+struct ComApartment {
+    initialized: bool,
+}
 
 impl ComApartment {
     fn initialize() -> Result<Self> {
@@ -648,22 +705,36 @@ impl ComApartment {
             )
         };
         ensure_hresult(result, "initialize the Excel COM apartment")?;
-        Ok(Self)
+        Ok(Self { initialized: true })
+    }
+
+    fn uninitialize(&mut self) {
+        if self.initialized {
+            unsafe { CoUninitialize() };
+            self.initialized = false;
+        }
     }
 }
 
 impl Drop for ComApartment {
     fn drop(&mut self) {
-        unsafe { CoUninitialize() };
+        self.uninitialize();
     }
 }
 
-fn create_application(application_names: &[&str]) -> Result<(Dispatch, String)> {
+fn create_application(
+    application_names: &[&str],
+) -> Result<(Dispatch, String, serde_json::Value, u128)> {
     let mut failures = Vec::new();
+    let mut progid_lookup_ms = 0_u64;
+    let mut cocreate_instance_ms = 0_u64;
+    let mut dispatch_wrap_ms = 0_u64;
     for application_name in application_names {
         let mut prog_id = wide(application_name);
         let mut class_id = GUID::default();
+        let lookup_started = Instant::now();
         let result = unsafe { CLSIDFromProgID(prog_id.as_mut_ptr(), &mut class_id) };
+        progid_lookup_ms += lookup_started.elapsed().as_millis() as u64;
         if result < 0 {
             failures.push(format!(
                 "{application_name}: ProgID HRESULT 0x{:08X}",
@@ -672,6 +743,8 @@ fn create_application(application_names: &[&str]) -> Result<(Dispatch, String)> 
             continue;
         }
         let mut object = ptr::null_mut();
+        let activation_started_unix_ms = system_time_unix_ms();
+        let activation_started = Instant::now();
         let result = unsafe {
             CoCreateInstance(
                 &class_id,
@@ -681,6 +754,7 @@ fn create_application(application_names: &[&str]) -> Result<(Dispatch, String)> 
                 &mut object,
             )
         };
+        cocreate_instance_ms += activation_started.elapsed().as_millis() as u64;
         if result < 0 {
             failures.push(format!(
                 "{application_name}: activation HRESULT 0x{:08X}",
@@ -688,9 +762,18 @@ fn create_application(application_names: &[&str]) -> Result<(Dispatch, String)> 
             ));
             continue;
         }
+        let wrap_started = Instant::now();
+        let dispatch = unsafe { Dispatch::from_raw(object)? };
+        dispatch_wrap_ms += wrap_started.elapsed().as_millis() as u64;
         return Ok((
-            unsafe { Dispatch::from_raw(object)? },
+            dispatch,
             (*application_name).to_owned(),
+            serde_json::json!({
+                "progid_lookup_ms": progid_lookup_ms,
+                "cocreate_instance_ms": cocreate_instance_ms,
+                "dispatch_wrap_ms": dispatch_wrap_ms,
+            }),
+            activation_started_unix_ms,
         ));
     }
     bail!("未能启动 Excel/WPS COM：{}", failures.join("；"))
@@ -698,19 +781,77 @@ fn create_application(application_names: &[&str]) -> Result<(Dispatch, String)> 
 
 fn create_isolated_application(
     application_names: &[&str],
-) -> Result<(ComApartment, Dispatch, String, u32)> {
+) -> Result<(ComApartment, Dispatch, String, u32, serde_json::Value)> {
+    let total_started = Instant::now();
+    let com_initialize_started = Instant::now();
     let apartment = ComApartment::initialize()?;
+    let com_initialize_ms = com_initialize_started.elapsed().as_millis() as u64;
+    let snapshot_started = Instant::now();
     let processes_before = process_ids().context("无法确认启动前的 Office 进程清单")?;
-    let (app, application_name) = create_application(application_names)?;
+    let process_snapshot_ms = snapshot_started.elapsed().as_millis() as u64;
+    let (app, application_name, mut activation_timings, activation_started_unix_ms) =
+        create_application(application_names)?;
+    let hwnd_started = Instant::now();
     let hwnd = app.get_i32("Hwnd").context("读取 Office COM 窗口句柄")?;
     let mut process_id = 0_u32;
     unsafe { GetWindowThreadProcessId(hwnd as u32 as usize as *mut c_void, &mut process_id) };
+    let hwnd_process_lookup_ms = hwnd_started.elapsed().as_millis() as u64;
     ensure!(process_id != 0, "无法确认 Office COM 实例所属进程");
+    let verification_started = Instant::now();
+    let process_created = process_creation_ticks(process_id);
     ensure!(
         !processes_before.contains(&process_id),
         "Office COM 连接到了已存在的进程；为避免影响用户打开的 Office，已拒绝复用"
     );
-    Ok((apartment, app, application_name, process_id))
+    let process_verification_ms = verification_started.elapsed().as_millis() as u64;
+    let activation_ms = activation_timings["cocreate_instance_ms"]
+        .as_u64()
+        .unwrap_or_default();
+    let launch_offset_ms = process_created
+        .and_then(filetime_to_unix_ms)
+        .map(|created_ms| created_ms - activation_started_unix_ms as i128);
+    let after_launch_ms = launch_offset_ms
+        .filter(|offset| *offset >= 0 && *offset <= i128::from(activation_ms))
+        .map(|offset| i128::from(activation_ms) - offset);
+    activation_timings["excel_process_launch_after_activation_start_ms_estimate"] =
+        serde_json::json!(launch_offset_ms);
+    activation_timings["excel_com_ready_after_process_creation_ms_estimate"] =
+        serde_json::json!(after_launch_ms);
+    let startup_timings = serde_json::json!({
+        "com_initialize_ms": com_initialize_ms,
+        "pre_activation_process_snapshot_ms": process_snapshot_ms,
+        "com_activation": activation_timings,
+        "excel_hwnd_pid_lookup_ms": hwnd_process_lookup_ms,
+        "excel_process_ownership_verification_ms": process_verification_ms,
+        "create_before_configuration_ms": total_started.elapsed().as_millis() as u64,
+    });
+    Ok((
+        apartment,
+        app,
+        application_name,
+        process_id,
+        startup_timings,
+    ))
+}
+
+fn set_timed(app: &Dispatch, property: &str, value: OwnedVariant) -> Result<u64> {
+    let started = Instant::now();
+    app.set(property, value)?;
+    Ok(started.elapsed().as_millis() as u64)
+}
+
+fn system_time_unix_ms() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+}
+
+fn filetime_to_unix_ms(ticks: u64) -> Option<i128> {
+    const WINDOWS_EPOCH_OFFSET_TICKS: u64 = 116_444_736_000_000_000;
+    ticks
+        .checked_sub(WINDOWS_EPOCH_OFFSET_TICKS)
+        .map(|unix_ticks| i128::from(unix_ticks / 10_000))
 }
 
 fn ensure_hresult(result: i32, action: impl Into<String>) -> Result<()> {
@@ -769,7 +910,7 @@ fn process_creation_ticks(process_id: u32) -> Option<u64> {
 pub fn open_verified_process(process_id: u32, expected_creation: u64) -> Option<usize> {
     let handle = unsafe {
         OpenProcess(
-            PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE,
+            PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE | PROCESS_SYNCHRONIZE_ACCESS,
             0,
             process_id,
         )
@@ -781,15 +922,34 @@ pub fn open_verified_process(process_id: u32, expected_creation: u64) -> Option<
         unsafe { CloseHandle(handle) };
         return None;
     }
+    if unsafe { WaitForSingleObject(handle, 0) } == WAIT_OBJECT_0 {
+        // OpenProcess may still succeed for a signaled process object while
+        // another component holds a handle. It is no longer a live process
+        // and should not be handed to session cleanup as an active instance.
+        unsafe { CloseHandle(handle) };
+        return None;
+    }
     Some(handle as usize)
 }
 
-pub fn close_verified_process(handle: usize, terminate: bool) {
+/// Wait for the exact process represented by a verified handle to exit.
+/// `true` means the process object was signaled, not merely that its PID was
+/// reused or could no longer be queried.
+pub fn wait_verified_process_exit(handle: usize, timeout: Duration) -> bool {
+    let timeout_ms = timeout.as_millis().min(u128::from(u32::MAX)) as u32;
+    unsafe { WaitForSingleObject(handle as *mut c_void, timeout_ms) == WAIT_OBJECT_0 }
+}
+
+pub fn close_verified_process(handle: usize, terminate: bool) -> bool {
     let handle = handle as *mut c_void;
-    if terminate {
+    let exit_confirmed = if terminate {
         unsafe { TerminateProcess(handle, 1) };
-    }
+        unsafe { WaitForSingleObject(handle, 5_000) == WAIT_OBJECT_0 }
+    } else {
+        unsafe { WaitForSingleObject(handle, 0) == WAIT_OBJECT_0 }
+    };
     unsafe { CloseHandle(handle) };
+    exit_confirmed
 }
 
 fn write_stage(path: &Path, stage: &str) {

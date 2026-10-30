@@ -34,6 +34,8 @@ pub struct S1RecalculationSession {
     stdin: Option<ChildStdin>,
     responses: Option<Receiver<std::result::Result<String, String>>>,
     excel_process_id: Option<u32>,
+    owned_excel_identity: Option<(u32, u64)>,
+    owned_excel_cleanup_succeeded: Option<bool>,
     owns_excel_process: bool,
     #[cfg(windows)]
     native_process_handle: Option<usize>,
@@ -57,6 +59,8 @@ impl S1RecalculationSession {
             stdin: None,
             responses: None,
             excel_process_id: None,
+            owned_excel_identity: None,
+            owned_excel_cleanup_succeeded: None,
             owns_excel_process: false,
             #[cfg(windows)]
             native_process_handle: None,
@@ -67,23 +71,56 @@ impl S1RecalculationSession {
     /// is isolated to keep a hung Office call from blocking the GUI forever;
     /// it calls COM directly and is reused throughout the batch.
     pub fn new_native(engine_request: &str) -> Result<Self> {
+        let executable = std::env::current_exe().context("定位 Audit 原生 COM 工作进程")?;
+        Self::new_native_with_executable(executable, engine_request)
+    }
+
+    /// Create an isolated COM session worker from an explicit Audit
+    /// executable. This keeps worker process ownership testable from an
+    /// integration-test host and supports managed host processes.
+    #[doc(hidden)]
+    pub fn new_native_with_executable(
+        executable: impl AsRef<Path>,
+        engine_request: &str,
+    ) -> Result<Self> {
         ensure!(cfg!(windows), "原生 Office COM 公式重算仅支持 Windows");
         ensure!(
             S1_CALC_ENGINES.contains(&engine_request),
             "S1 公式重算引擎必须是 auto、excel、wps 或 lo：{engine_request}"
         );
+        let executable = fs::canonicalize(executable.as_ref()).with_context(|| {
+            format!(
+                "读取 Audit 原生 COM 工作进程：{}",
+                executable.as_ref().display()
+            )
+        })?;
+        ensure!(executable.is_file(), "Audit 原生 COM 工作进程不是文件");
         Ok(Self {
-            sidecar_path: PathBuf::new(),
+            sidecar_path: executable,
             native_office: true,
             engine_request: engine_request.to_owned(),
             child: None,
             stdin: None,
             responses: None,
             excel_process_id: None,
+            owned_excel_identity: None,
+            owned_excel_cleanup_succeeded: None,
             owns_excel_process: false,
             #[cfg(windows)]
             native_process_handle: None,
         })
+    }
+
+    /// Identity of the COM process created by the most recent session start.
+    /// The creation time prevents a recycled PID from being mistaken for it.
+    #[doc(hidden)]
+    pub fn last_owned_excel_identity(&self) -> Option<(u32, u64)> {
+        self.owned_excel_identity
+    }
+
+    #[doc(hidden)]
+    pub fn last_owned_excel_cleanup_succeeded(&self) -> Option<bool> {
+        self.owned_excel_cleanup_succeeded
     }
 
     pub fn recalculate(
@@ -175,11 +212,7 @@ impl S1RecalculationSession {
     }
 
     fn start_process(&mut self) -> Result<()> {
-        let mut command = if self.native_office {
-            Command::new(std::env::current_exe().context("定位 Audit 原生 COM 工作进程")?)
-        } else {
-            Command::new(&self.sidecar_path)
-        };
+        let mut command = Command::new(&self.sidecar_path);
         // Keep automatic engine routing under the parent session so a stalled
         // COM call can be stopped before starting the bounded LibreOffice
         // fallback. The sidecar's `auto` mode would otherwise wait through
@@ -276,6 +309,7 @@ impl S1RecalculationSession {
             let process_identity = self
                 .excel_process_id
                 .zip(ready.get("engine_process_created").and_then(Value::as_u64));
+            self.owned_excel_identity = process_identity;
             self.native_process_handle = process_identity.and_then(|(process_id, created)| {
                 crate::native_office_com::open_verified_process(process_id, created)
             });
@@ -342,7 +376,11 @@ impl S1RecalculationSession {
         #[cfg(windows)]
         if self.native_office {
             if let Some(handle) = self.native_process_handle.take() {
-                crate::native_office_com::close_verified_process(handle, true);
+                self.owned_excel_cleanup_succeeded = Some(
+                    crate::native_office_com::close_verified_process(handle, true),
+                );
+            } else if self.owns_excel_process {
+                self.owned_excel_cleanup_succeeded = Some(false);
             }
             self.excel_process_id = None;
             self.owns_excel_process = false;
@@ -479,10 +517,28 @@ impl S1RecalculationSession {
 
 impl Drop for S1RecalculationSession {
     fn drop(&mut self) {
+        let mut shutdown_acknowledged = !self.native_office;
         if let Some(stdin) = self.stdin.as_mut() {
             let _ = serde_json::to_writer(&mut *stdin, &serde_json::json!({"type":"shutdown"}));
             let _ = stdin.write_all(b"\n");
             let _ = stdin.flush();
+            if self.native_office {
+                if let Some(responses) = self.responses.as_ref() {
+                    shutdown_acknowledged = responses
+                        .recv_timeout(std::time::Duration::from_secs(10))
+                        .ok()
+                        .and_then(|line| line.ok())
+                        .and_then(|line| serde_json::from_str::<Value>(&line).ok())
+                        .is_some_and(|response| {
+                            response.get("status").and_then(Value::as_str)
+                                == Some("shutdown_complete")
+                                && response
+                                    .get("excel_quit_succeeded")
+                                    .and_then(Value::as_bool)
+                                    .unwrap_or(false)
+                        });
+                }
+            }
         }
         let Some(mut child) = self.child.take() else {
             return;
@@ -494,7 +550,7 @@ impl Drop for S1RecalculationSession {
         loop {
             match child.try_wait() {
                 Ok(Some(status)) => {
-                    clean_shutdown = status.success();
+                    clean_shutdown = status.success() && shutdown_acknowledged;
                     break;
                 }
                 Err(_) => break,
@@ -508,14 +564,25 @@ impl Drop for S1RecalculationSession {
             }
             thread::sleep(std::time::Duration::from_millis(50));
         }
-        // A normal shutdown already quits the private Office instance. If the
-        // sidecar exited unexpectedly, clean up only the process it created.
+        // A normal worker exit is not enough: confirm that Office accepted
+        // Quit and that the exact process created by this session exited.
         if !clean_shutdown {
             self.terminate_owned_excel();
         } else {
             #[cfg(windows)]
             if let Some(handle) = self.native_process_handle.take() {
-                crate::native_office_com::close_verified_process(handle, false);
+                if crate::native_office_com::wait_verified_process_exit(
+                    handle,
+                    std::time::Duration::from_secs(5),
+                ) {
+                    self.owned_excel_cleanup_succeeded = Some(
+                        crate::native_office_com::close_verified_process(handle, false),
+                    );
+                } else {
+                    self.owned_excel_cleanup_succeeded = Some(
+                        crate::native_office_com::close_verified_process(handle, true),
+                    );
+                }
             }
         }
     }

@@ -50,6 +50,7 @@ fn run_native_com_worker(engine: &str) -> Result<()> {
             "engine_process_id": session.as_ref().and_then(|item| item.process_id()),
             "engine_process_owned": session.as_ref().is_some_and(|item| item.owns_process()),
             "engine_process_created": session.as_ref().and_then(|item| item.process_created()),
+            "initialization_stages_ms": session.as_ref().map(|item| item.initialization_timings()),
             "session_create_ms": session_create_started.elapsed().as_millis() as u64,
         })
     );
@@ -65,7 +66,10 @@ fn run_native_com_worker(engine: &str) -> Result<()> {
                 request.get("type").and_then(Value::as_str) == Some("recalculate"),
                 "原生 COM 请求类型无效"
             );
-            let mode = request.get("mode").and_then(Value::as_str).unwrap_or("full");
+            let mode = request
+                .get("mode")
+                .and_then(Value::as_str)
+                .unwrap_or("full");
             let input = PathBuf::from(
                 request
                     .get("input")
@@ -90,8 +94,13 @@ fn run_native_com_worker(engine: &str) -> Result<()> {
                     initialization_error.as_deref().unwrap_or("未知原因")
                 )
             })?;
-            let stages =
-                session.recalculate_with_mode(&input, &output, recalculation_timeout(), &stage, mode)?;
+            let stages = session.recalculate_with_mode(
+                &input,
+                &output,
+                recalculation_timeout(),
+                &stage,
+                mode,
+            )?;
             Ok(Some(serde_json::json!({
                 "status": "recalculated",
                 "engine": session.application_name(),
@@ -100,7 +109,20 @@ fn run_native_com_worker(engine: &str) -> Result<()> {
             })))
         })();
         match response {
-            Ok(Some(value)) => println!("{value}"),
+            Ok(Some(value)) => {
+                // Debug builds expose a deterministic worker-delay hook so
+                // the parent timeout/owned-process cleanup path can be tested
+                // without relying on an Excel formula that hangs unpredictably.
+                #[cfg(debug_assertions)]
+                if let Some(delay_ms) = env::var("AUDIT_TEST_COM_RESPONSE_DELAY_MS")
+                    .ok()
+                    .and_then(|value| value.parse::<u64>().ok())
+                    .map(|delay| delay.min(60_000))
+                {
+                    thread::sleep(Duration::from_millis(delay_ms));
+                }
+                println!("{value}");
+            }
             Ok(None) => break,
             Err(error) => println!(
                 "{}",
@@ -109,19 +131,30 @@ fn run_native_com_worker(engine: &str) -> Result<()> {
         }
         std::io::stdout().flush()?;
     }
-    // Timing evidence: the graceful dispatch-release teardown was measured at
-    // ~2.3s per batch (Excel teardown blocking the STA thread on Release),
-    // while the same shutdown costs the pywin32 channel ~0.16s. The worker
-    // owns its Office process and the parent already tracks that PID for
-    // cleanup, so exiting the process here (letting the OS drop the COM
-    // references, which makes Excel self-exit asynchronously) removes the
-    // stall without leaving the owned Excel process behind.
-    // 实测：逐接口 Release + Excel 进程收尾使 worker 退出阻塞 ~215ms/批；
-    // worker 私有创建并跟踪其 Excel 进程，父进程在异常路径已按 PID 清理，
-    // 客户端进程退出会让 Excel 自行异步退出（实测无残留 EXCEL.EXE），
-    // 因此直接以进程退出结束会话，不再等待 COM 逐接口释放。
-    let _ = session;
-    std::process::exit(0);
+    // Explicitly quit the private Office application before returning. Using
+    // process::exit here skips Drop and can leave EXCEL.EXE running.
+    let shutdown_started = Instant::now();
+    let (shutdown_stages, quit_error) = if let Some(session) = session.as_mut() {
+        session.shutdown()
+    } else {
+        (serde_json::json!({"total_ms": 0}), None)
+    };
+    println!(
+        "{}",
+        serde_json::json!({
+            "status": "shutdown_complete",
+            "engine_process_id": session.as_ref().and_then(|item| item.process_id()),
+            "excel_quit_succeeded": quit_error.is_none(),
+            "excel_quit_error": quit_error.as_deref(),
+            "shutdown_stages_ms": shutdown_stages,
+            "worker_shutdown_total_ms": shutdown_started.elapsed().as_millis() as u64,
+        })
+    );
+    std::io::stdout().flush()?;
+    if let Some(error) = quit_error {
+        bail!("关闭私有 Office COM 实例失败：{error}");
+    }
+    Ok(())
 }
 
 pub(crate) fn prepare_engine_input(input: &Path, directory: &Path, com: bool) -> Result<PathBuf> {
