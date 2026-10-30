@@ -6,7 +6,9 @@
 //! explicit diagnostics; they are never treated as FALSE.
 
 use anyhow::{bail, Context, Result};
-use excel_reader::{read_workbook, SheetDump, WorkbookDump};
+use excel_reader::{
+    read_workbook_with_diagnostics, SheetDump, WorkbookDump, WorkbookReadDiagnostics,
+};
 use serde::Serialize;
 use serde_json::Value as JsonValue;
 use std::{
@@ -109,6 +111,7 @@ pub struct ConditionalDiagnostic {
 pub struct ConditionalEvaluationReport {
     pub status: &'static str,
     pub reader: &'static str,
+    pub read_diagnostics: WorkbookReadDiagnostics,
     pub read_time_ms: u128,
     pub evaluation_time_ms: u128,
     pub total_time_ms: u128,
@@ -192,14 +195,17 @@ pub fn evaluate_xlsx_workbook_with_dump(
         bail!("条件格式规则求值目前只支持 OOXML 工作簿（.xlsx/.xlsm）");
     }
     let read_started = Instant::now();
-    let workbook = read_workbook(path).with_context(|| format!("读取工作簿 {}", path.display()))?;
+    let read_report = read_workbook_with_diagnostics(path)
+        .with_context(|| format!("读取工作簿 {}", path.display()))?;
+    let workbook = read_report.workbook;
     let read_time_ms = read_started.elapsed().as_millis();
-    let report = evaluate_dump(
+    let mut report = evaluate_dump(
         &workbook.sheets,
         scan_areas,
         read_time_ms,
         total_started.elapsed().as_millis(),
     )?;
+    report.read_diagnostics = read_report.diagnostics;
     Ok((report, workbook))
 }
 
@@ -212,26 +218,65 @@ fn evaluate_dump(
     let total_started = Instant::now();
     let mut rules = Vec::new();
     let mut sheet_values = BTreeMap::new();
+    let mut diagnostics = Vec::new();
     for sheet in sheets {
         if !sheet
             .conditional_formatting_status
             .starts_with("read_by_namespace_aware_ooxml_supplement")
             && !sheet.conditional_formatting.is_empty()
         {
-            bail!(
-                "工作表 {} 的条件格式读取状态未验证：{}",
-                sheet.name,
-                sheet.conditional_formatting_status
-            );
+            diagnostics.push(ConditionalDiagnostic {
+                sheet: sheet.name.clone(),
+                cell: String::new(),
+                applies_to: String::new(),
+                rule_type: "reader".to_owned(),
+                formula: String::new(),
+                priority: 0,
+                status: EvaluationStatus::Error,
+                reason: format!(
+                    "条件格式读取状态未验证，已跳过该工作表：{}",
+                    sheet.conditional_formatting_status
+                ),
+            });
+            continue;
         }
         let mut values = BTreeMap::new();
+        let mut values_complete = true;
         for (address, raw) in &sheet.values {
-            values.insert(address.to_ascii_uppercase(), value_from_reader(raw)?);
+            match value_from_reader(raw) {
+                Ok(value) => {
+                    values.insert(address.to_ascii_uppercase(), value);
+                }
+                Err(error) => {
+                    values_complete = false;
+                    diagnostics.push(ConditionalDiagnostic {
+                        sheet: sheet.name.clone(),
+                        cell: address.to_ascii_uppercase(),
+                        applies_to: String::new(),
+                        rule_type: "value".to_owned(),
+                        formula: String::new(),
+                        priority: 0,
+                        status: EvaluationStatus::Error,
+                        reason: format!(
+                            "单元格值无法安全用于条件格式求值：{error:#}；已跳过该工作表的条件格式求值"
+                        ),
+                    });
+                }
+            }
         }
-        sheet_values.insert(sheet.name.clone(), values);
+        if values_complete {
+            sheet_values.insert(sheet.name.clone(), values);
+        }
         for node in &sheet.conditional_formatting {
-            parse_conditional_node(&sheet.name, node, rules.len(), &mut rules)
-                .with_context(|| format!("解析工作表 {} 的条件格式元数据", sheet.name))?;
+            let previous_rule_count = rules.len();
+            if let Err(error) = parse_conditional_node(&sheet.name, node, rules.len(), &mut rules) {
+                rules.truncate(previous_rule_count);
+                diagnostics.push(invalid_conditional_node_diagnostic(
+                    &sheet.name,
+                    node,
+                    &error,
+                ));
+            }
         }
     }
     let rules_total = rules.len();
@@ -275,7 +320,6 @@ fn evaluate_dump(
 
     let mut visited = BTreeSet::new();
     let mut triggered = Vec::new();
-    let mut diagnostics = Vec::new();
     for area in &scan_areas {
         let sheet_rules = rules
             .iter()
@@ -373,6 +417,7 @@ fn evaluate_dump(
     Ok(ConditionalEvaluationReport {
         status: "evaluated_static_rules",
         reader: "calamine+namespace_aware_ooxml",
+        read_diagnostics: WorkbookReadDiagnostics::default(),
         read_time_ms,
         evaluation_time_ms,
         total_time_ms: elapsed_before_eval_ms.saturating_add(evaluation_time_ms),
@@ -382,6 +427,44 @@ fn evaluate_dump(
         triggered,
         diagnostics,
     })
+}
+
+fn invalid_conditional_node_diagnostic(
+    sheet: &str,
+    node: &JsonValue,
+    error: &anyhow::Error,
+) -> ConditionalDiagnostic {
+    let rule = node
+        .get("content")
+        .and_then(JsonValue::as_array)
+        .into_iter()
+        .flatten()
+        .find(|child| child.get("name").and_then(JsonValue::as_str) == Some("cfRule"));
+    let formulas = rule
+        .and_then(|rule| rule.get("content"))
+        .and_then(JsonValue::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|child| child.get("name").and_then(JsonValue::as_str) == Some("formula"))
+        .map(node_text)
+        .collect::<Vec<_>>()
+        .join(" | ");
+    ConditionalDiagnostic {
+        sheet: sheet.to_owned(),
+        cell: String::new(),
+        applies_to: attribute(node, "sqref").unwrap_or_default().to_owned(),
+        rule_type: rule
+            .and_then(|rule| attribute(rule, "type"))
+            .unwrap_or("conditionalFormatting")
+            .to_owned(),
+        formula: formulas,
+        priority: rule
+            .and_then(|rule| attribute(rule, "priority"))
+            .and_then(|priority| priority.parse::<u32>().ok())
+            .unwrap_or_default(),
+        status: EvaluationStatus::Error,
+        reason: format!("条件格式规则元数据无法解析：{error:#}；已跳过该规则"),
+    }
 }
 
 fn parse_conditional_node(
@@ -1645,6 +1728,120 @@ mod tests {
         assert_eq!(report.scanned_cells, 1);
         assert_eq!(report.triggered.len(), 1);
         assert_eq!(report.triggered[0].cell, "A1");
+    }
+
+    #[test]
+    fn malformed_rule_diagnostic_does_not_discard_valid_rules_on_the_same_sheet() {
+        let sheet = SheetDump {
+            name: "MixedRules".to_owned(),
+            values: BTreeMap::from([(
+                "A1".to_owned(),
+                serde_json::json!({"type":"number", "value":5}),
+            )]),
+            formulas: BTreeMap::new(),
+            formula_status: "not_requested".to_owned(),
+            merges: Vec::new(),
+            merge_status: "not_requested".to_owned(),
+            comments: BTreeMap::new(),
+            comments_status: "not_requested".to_owned(),
+            conditional_formatting: vec![
+                serde_json::json!({
+                    "name":"conditionalFormatting",
+                    "attributes":{"sqref":"not-a-cell"},
+                    "content":[{
+                        "name":"cfRule",
+                        "attributes":{"type":"expression", "priority":"1"},
+                        "content":[{"name":"formula", "content":[{"text":"A1>0"}]}]
+                    }]
+                }),
+                serde_json::json!({
+                    "name":"conditionalFormatting",
+                    "attributes":{"sqref":"A1"},
+                    "content":[{
+                        "name":"cfRule",
+                        "attributes":{"type":"expression", "priority":"2"},
+                        "content":[{"name":"formula", "content":[{"text":"A1>0"}]}]
+                    }]
+                }),
+            ],
+            conditional_formatting_status: "read_by_namespace_aware_ooxml_supplement".to_owned(),
+            data_validations: Vec::new(),
+            data_validations_status: "not_requested".to_owned(),
+        };
+
+        let report = evaluate_dump(&[sheet], &[], 0, 0)
+            .expect("one malformed rule must not fail valid rules on its sheet");
+
+        assert_eq!(report.rules_total, 1);
+        assert_eq!(report.triggered.len(), 1);
+        assert_eq!(report.triggered[0].cell, "A1");
+        assert_eq!(report.diagnostics.len(), 1);
+        assert_eq!(report.diagnostics[0].status, EvaluationStatus::Error);
+        assert_eq!(report.diagnostics[0].applies_to, "not-a-cell");
+    }
+
+    #[test]
+    fn value_read_failure_skips_only_that_sheet_and_keeps_other_sheet_results() {
+        let bad_sheet = SheetDump {
+            name: "BadValues".to_owned(),
+            values: BTreeMap::from([(
+                "A1".to_owned(),
+                serde_json::json!({"type":"unrecognized", "value":"ignored"}),
+            )]),
+            formulas: BTreeMap::new(),
+            formula_status: "not_requested".to_owned(),
+            merges: Vec::new(),
+            merge_status: "not_requested".to_owned(),
+            comments: BTreeMap::new(),
+            comments_status: "not_requested".to_owned(),
+            conditional_formatting: vec![serde_json::json!({
+                "name":"conditionalFormatting",
+                "attributes":{"sqref":"A1"},
+                "content":[{
+                    "name":"cfRule",
+                    "attributes":{"type":"expression", "priority":"1"},
+                    "content":[{"name":"formula", "content":[{"text":"A1>0"}]}]
+                }]
+            })],
+            conditional_formatting_status: "read_by_namespace_aware_ooxml_supplement".to_owned(),
+            data_validations: Vec::new(),
+            data_validations_status: "not_requested".to_owned(),
+        };
+        let good_sheet = SheetDump {
+            name: "GoodValues".to_owned(),
+            values: BTreeMap::from([(
+                "A1".to_owned(),
+                serde_json::json!({"type":"number", "value":5}),
+            )]),
+            formulas: BTreeMap::new(),
+            formula_status: "not_requested".to_owned(),
+            merges: Vec::new(),
+            merge_status: "not_requested".to_owned(),
+            comments: BTreeMap::new(),
+            comments_status: "not_requested".to_owned(),
+            conditional_formatting: vec![serde_json::json!({
+                "name":"conditionalFormatting",
+                "attributes":{"sqref":"A1"},
+                "content":[{
+                    "name":"cfRule",
+                    "attributes":{"type":"expression", "priority":"1"},
+                    "content":[{"name":"formula", "content":[{"text":"A1>0"}]}]
+                }]
+            })],
+            conditional_formatting_status: "read_by_namespace_aware_ooxml_supplement".to_owned(),
+            data_validations: Vec::new(),
+            data_validations_status: "not_requested".to_owned(),
+        };
+
+        let report = evaluate_dump(&[bad_sheet, good_sheet], &[], 0, 0)
+            .expect("value conversion failure must be scoped to one worksheet");
+
+        assert_eq!(report.triggered.len(), 1);
+        assert_eq!(report.triggered[0].sheet, "GoodValues");
+        assert_eq!(report.diagnostics.len(), 1);
+        assert_eq!(report.diagnostics[0].sheet, "BadValues");
+        assert_eq!(report.diagnostics[0].cell, "A1");
+        assert_eq!(report.diagnostics[0].status, EvaluationStatus::Error);
     }
 
     #[test]

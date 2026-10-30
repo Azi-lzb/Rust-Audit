@@ -1,26 +1,30 @@
-use anyhow::{Context, Result};
+use anyhow::{ensure, Context, Result};
 use audit_core::{
+    acceptance_runner::run_acceptance_manifest,
     conditional_format::evaluate_xlsx_workbook,
     discovery::{
-        ScanDepth, detect_period_from_workbooks, organisation_from_name, source_workbooks,
+        detect_period_from_workbooks, organisation_from_name, source_workbooks, ScanDepth,
     },
     models::CopyRange,
     name_config::{
-        CONDITIONAL_FORMAT_EXTRACT_FUNCTION, DEFAULT_CONDITIONAL_FEATURE_NAME,
         load_s1_conditional_mappings, matches_named_range, named_areas_from_defined_names,
-        resolve_s1_conditional_area_plan,
+        resolve_s1_conditional_area_plan, CONDITIONAL_FORMAT_EXTRACT_FUNCTION,
+        DEFAULT_CONDITIONAL_FEATURE_NAME,
     },
     s1_conditional_audit::{
+        extract_conditional_issues, extract_conditional_issues_batch,
         S1ConditionalBatchAuditResult, S1ConditionalBatchInput, S1ConditionalBatchProgress,
-        S1ConditionalMetadata, extract_conditional_issues, extract_conditional_issues_batch,
+        S1ConditionalMetadata,
     },
-    s1_formula_audit::{S1FormulaMetadata, extract_s1_formula_issues},
+    s1_formula_audit::{extract_s1_formula_issues, S1FormulaMetadata},
     s1_history::{
-        S1HistoryRequest, S1HistoryWorkbookReadSummary, process_s1_history,
-        read_s1_history_workbook, write_s1_history_workbook,
+        process_s1_history, read_s1_history_workbook, write_s1_history_workbook, S1HistoryRequest,
+        S1HistoryWorkbookReadSummary,
     },
-    s1_issue_chain::{S1IssueFilePair, merge_s1_issue_sources},
-    s1_recalculation::{recalculate_s1_formula_copy, s1_recalculated_filename},
+    s1_issue_chain::{merge_s1_issue_sources, S1IssueFilePair},
+    s1_recalculation::{
+        recalculate_s1_formula_copy, s1_recalculated_filename, S1RecalculationSession,
+    },
     s1_region_summary::summarize_s1_named_regions,
     s1_result_workbook::write_s1_result_workbook,
     s1_structure_compare::{
@@ -30,27 +34,30 @@ use audit_core::{
     s1_template::{recommend_template, recommend_template_for_workbooks, template_workbook_paths},
     s1_template_rules::{assess_s1_template_health, load_s1_template_rule_plan},
     s1_validation_formula_scan::{
-        S1ValidationFormulaScanPlan, issues_from_validation_formula_scan,
-        validation_formula_scan_failure_issue,
+        issues_from_validation_formula_scan, validation_formula_scan_failure_issue,
+        S1ValidationFormulaScanPlan,
     },
-    s2_service::{S2ProgressEvent, S2RunRequest, run_s2_audit, s2_engine_for_stage},
+    s2_service::{run_s2_audit, s2_engine_for_stage, S2ProgressEvent, S2RunRequest},
     s2_summary::S2AuditSummary,
     s3_current_value_check::{
         input_reader_for_paths, python_regex_scope_matcher, run_current_value_check_files,
     },
-    s3_execution_compare::{S3ExpressionSchema, run_execution_compare_files},
+    s3_execution_compare::{run_execution_compare_files, S3ExpressionSchema},
     s3_explanation_export::export_selected_explanations,
-    s3_explanation_feedback::plan_explanation_feedback_import,
-    s5_conditional_format::run_s5_conditional_format,
+    s3_explanation_feedback::{
+        execute_explanation_feedback_import, plan_explanation_feedback_import,
+    },
+    s5_conditional_format::run_s5_conditional_format_with_template,
     s5_config::load_configuration,
     s5_config_check::validate_s5_config,
-    s5_outputs::{S5OutputRequest, S5OutputSource, write_run_outputs_with_conditional_format},
+    s5_outputs::{write_run_outputs_with_conditional_format, S5OutputRequest, S5OutputSource},
     s5_period_recognition::{detect_s5_period, s5_file_period_hint},
     s5_retrieval::{
         S5CurrentSourceBinding, S5ExternalSourceBinding, S5Retrieval, S5SourceDescriptor,
     },
     s5_service::run_rules,
     s5_template_matching::match_s5_template,
+    s5_validation_formula_scan::S5ValidationFormulaScanner,
     web_bridge::serve_web_ui,
 };
 use clap::{Args, Parser, Subcommand, ValueEnum};
@@ -76,6 +83,9 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Run the configured S1/S2/S3/S5 acceptance workflows and write JSON/Markdown evidence.
+    #[command(name = "acceptance-run")]
+    AcceptanceRun(AcceptanceRunArgs),
     /// Detect an S5 report period from selected workbooks and their source fields.
     S5DetectPeriod(S5DetectPeriodArgs),
     /// Add filename/folder period hints to selected S5 workbooks without opening them.
@@ -93,12 +103,18 @@ enum Command {
     /// Match S3-F03 institution feedback and write a read-only ExcelEditPlan.
     #[command(name = "s3-plan-explanation-feedback-import")]
     S3PlanExplanationFeedbackImport(S3PlanExplanationFeedbackImportArgs),
+    /// Back up and apply S3-F03 institution feedback to the target explanation workbook in place.
+    #[command(name = "s3-import-explanation-feedback")]
+    S3ImportExplanationFeedback(S3ImportExplanationFeedbackArgs),
     /// Run the S3-F01 configured two-period comparison and create its result workbook.
     #[command(name = "s3-execution-compare")]
     S3ExecutionCompare(S3ExecutionCompareArgs),
     /// Run S3-F04 current/previous period checks from CSV, XLSX, or XLS files.
     #[command(name = "s3-check-current-values")]
     S3CheckCurrentValues(S3CurrentValueCheckArgs),
+    /// Generate S3-F05 financial forms from a comparison workbook.
+    #[command(name = "s3-generate-financial-forms")]
+    S3GenerateFinancialForms(S3GenerateFinancialFormsArgs),
     /// Recommend an S1 template from source and template workbook sheet names.
     TemplateSuggest(TemplateSuggestArgs),
     /// Evaluate the Rust-supported static conditional-format rules in an XLSX workbook.
@@ -123,6 +139,17 @@ enum Command {
     S1RegionSummary(S1RegionSummaryArgs),
     /// Serve the bundled Audit frontend through the Rust API bridge on localhost.
     Serve(ServeArgs),
+}
+
+#[derive(Debug, Args)]
+struct AcceptanceRunArgs {
+    /// JSON manifest containing selected Audit inputs and configuration paths.
+    #[arg(long)]
+    manifest: PathBuf,
+
+    /// New, disjoint directory for step outputs and acceptance-report.json/.md.
+    #[arg(long)]
+    output_dir: PathBuf,
 }
 
 #[derive(Debug, Args)]
@@ -350,17 +377,25 @@ struct S1AuditDirectoryArgs {
     #[arg(long)]
     formula_manifest: PathBuf,
 
-    /// Explicitly recalculate the manifest's already-copied formula workbooks using lo-convert.
-    /// Windows accepts Microsoft Excel COM only; Linux accepts LibreOffice Calc only.
+    /// Recalculate existing formula copies. On Linux this supplies the calculation sidecar;
+    /// on Windows this legacy option requests the native COM route instead.
     #[arg(long, requires = "recalculated_copy_dir")]
     recalculate_sidecar: Option<PathBuf>,
 
+    /// Recalculate on Windows using a native COM batch session, without lo-convert.
+    #[arg(
+        long,
+        requires = "recalculated_copy_dir",
+        conflicts_with = "recalculate_sidecar"
+    )]
+    recalculate_native_com: bool,
+
     /// Diagnostic-only opt-in to saved formula caches without fresh Office/LibreOffice calculation.
-    #[arg(long, conflicts_with = "recalculate_sidecar")]
+    #[arg(long, conflicts_with_all = ["recalculate_sidecar", "recalculate_native_com"])]
     allow_saved_formula_cache_diagnostics: bool,
 
     /// Directory for new, recalculated formula audit copies; existing files are never overwritten.
-    #[arg(long, requires = "recalculate_sidecar")]
+    #[arg(long)]
     recalculated_copy_dir: Option<PathBuf>,
 
     /// S1 template workbook containing formula rules and conditional-area mappings.
@@ -669,12 +704,12 @@ struct S5AuditRunArgs {
     #[arg(long = "current-source", value_name = "SOURCE_ID=BUSINESS=FILE")]
     current_sources: Vec<String>,
 
-    /// Optional previous-period workbook metadata; V_PRE rule calls remain unsupported in this version.
+    /// Optional previous-period workbook bound to V_PRE rule calls.
     #[arg(long)]
     previous_source: Option<PathBuf>,
 
     /// Logical source id for the optional previous-period workbook metadata.
-    /// Defaults to --source-id; this does not enable V_PRE.
+    /// Defaults to --source-id; must match the V_PRE source contract when configured.
     #[arg(long)]
     previous_source_id: Option<String>,
 
@@ -804,6 +839,21 @@ struct S3PlanExplanationFeedbackImportArgs {
 }
 
 #[derive(Debug, Args)]
+struct S3ImportExplanationFeedbackArgs {
+    /// Existing .xlsx target explanation workbook; it is backed up before in-place update.
+    #[arg(long)]
+    target_workbook: PathBuf,
+
+    /// Institution feedback workbook; repeat this option for multiple files.
+    #[arg(long = "feedback-workbook", required = true)]
+    feedback_workbooks: Vec<PathBuf>,
+
+    /// Emit developer-view JSON progress with backup and write-back details.
+    #[arg(long, default_value_t = false)]
+    developer_view: bool,
+}
+
+#[derive(Debug, Args)]
 struct S3CurrentValueCheckArgs {
     /// Current-period CSV/XLSX/XLS data; repeat for multiple institution files.
     #[arg(long = "current-csv", required = true)]
@@ -861,6 +911,29 @@ struct S3ExecutionCompareArgs {
     developer_view: bool,
 }
 
+#[derive(Debug, Args)]
+struct S3GenerateFinancialFormsArgs {
+    /// S3-F01 comparison result workbook containing the selected indicators.
+    #[arg(long)]
+    comparison_workbook: PathBuf,
+
+    /// Shared 3.0 central configuration workbook.
+    #[arg(long)]
+    common_config: PathBuf,
+
+    /// S3-F05 3.3 indicator-split configuration workbook with embedded forms.
+    #[arg(long)]
+    forms_config: PathBuf,
+
+    /// Directory that receives the 指标比较拆分_时间戳 output folder.
+    #[arg(long)]
+    output_directory: PathBuf,
+
+    /// Emit developer-view JSON progress with engines and stage timings.
+    #[arg(long, default_value_t = false)]
+    developer_view: bool,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 enum S3ExpressionSchemaArg {
     #[value(name = "five-segment")]
@@ -877,6 +950,14 @@ struct S2CliOutput {
 }
 
 fn main() {
+    #[cfg(windows)]
+    if let Some(result) = audit_core::native_recalculation::maybe_run_native_com_worker() {
+        if let Err(error) = result {
+            eprintln!("原生 COM 计算工作进程失败：{error:#}");
+            std::process::exit(2);
+        }
+        return;
+    }
     if let Err(error) = run() {
         eprintln!("open-data-audit: {error:#}");
         std::process::exit(2);
@@ -886,6 +967,18 @@ fn main() {
 fn run() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
+        Command::AcceptanceRun(arguments) => {
+            let report = run_acceptance_manifest(&arguments.manifest, &arguments.output_dir)?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
+            anyhow::ensure!(
+                report.status == "completed",
+                "业务验收存在失败步骤或输入文件变化；查看报告：{}",
+                report
+                    .output_directory
+                    .join("acceptance-report.md")
+                    .display()
+            );
+        }
         Command::S5DetectPeriod(arguments) => {
             run_s5_detect_period(arguments)?;
         }
@@ -951,11 +1044,17 @@ fn run() -> Result<()> {
         Command::S3PlanExplanationFeedbackImport(arguments) => {
             run_s3_plan_explanation_feedback_import(arguments)?;
         }
+        Command::S3ImportExplanationFeedback(arguments) => {
+            run_s3_import_explanation_feedback(arguments)?;
+        }
         Command::S3CheckCurrentValues(arguments) => {
             run_s3_current_value_check(arguments)?;
         }
         Command::S3ExecutionCompare(arguments) => {
             run_s3_execution_compare(arguments)?;
+        }
+        Command::S3GenerateFinancialForms(arguments) => {
+            run_s3_generate_financial_forms(arguments)?;
         }
         Command::TemplateSuggest(arguments) => {
             let depth = if arguments.recursive {
@@ -1603,6 +1702,141 @@ fn run_s3_execution_compare(arguments: S3ExecutionCompareArgs) -> Result<()> {
     Ok(())
 }
 
+fn run_s3_generate_financial_forms(arguments: S3GenerateFinancialFormsArgs) -> Result<()> {
+    let started = Instant::now();
+    let started_at = chrono::Local::now().to_rfc3339();
+    if arguments.developer_view {
+        eprintln!(
+            "{}",
+            serde_json::to_string(&json!({
+                "type": "progress",
+                "product": "open-data-audit",
+                "feature": "S3-F05",
+                "step": "indicator_split",
+                "status": "started",
+                "started_at": started_at
+            }))?
+        );
+    } else {
+        eprintln!("正在生成 S3-F05 金融表单…");
+    }
+
+    let (modifier, capability) = audit_core::excel_route::production_modifier("S3-F05")?;
+    let Some(_capability) = capability else {
+        let error = anyhow::anyhow!(
+            "S3-F05 当前平台 {} 没有已登记的 Excel-Core Passed 后端，编辑批次保持失败关闭；未生成表单",
+            audit_core::excel_route::runtime_platform()
+        );
+        if arguments.developer_view {
+            eprintln!(
+                "{}",
+                serde_json::to_string(&json!({
+                    "type": "progress",
+                    "product": "open-data-audit",
+                    "feature": "S3-F05",
+                    "step": "indicator_split",
+                    "status": "failed",
+                    "finished_at": chrono::Local::now().to_rfc3339(),
+                    "error": format!("{error:#}")
+                }))?
+            );
+        } else {
+            eprintln!("S3-F05 未生成表单：{error:#}");
+        }
+        return Err(error);
+    };
+
+    let report = match audit_core::s3_indicator_split::execute_indicator_comparison_split(
+        &arguments.comparison_workbook,
+        &arguments.forms_config,
+        &arguments.common_config,
+        &arguments.output_directory,
+        &modifier,
+    ) {
+        Ok(report) => report,
+        Err(error) => {
+            if arguments.developer_view {
+                eprintln!(
+                    "{}",
+                    serde_json::to_string(&json!({
+                        "type": "progress",
+                        "product": "open-data-audit",
+                        "feature": "S3-F05",
+                        "step": "indicator_split",
+                        "status": "failed",
+                        "finished_at": chrono::Local::now().to_rfc3339(),
+                        "elapsed_ms": started.elapsed().as_millis(),
+                        "error": format!("{error:#}")
+                    }))?
+                );
+            } else {
+                eprintln!("S3-F05 生成金融表单失败，未发布结果：{error:#}");
+            }
+            return Err(error);
+        }
+    };
+
+    if arguments.developer_view {
+        eprintln!(
+            "{}",
+            serde_json::to_string(&json!({
+                "type": "progress",
+                "product": "open-data-audit",
+                "feature": "S3-F05",
+                "step": "indicator_split",
+                "status": "completed",
+                "started_at": started_at,
+                "finished_at": chrono::Local::now().to_rfc3339(),
+                "engine": "rust_s3_indicator_split",
+                "comparison_rows": report.comparison_rows,
+                "institution_count": report.institution_count,
+                "matched_indicators": report.matched_indicators,
+                "edits": report.edits.len(),
+                "output_files": report.output_files.len(),
+                "warnings": report.warnings.len(),
+                "read_time_ms": report.read_time_ms,
+                "planning_time_ms": report.planning_time_ms,
+                "editing_time_ms": report.editing_time_ms,
+                "elapsed_ms": started.elapsed().as_millis()
+            }))?
+        );
+    } else {
+        eprintln!(
+            "S3-F05 完成：{} 家机构、{} 个匹配指标、{} 个输出文件；输出目录：{}；耗时 {} ms。",
+            report.institution_count,
+            report.matched_indicators,
+            report.output_files.len(),
+            report.output_directory.display(),
+            started.elapsed().as_millis()
+        );
+    }
+
+    let output = json!({
+        "status": "completed",
+        "feature": "S3-F05",
+        "engine": "rust_s3_indicator_split",
+        "output_directory": report.output_directory,
+        "output_files": report.output_files,
+        "comparison_rows": report.comparison_rows,
+        "institution_count": report.institution_count,
+        "matched_indicators": report.matched_indicators,
+        "warnings": report.warnings,
+        "edits": report.edits.iter().map(|edit| json!({
+            "engine": edit.engine.to_string(),
+            "input": edit.input,
+            "output": edit.output,
+            "elapsed_ms": edit.elapsed_ms,
+            "attempts": edit.attempts.len()
+        })).collect::<Vec<_>>(),
+        "read_time_ms": report.read_time_ms,
+        "planning_time_ms": report.planning_time_ms,
+        "editing_time_ms": report.editing_time_ms,
+        "elapsed_ms": started.elapsed().as_millis()
+    });
+    println!("{output}");
+    Ok(())
+}
+
 fn run_s3_current_value_check(arguments: S3CurrentValueCheckArgs) -> Result<()> {
     let started = Instant::now();
     let started_at = chrono::Local::now().to_rfc3339();
@@ -1923,6 +2157,38 @@ fn run_s3_plan_explanation_feedback_import(
         }
     }
     println!("{}", serde_json::to_string_pretty(&output)?);
+    Ok(())
+}
+
+fn run_s3_import_explanation_feedback(arguments: S3ImportExplanationFeedbackArgs) -> Result<()> {
+    let started = Instant::now();
+    let (modifier, capability) = audit_core::excel_route::production_modifier("S3-F03")?;
+    ensure!(
+        capability.is_some(),
+        "S3-F03 当前平台没有已登记的 Excel-Core Passed 后端，写回保持失败关闭"
+    );
+    let report = execute_explanation_feedback_import(
+        &arguments.target_workbook,
+        &arguments.feedback_workbooks,
+        &modifier,
+    )?;
+    eprintln!(
+        "S3-F03 已原地更新 {}；写入 {} 条、未匹配 {} 条、冲突 {} 条；更新前备份 {}；耗时 {} ms。",
+        report.output_workbook.display(),
+        report.imported,
+        report.unmatched,
+        report.conflicts,
+        report
+            .backup_workbook
+            .as_ref()
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|| "无".to_owned()),
+        started.elapsed().as_millis()
+    );
+    if let Some(warning) = &report.rollback_cleanup_warning {
+        eprintln!("{warning}");
+    }
+    println!("{}", serde_json::to_string_pretty(&report)?);
     Ok(())
 }
 
@@ -2392,8 +2658,21 @@ fn run_s1_formula_audit(arguments: S1FormulaAuditArgs) -> Result<()> {
 fn run_s1_audit_directory(arguments: S1AuditDirectoryArgs) -> Result<()> {
     let run_started = Instant::now();
     let started_at = chrono::Local::now().to_rfc3339();
+    anyhow::ensure!(
+        !arguments.recalculate_native_com || cfg!(windows),
+        "--recalculate-native-com 仅支持 Windows；Linux 请使用 LibreOffice sidecar"
+    );
+    let recalculation_requested =
+        arguments.recalculate_sidecar.is_some() || arguments.recalculate_native_com;
+    if cfg!(windows) && arguments.recalculate_sidecar.is_some() {
+        eprintln!("Windows 已使用原生 COM 重算；旧 --recalculate-sidecar 路径不再启动。");
+    }
+    anyhow::ensure!(
+        arguments.recalculated_copy_dir.is_some() == recalculation_requested,
+        "公式重算与 --recalculated-copy-dir 必须同时指定"
+    );
     audit_core::s1_recalculation::validate_s1_formula_cache_mode(
-        arguments.recalculate_sidecar.is_some(),
+        recalculation_requested,
         arguments.allow_saved_formula_cache_diagnostics,
     )?;
     let input_dir = fs::canonicalize(&arguments.input_dir)
@@ -2413,14 +2692,20 @@ fn run_s1_audit_directory(arguments: S1AuditDirectoryArgs) -> Result<()> {
         .as_deref()
         .map(prepare_s1_history_result_workbook_path)
         .transpose()?;
-    let recalculation_sidecar = arguments
-        .recalculate_sidecar
-        .as_deref()
-        .map(|path| {
-            fs::canonicalize(path)
-                .with_context(|| format!("读取公式重算 sidecar {}", path.display()))
-        })
-        .transpose()?;
+    let recalculation_sidecar = if cfg!(windows) {
+        // The legacy flag still requests recalculation, but Windows no longer
+        // launches or requires the lo-convert executable.
+        None
+    } else {
+        arguments
+            .recalculate_sidecar
+            .as_deref()
+            .map(|path| {
+                fs::canonicalize(path)
+                    .with_context(|| format!("读取公式重算 sidecar {}", path.display()))
+            })
+            .transpose()?
+    };
     if let Some(sidecar) = recalculation_sidecar.as_deref() {
         anyhow::ensure!(sidecar.is_file(), "公式重算 sidecar 不是文件");
     }
@@ -2694,10 +2979,12 @@ fn run_s1_audit_directory(arguments: S1AuditDirectoryArgs) -> Result<()> {
         .collect::<std::collections::HashMap<_, _>>();
 
     let mut recalculation_reports = Vec::new();
-    if let (Some(sidecar), Some(output_dir)) = (
-        recalculation_sidecar.as_deref(),
-        recalculated_copy_dir.as_deref(),
-    ) {
+    if let Some(output_dir) = recalculated_copy_dir.as_deref() {
+        let mut recalculation_session = if cfg!(windows) {
+            Some(S1RecalculationSession::new_native("auto")?)
+        } else {
+            None
+        };
         for (index, input) in accepted_inputs.iter().enumerate() {
             let source_key = s1_path_identity(&input.source_file);
             let original_copy = pair_by_source
@@ -2720,14 +3007,26 @@ fn run_s1_audit_directory(arguments: S1AuditDirectoryArgs) -> Result<()> {
                         "source_file": input.source_file,
                         "input_audit_copy": original_copy,
                         "output_audit_copy": output_copy,
-                        "engine": if cfg!(windows) { "Microsoft Excel COM" } else { "LibreOffice Calc" }
+                        "engine": if cfg!(windows) { "Office COM → LibreOffice" } else { "LibreOffice Calc" }
                     }))?
                 );
             } else {
                 eprintln!("正在重算公式审核副本：{}", input.source_file.display());
             }
             let recalculation_started = Instant::now();
-            let report = match recalculate_s1_formula_copy(sidecar, &original_copy, &output_copy) {
+            let recalculation = if let Some(session) = recalculation_session.as_mut() {
+                session.recalculate(&original_copy, &output_copy)
+            } else {
+                recalculate_s1_formula_copy(
+                    recalculation_sidecar
+                        .as_deref()
+                        .context("Linux 缺少公式重算 sidecar")?,
+                    &original_copy,
+                    &output_copy,
+                    "auto",
+                )
+            };
+            let report = match recalculation {
                 Ok(report) => report,
                 Err(error) => {
                     if arguments.developer_view {
@@ -2846,15 +3145,12 @@ fn run_s1_audit_directory(arguments: S1AuditDirectoryArgs) -> Result<()> {
         },
     )
     .context("执行 S1 条件格式审核")?;
-    anyhow::ensure!(
-        conditional_report.status == "completed",
-        "条件格式审核包含未支持规则或未确认的业务上下文，已停止历史归类（{} 个文件诊断）",
-        conditional_report
-            .files
-            .iter()
-            .map(|file| file.diagnostics.len() + file.unresolved_indicator_count)
-            .sum::<usize>()
-    );
+    if conditional_report.status != "completed" {
+        eprintln!(
+            "条件格式审核有部分诊断或失败：保留已可靠提取的 {} 条审核项，仍继续公式审核与结果汇总。",
+            conditional_report.issues.len()
+        );
+    }
     if arguments.developer_view {
         eprintln!(
             "{}",
@@ -3008,6 +3304,10 @@ fn run_s1_audit_directory(arguments: S1AuditDirectoryArgs) -> Result<()> {
                 org_name,
             };
             let scan_started = Instant::now();
+            // The saved-cache scan checks the SOURCE workbook's own cached
+            // values inside the template's validation ranges; the audit copy
+            // holds the copied template rules instead and is audited by the
+            // formula pass above.
             let scan_result = match (&validation_plan, validation_plan_error.as_deref()) {
                 (Some(plan), _) => plan.scan(&input.source_file),
                 (None, Some(error)) => Err(anyhow::anyhow!(error.to_owned())),
@@ -3464,7 +3764,7 @@ fn run_s1_audit_directory(arguments: S1AuditDirectoryArgs) -> Result<()> {
     let mut output = serde_json::json!({
         "status": if arguments.allow_saved_formula_cache_diagnostics { "completed_with_diagnostics" } else { status },
         "formula_execution": {
-            "status": if recalculation_reports.is_empty() { "saved_cache_diagnostic_only" } else { "recalculated_by_sidecar" },
+            "status": if recalculation_reports.is_empty() { "saved_cache_diagnostic_only" } else if cfg!(windows) { "recalculated_by_native_engine" } else { "recalculated_by_sidecar" },
             "rust_formula_copy_performed_by_this_command": false,
             "files_recalculated": recalculation_reports.len(),
             "engines": recalculation_reports.iter().map(|report| report.engine.as_str()).collect::<std::collections::BTreeSet<_>>()
@@ -5425,7 +5725,7 @@ fn run_s5_audit_run(arguments: S5AuditRunArgs) -> Result<()> {
     .map_err(|failure| anyhow::anyhow!("{}：{}", failure.code, failure.message))?;
     let source_sha256_before = retrieval.source_sha256().to_owned();
 
-    let (outcomes, status_counts) = run_rules(
+    let (mut outcomes, mut status_counts) = run_rules(
         &configuration,
         &mut retrieval,
         arguments.period.trim(),
@@ -5434,6 +5734,25 @@ fn run_s5_audit_run(arguments: S5AuditRunArgs) -> Result<()> {
         &arguments.org_name,
     )
     .map_err(|error| anyhow::anyhow!("{error}"))?;
+
+    let validation_templates = arguments.template_path.iter().cloned().collect::<Vec<_>>();
+    let validation_business = arguments
+        .businesses
+        .first()
+        .map(String::as_str)
+        .unwrap_or("");
+    let mut validation_scan = S5ValidationFormulaScanner::new(&validation_templates).scan(
+        &arguments.source,
+        validation_business,
+        arguments.period.trim(),
+        &arguments.org_code,
+        &arguments.org_name,
+    );
+    outcomes.append(&mut validation_scan.outcomes);
+    status_counts.clear();
+    for outcome in &outcomes {
+        *status_counts.entry(outcome.status.clone()).or_default() += 1;
+    }
 
     let conditional_started = Instant::now();
     let conditional_started_at = chrono::Local::now().to_rfc3339();
@@ -5459,8 +5778,9 @@ fn run_s5_audit_run(arguments: S5AuditRunArgs) -> Result<()> {
     } else {
         arguments.businesses.join("、")
     };
-    let conditional_format = match run_s5_conditional_format(
+    let conditional_format = match run_s5_conditional_format_with_template(
         &arguments.source,
+        arguments.template_path.as_deref(),
         &arguments.org_name,
         &report_item,
         &arguments.org_code,
@@ -5653,6 +5973,7 @@ fn run_s5_audit_run(arguments: S5AuditRunArgs) -> Result<()> {
         "output_files": output_summary.output_files,
         "triggered_rows": output_summary.triggered_rows,
         "failure_rows": output_summary.failure_rows,
+        "template_formula_scan": validation_scan.summary,
         "conditional_formatting": {
             "status": conditional_format.status,
             "reader": conditional_format.reader,

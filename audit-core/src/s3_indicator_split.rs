@@ -1,24 +1,33 @@
-//! S3-F03: map an existing S3-F01 comparison workbook into the embedded
-//! financial-form template. This module plans business edits only; workbook
-//! editing is delegated to the shared ExcelModifier once its required edit
-//! primitives have validated capabilities.
+//! S3-F05: map an existing S3-F01 comparison workbook into the embedded
+//! financial-form template. This module plans business edits and prepares
+//! capability-gated Excel-Core batches for institution workbooks.
 
 use crate::s3_execution_compare::{
     indicator_split_fill_color_index, vba_color_index_rgb, S3AlertBand,
 };
 use anyhow::{ensure, Context, Result};
+use chrono::Local;
+use excel_editor::{
+    inspect_xlsx_profile, CellValue as EditCellValue, EditExecutionReport, EditOperation,
+    ExcelEditPlan, ExcelModifier, PreservationRequirement, SheetVisibility, WorkbookFormat,
+    WorkbookProfile,
+};
 use excel_reader::{
     read_value_columns_with_iso_dates, read_xlsx_worksheet_extents, CellValue, SheetValues,
 };
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
+    fs,
     path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
     time::Instant,
 };
 
 const EMBEDDED_CONFIG_SHEETS: [&str; 2] = ["使用说明", "转表设置"];
 const HEADER_PREFIXES: [&str; 3] = ["上期-", "增减额-", "环比-"];
 const DROP_HEADER_MARKERS: [&str; 5] = ["剥离", "退出", "上期", "增减额", "环比"];
+static STAGING_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+static PLAN_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct S3IndicatorSplitOptions {
@@ -77,7 +86,7 @@ pub struct S3IndicatorFormRow {
 
 /// The dimensions that identify one value in the S3-F01 comparison output.
 /// Frequency and batch remain separate fields so rows from distinct reporting
-/// dimensions cannot overwrite one another during S3-F03 mapping.
+/// dimensions cannot overwrite one another during S3-F05 mapping.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct S3IndicatorMappingKey {
     pub business_class: String,
@@ -97,6 +106,20 @@ pub struct S3IndicatorSplitPlan {
     pub warnings: Vec<String>,
     pub read_time_ms: u128,
     pub planning_time_ms: u128,
+}
+
+#[derive(Clone, Debug)]
+pub struct S3IndicatorSplitExecutionReport {
+    pub output_directory: PathBuf,
+    pub output_files: Vec<PathBuf>,
+    pub comparison_rows: usize,
+    pub institution_count: usize,
+    pub matched_indicators: usize,
+    pub warnings: Vec<String>,
+    pub edits: Vec<EditExecutionReport>,
+    pub read_time_ms: u128,
+    pub planning_time_ms: u128,
+    pub editing_time_ms: u128,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -170,11 +193,11 @@ struct MatchedFormRow {
 pub fn load_indicator_split_template(path: impl AsRef<Path>) -> Result<S3IndicatorSplitTemplate> {
     let started = Instant::now();
     let path = path.as_ref();
-    ensure_xlsx(path, "S3-F03 指标比较拆分配置")?;
+    ensure_xlsx(path, "S3-F05 指标比较拆分配置")?;
     let sheets = read_value_columns_with_iso_dates(path, usize::MAX)
-        .with_context(|| format!("读取 S3-F03 指标比较拆分配置：{}", path.display()))?;
+        .with_context(|| format!("读取 S3-F05 指标比较拆分配置：{}", path.display()))?;
     let extents = read_xlsx_worksheet_extents(path)
-        .with_context(|| format!("读取 S3-F03 模板工作表范围：{}", path.display()))?;
+        .with_context(|| format!("读取 S3-F05 模板工作表范围：{}", path.display()))?;
     let extent_by_name = extents
         .iter()
         .map(|extent| (extent.name.as_str(), extent))
@@ -186,7 +209,7 @@ pub fn load_indicator_split_template(path: impl AsRef<Path>) -> Result<S3Indicat
     let form_list = sheet_by_name
         .get("报表清单")
         .copied()
-        .context("S3-F03 配置缺少“报表清单”工作表")?;
+        .context("S3-F05 配置缺少“报表清单”工作表")?;
 
     let mut options = S3IndicatorSplitOptions::default();
     if let Some(settings) = sheet_by_name.get("转表设置") {
@@ -363,7 +386,7 @@ pub fn plan_indicator_comparison_split(
 ) -> Result<S3IndicatorSplitPlan> {
     let started = Instant::now();
     let comparison_path = comparison_path.as_ref();
-    ensure_xlsx(comparison_path, "S3-F03 比较结果")?;
+    ensure_xlsx(comparison_path, "S3-F05 比较结果")?;
     let read_started = Instant::now();
     let comparison = read_comparison_result(comparison_path)?;
     let read_time_ms = read_started.elapsed().as_millis();
@@ -384,6 +407,342 @@ pub fn plan_indicator_comparison_split(
         read_time_ms,
         planning_time_ms: started.elapsed().as_millis(),
     })
+}
+
+/// Render every institution's planned edits into a separate workbook copied
+/// from the configured financial-form template. All workbooks are first
+/// written into a private sibling directory and published as one directory
+/// rename only after every Excel-Core edit succeeds.
+pub fn execute_indicator_comparison_split(
+    comparison_path: impl AsRef<Path>,
+    financial_template_path: impl AsRef<Path>,
+    common_config_path: impl AsRef<Path>,
+    output_root: impl AsRef<Path>,
+    modifier: &ExcelModifier,
+) -> Result<S3IndicatorSplitExecutionReport> {
+    let comparison_path = comparison_path.as_ref();
+    let financial_template_path = financial_template_path.as_ref();
+    let common_config_path = common_config_path.as_ref();
+    let output_root = output_root.as_ref();
+    ensure_xlsx(comparison_path, "S3-F05 比较结果")?;
+    ensure_xlsx(financial_template_path, "S3-F05 指标比较拆分配置")?;
+    ensure!(common_config_path.is_file(), "S3-F05 大集中通用配置不存在");
+    ensure!(
+        !same_path(comparison_path, financial_template_path)?,
+        "S3-F05 比较结果与金融表单模板必须是不同文件"
+    );
+
+    fs::create_dir_all(output_root)
+        .with_context(|| format!("创建 S3-F05 输出目录：{}", output_root.display()))?;
+    let output_root = fs::canonicalize(output_root)
+        .with_context(|| format!("解析 S3-F05 输出目录：{}", output_root.display()))?;
+    ensure!(output_root.is_dir(), "S3-F05 输出路径不是目录");
+
+    let template = load_indicator_split_template(financial_template_path)?;
+    let alert_bands =
+        crate::s3_execution_compare::load_indicator_split_alert_bands(common_config_path)
+            .context("读取 S3-F05 大集中通用配置中的环比预警区间")?;
+    let plan = plan_indicator_comparison_split(comparison_path, &template, &alert_bands)?;
+    ensure!(
+        !plan.organizations.is_empty(),
+        "S3-F05 比较结果中没有可生成金融表单的机构记录"
+    );
+
+    let mut file_names = HashSet::new();
+    for institution in &plan.organizations {
+        validate_output_file_name(&institution.output_file_name)?;
+        ensure!(
+            file_names.insert(institution.output_file_name.to_lowercase()),
+            "S3-F05 多个机构映射到相同输出文件名：{}",
+            institution.output_file_name
+        );
+    }
+
+    let workbook_profile = inspect_xlsx_profile(&template.path)
+        .with_context(|| format!("检查 S3-F05 金融表单模板：{}", template.path.display()))?;
+    ensure!(
+        workbook_profile.format == WorkbookFormat::Xlsx,
+        "S3-F05 金融表单模板目前仅支持 XLSX"
+    );
+    let final_directory = next_output_directory(&output_root)?;
+    let staging = S3IndicatorSplitStagingDirectory::create(&output_root)?;
+    let edit_started = Instant::now();
+    let mut edit_reports = Vec::with_capacity(plan.organizations.len());
+    let mut output_names = Vec::with_capacity(plan.organizations.len());
+
+    for (index, institution) in plan.organizations.iter().enumerate() {
+        let staged_output = staging.path().join(&institution.output_file_name);
+        let edit_plan = build_indicator_split_edit_plan(
+            &template.path,
+            &staged_output,
+            &workbook_profile,
+            institution,
+            index,
+        )?;
+        let report = modifier.execute(&edit_plan).with_context(|| {
+            format!(
+                "S3-F05 生成机构 {}（{}）金融表单",
+                institution.institution_name, institution.institution_code
+            )
+        })?;
+        ensure!(
+            report.output == staged_output && staged_output.is_file(),
+            "S3-F05 Excel-Core 未生成请求的金融表单：{}",
+            staged_output.display()
+        );
+        output_names.push(institution.output_file_name.clone());
+        edit_reports.push(report);
+    }
+
+    let editing_time_ms = edit_started.elapsed().as_millis();
+    let output_directory = staging.publish(&final_directory)?;
+    let output_files = output_names
+        .iter()
+        .map(|name| output_directory.join(name))
+        .collect();
+    Ok(S3IndicatorSplitExecutionReport {
+        output_directory,
+        output_files,
+        comparison_rows: plan.comparison_rows,
+        institution_count: plan.organizations.len(),
+        matched_indicators: plan
+            .organizations
+            .iter()
+            .map(|institution| institution.matched_indicators)
+            .sum(),
+        warnings: plan.warnings,
+        edits: edit_reports,
+        read_time_ms: plan.read_time_ms,
+        planning_time_ms: plan.planning_time_ms,
+        editing_time_ms,
+    })
+}
+
+fn build_indicator_split_edit_plan(
+    template_path: &Path,
+    output_path: &Path,
+    workbook_profile: &WorkbookProfile,
+    institution: &S3InstitutionSplitPlan,
+    index: usize,
+) -> Result<ExcelEditPlan> {
+    ensure!(
+        workbook_profile.format == WorkbookFormat::Xlsx,
+        "S3-F05 ExcelEditPlan 目前仅支持 XLSX 模板"
+    );
+    ensure!(
+        !institution.edits.is_empty(),
+        "S3-F05 机构 {} 没有可应用的表单操作",
+        institution.institution_code
+    );
+    let mut operations = Vec::with_capacity(institution.edits.len());
+    for edit in &institution.edits {
+        operations.push(match edit {
+            S3IndicatorSplitEdit::DeleteSheet { sheet } => EditOperation::DeleteSheet {
+                name: sheet.clone(),
+            },
+            S3IndicatorSplitEdit::DeleteColumn { sheet, column } => EditOperation::DeleteColumn {
+                sheet: sheet.clone(),
+                column_index: u32::try_from(*column)
+                    .context("S3-F05 删除列索引超出 Excel-Core 范围")?,
+            },
+            S3IndicatorSplitEdit::SetCellValue { sheet, cell, value } => {
+                EditOperation::SetCellValue {
+                    sheet: sheet.clone(),
+                    cell: cell.clone(),
+                    value: editor_cell_value(value)?,
+                }
+            }
+            S3IndicatorSplitEdit::SetNumberFormat {
+                sheet,
+                cell,
+                format,
+            } => EditOperation::SetCellNumberFormat {
+                sheet: sheet.clone(),
+                cell: cell.clone(),
+                format_code: format.clone(),
+            },
+            S3IndicatorSplitEdit::SetCellFillColor { sheet, cell, argb } => {
+                EditOperation::SetCellFillColor {
+                    sheet: sheet.clone(),
+                    cell: cell.clone(),
+                    argb: argb.clone(),
+                }
+            }
+            S3IndicatorSplitEdit::HideRow { sheet, row } => EditOperation::SetRowHidden {
+                sheet: sheet.clone(),
+                row_index: u32::try_from(*row).context("S3-F05 行号超出 Excel-Core 范围")?,
+                hidden: true,
+            },
+            S3IndicatorSplitEdit::HideSheet { sheet } => EditOperation::SetSheetVisibility {
+                sheet: sheet.clone(),
+                visibility: SheetVisibility::Hidden,
+            },
+        });
+    }
+
+    let sequence = PLAN_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let plan = ExcelEditPlan {
+        request_id: format!(
+            "s3-f5-{}-{index}-{sequence}",
+            Local::now().format("%Y%m%d%H%M%S")
+        ),
+        input: template_path.to_path_buf(),
+        output: output_path.to_path_buf(),
+        format: WorkbookFormat::Xlsx,
+        workbook: workbook_profile.clone(),
+        operations,
+        preserve: s3_f5_required_preservation(),
+        drop_allowed: BTreeMap::new(),
+    };
+    plan.validate().context("校验 S3-F05 ExcelEditPlan")?;
+    Ok(plan)
+}
+
+fn editor_cell_value(value: &CellValue) -> Result<EditCellValue> {
+    Ok(match value {
+        CellValue::Empty => EditCellValue::Blank,
+        CellValue::Text(text) | CellValue::DateTimeIso(text) | CellValue::DurationIso(text) => {
+            EditCellValue::Text(text.clone())
+        }
+        CellValue::Number(number) => {
+            ensure!(number.is_finite(), "S3-F05 单元格包含非有限数值");
+            EditCellValue::Decimal(number.to_string())
+        }
+        CellValue::Integer(number) => EditCellValue::Decimal(number.to_string()),
+        CellValue::DateTimeSerial(serial) => {
+            ensure!(serial.is_finite(), "S3-F05 日期单元格包含非有限数值");
+            EditCellValue::DateTime {
+                serial: serial.to_string(),
+                number_format: "General".to_owned(),
+            }
+        }
+        CellValue::Boolean(value) => EditCellValue::Boolean(*value),
+        CellValue::Error(error) => EditCellValue::Error(error.clone()),
+    })
+}
+
+fn s3_f5_required_preservation() -> std::collections::BTreeSet<PreservationRequirement> {
+    [
+        PreservationRequirement::CellValuesAndTypes,
+        PreservationRequirement::FormulaText,
+        PreservationRequirement::CommentsAndPositions,
+        PreservationRequirement::Styles,
+        PreservationRequirement::MergedRanges,
+        PreservationRequirement::ConditionalFormatting,
+        PreservationRequirement::DataValidations,
+        PreservationRequirement::DefinedNames,
+        PreservationRequirement::RowAndColumnDimensions,
+        PreservationRequirement::PageSettings,
+        PreservationRequirement::HeaderFooterText,
+        PreservationRequirement::Relationships,
+        PreservationRequirement::SheetIdentityAndOrder,
+        PreservationRequirement::FreezePanes,
+        PreservationRequirement::AutoFilter,
+    ]
+    .into_iter()
+    .collect()
+}
+
+fn validate_output_file_name(name: &str) -> Result<()> {
+    let path = Path::new(name);
+    ensure!(
+        path.file_name().and_then(|value| value.to_str()) == Some(name),
+        "S3-F05 输出文件名包含目录部分：{name}"
+    );
+    ensure!(
+        path.extension()
+            .and_then(|value| value.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("xlsx")),
+        "S3-F05 输出文件名必须为 XLSX：{name}"
+    );
+    ensure!(
+        !name.trim().is_empty()
+            && !name.chars().any(|character| {
+                matches!(
+                    character,
+                    '<' | '>' | ':' | '"' | '|' | '?' | '*' | '/' | '\\'
+                )
+            }),
+        "S3-F05 输出文件名包含无效字符：{name}"
+    );
+    Ok(())
+}
+
+fn same_path(left: &Path, right: &Path) -> Result<bool> {
+    let left =
+        fs::canonicalize(left).with_context(|| format!("解析文件路径：{}", left.display()))?;
+    let right =
+        fs::canonicalize(right).with_context(|| format!("解析文件路径：{}", right.display()))?;
+    Ok(left == right)
+}
+
+fn next_output_directory(output_root: &Path) -> Result<PathBuf> {
+    let timestamp = Local::now().format("%Y%m%d_%H%M%S_%3f");
+    for suffix in 0..128 {
+        let name = if suffix == 0 {
+            format!("指标比较拆分_{timestamp}")
+        } else {
+            format!("指标比较拆分_{timestamp}_{suffix}")
+        };
+        let path = output_root.join(name);
+        if !path.exists() {
+            return Ok(path);
+        }
+    }
+    anyhow::bail!("无法为 S3-F05 生成唯一的输出目录名")
+}
+
+struct S3IndicatorSplitStagingDirectory {
+    path: PathBuf,
+    published: bool,
+}
+
+impl S3IndicatorSplitStagingDirectory {
+    fn create(parent: &Path) -> Result<Self> {
+        for _ in 0..128 {
+            let sequence = STAGING_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+            let path = parent.join(format!(".audit-s3-f5-{}-{sequence}", std::process::id()));
+            match fs::create_dir(&path) {
+                Ok(()) => {
+                    return Ok(Self {
+                        path,
+                        published: false,
+                    })
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => {
+                    return Err(error)
+                        .with_context(|| format!("创建 S3-F05 暂存目录：{}", path.display()))
+                }
+            }
+        }
+        anyhow::bail!("无法创建唯一的 S3-F05 暂存目录")
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+
+    fn publish(mut self, destination: &Path) -> Result<PathBuf> {
+        ensure!(!destination.exists(), "S3-F05 输出目录已存在，拒绝覆盖");
+        fs::rename(&self.path, destination).with_context(|| {
+            format!(
+                "发布 S3-F05 金融表单目录：{} -> {}",
+                self.path.display(),
+                destination.display()
+            )
+        })?;
+        self.published = true;
+        Ok(destination.to_path_buf())
+    }
+}
+
+impl Drop for S3IndicatorSplitStagingDirectory {
+    fn drop(&mut self) {
+        if !self.published {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
 }
 
 fn plan_organization(
@@ -431,7 +790,7 @@ fn plan_organization(
                     .collect::<Vec<_>>();
                 ensure!(
                     matches.len() <= 1,
-                    "S3-F03 表单 {} 指标 {} 第 {} 行的频度/批次匹配到多条比较记录",
+                    "S3-F05 表单 {} 指标 {} 第 {} 行的频度/批次匹配到多条比较记录",
                     sheet.name,
                     row.indicator,
                     row.row
@@ -478,7 +837,7 @@ fn plan_organization(
                 let change = current_number - previous_number;
                 ensure!(
                     current_number.is_finite() && previous_number.is_finite() && change.is_finite(),
-                    "S3-F03 指标 {} 第 {} 行包含非有限数值",
+                    "S3-F05 指标 {} 第 {} 行包含非有限数值",
                     row.indicator,
                     row.row
                 );
@@ -523,7 +882,7 @@ fn plan_organization(
                     let ratio = change / previous_number;
                     ensure!(
                         ratio.is_finite(),
-                        "S3-F03 指标 {} 的环比不是有限数值",
+                        "S3-F05 指标 {} 的环比不是有限数值",
                         row.indicator
                     );
                     let column = 4 + 3 * base_count + offset;
@@ -666,12 +1025,12 @@ fn read_comparison_result(
     path: &Path,
 ) -> Result<(usize, Vec<ComparisonOrganization>, Vec<String>)> {
     let sheets = read_value_columns_with_iso_dates(path, usize::MAX)
-        .with_context(|| format!("读取 S3-F03 比较结果：{}", path.display()))?;
+        .with_context(|| format!("读取 S3-F05 比较结果：{}", path.display()))?;
     let result_sheet = sheets
         .iter()
         .find(|sheet| sheet.name.contains("对比结果"))
-        .context("S3-F03 比较结果文件缺少“对比结果”工作表")?;
-    ensure!(result_sheet.max_row >= 1, "S3-F03 比较结果工作表为空");
+        .context("S3-F05 比较结果文件缺少“对比结果”工作表")?;
+    ensure!(result_sheet.max_row >= 1, "S3-F05 比较结果工作表为空");
     let expected_headers = [
         "业务类",
         "数据日期",
@@ -699,7 +1058,7 @@ fn read_comparison_result(
     }
     ensure!(
         result_sheet.max_column >= 15,
-        "S3-F03 比较结果至少需要 15 列（本期值和上期值）"
+        "S3-F05 比较结果至少需要 15 列（本期值和上期值）"
     );
 
     let mut row_count = 0;
@@ -913,11 +1272,15 @@ fn ensure_xlsx(path: &Path, description: &str) -> Result<()> {
 mod tests {
     use super::*;
     use crate::s3_execution_compare::S3AlertBand;
+    use excel_editor::{ExcelEditPlan, OutputValidator};
     use excel_writer::Workbook;
     use sha2::Digest;
     use std::{
         fs,
-        sync::atomic::{AtomicU64, Ordering},
+        sync::{
+            atomic::{AtomicU64, Ordering},
+            Arc,
+        },
     };
 
     static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -925,7 +1288,7 @@ mod tests {
     fn temp_path(label: &str) -> PathBuf {
         let sequence = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
         std::env::temp_dir().join(format!(
-            "audit-s3-f03-{label}-{}-{sequence}.xlsx",
+            "audit-s3-f05-{label}-{}-{sequence}.xlsx",
             std::process::id()
         ))
     }
@@ -1070,6 +1433,14 @@ mod tests {
         }
     }
 
+    struct AcceptAllValidator;
+
+    impl OutputValidator for AcceptAllValidator {
+        fn validate(&self, _original_plan: &ExcelEditPlan, _candidate_output: &Path) -> Result<()> {
+            Ok(())
+        }
+    }
+
     #[test]
     fn plans_form_mapping_headers_values_formats_colors_and_visibility() {
         let template_path = temp_path("template");
@@ -1139,6 +1510,119 @@ mod tests {
 
         fs::remove_file(template_path).unwrap();
         fs::remove_file(comparison_path).unwrap();
+    }
+
+    #[test]
+    fn edit_plan_translates_all_business_operations_and_preserves_template_contract() {
+        let template_path = temp_path("edit-plan-template");
+        let output_path = temp_path("edit-plan-output");
+        let comparison_path = temp_path("edit-plan-comparison");
+        write_template(&template_path);
+        write_comparison(&comparison_path);
+        let template = load_indicator_split_template(&template_path).unwrap();
+        let business_plan =
+            plan_indicator_comparison_split(&comparison_path, &template, &[band()]).unwrap();
+        let profile = inspect_xlsx_profile(&template_path).unwrap();
+        let edit_plan = build_indicator_split_edit_plan(
+            &template_path,
+            &output_path,
+            &profile,
+            &business_plan.organizations[0],
+            0,
+        )
+        .unwrap();
+
+        assert!(edit_plan.operations.iter().any(|operation| matches!(
+            operation,
+            EditOperation::DeleteColumn { sheet, column_index: 7 } if sheet == "测试A1"
+        )));
+        assert!(edit_plan.operations.iter().any(|operation| matches!(
+            operation,
+            EditOperation::SetCellValue { sheet, cell, value: EditCellValue::Decimal(value) }
+                if sheet == "测试A1" && cell == "D2" && value == "120"
+        )));
+        assert!(edit_plan.operations.iter().any(|operation| matches!(
+            operation,
+            EditOperation::SetCellNumberFormat { sheet, cell, format_code }
+                if sheet == "测试A1" && cell == "G2" && format_code == "0.00%"
+        )));
+        assert!(edit_plan.operations.iter().any(|operation| matches!(
+            operation,
+            EditOperation::SetCellFillColor { sheet, cell, argb }
+                if sheet == "测试A1" && cell == "D2" && argb == "FFFFFF00"
+        )));
+        assert!(edit_plan.operations.iter().any(|operation| matches!(
+            operation,
+            EditOperation::SetRowHidden { sheet, row_index: 3, hidden: true }
+                if sheet == "测试A1"
+        )));
+        assert!(edit_plan.operations.iter().any(|operation| matches!(
+            operation,
+            EditOperation::DeleteSheet { name } if name == "使用说明"
+        )));
+        assert!(edit_plan
+            .preserve
+            .contains(&PreservationRequirement::FormulaText));
+        assert!(edit_plan
+            .preserve
+            .contains(&PreservationRequirement::ConditionalFormatting));
+
+        fs::remove_file(template_path).unwrap();
+        fs::remove_file(comparison_path).unwrap();
+    }
+
+    #[test]
+    fn execution_without_a_passed_excel_core_route_publishes_no_partial_outputs() {
+        let template_path = temp_path("capability-template");
+        let comparison_path = temp_path("capability-comparison");
+        let common_path = temp_path("capability-common");
+        let output_root = temp_path("capability-output-root").with_extension("");
+        write_template(&template_path);
+        write_comparison(&comparison_path);
+        write_split_common_config(&common_path);
+        fs::create_dir_all(&output_root).unwrap();
+        let modifier =
+            ExcelModifier::new("test-platform", Vec::new(), Arc::new(AcceptAllValidator)).unwrap();
+
+        let error = execute_indicator_comparison_split(
+            &comparison_path,
+            &template_path,
+            &common_path,
+            &output_root,
+            &modifier,
+        )
+        .expect_err("an empty backend registry cannot claim S3-F05 succeeded");
+        assert!(format!("{error:#}").contains("NoEligibleBackend"));
+        assert!(fs::read_dir(&output_root).unwrap().next().is_none());
+
+        fs::remove_file(template_path).unwrap();
+        fs::remove_file(comparison_path).unwrap();
+        fs::remove_file(common_path).unwrap();
+        fs::remove_dir(output_root).unwrap();
+    }
+
+    fn write_split_common_config(path: &Path) {
+        let mut workbook = Workbook::new();
+        let sheet = workbook.add_worksheet();
+        sheet.set_name("环比警戒").unwrap();
+        for (column, header) in [
+            "下限",
+            "上限",
+            "备注文字",
+            "填充颜色",
+            "是否整行填充",
+            "金额变动阈值",
+            "是否说明",
+        ]
+        .iter()
+        .enumerate()
+        {
+            sheet.write_string(0, column as u16, *header).unwrap();
+        }
+        sheet.write_string(1, 0, "10").unwrap();
+        sheet.write_string(1, 1, "30").unwrap();
+        sheet.write_string(1, 3, "6").unwrap();
+        workbook.save(path).unwrap();
     }
 
     #[test]

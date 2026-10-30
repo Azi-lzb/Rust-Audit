@@ -5,8 +5,7 @@
 //! evaluations remain explicit result rows.
 
 use crate::conditional_format::{
-    evaluate_xlsx_workbook_with_dump, ConditionalDiagnostic, ConditionalTrigger,
-    EvaluationStatus,
+    evaluate_xlsx_workbook_with_dump, ConditionalDiagnostic, ConditionalTrigger, EvaluationStatus,
 };
 use anyhow::{Context, Result};
 use excel_reader::CellValue;
@@ -56,15 +55,45 @@ pub fn run_s5_conditional_format(
     report_item: &str,
     institution_code: &str,
 ) -> Result<S5ConditionalFormatRun> {
-    let source_path = source_path.as_ref();
-    let (evaluation, workbook) = evaluate_xlsx_workbook_with_dump(source_path, &[])
+    run_s5_conditional_format_with_template(
+        source_path.as_ref(),
+        None,
+        institution_name,
+        report_item,
+        institution_code,
+    )
+}
+
+pub fn run_s5_conditional_format_with_template(
+    source_path: &Path,
+    template_path: Option<&Path>,
+    institution_name: &str,
+    report_item: &str,
+    institution_code: &str,
+) -> Result<S5ConditionalFormatRun> {
+    let layout_path = template_path.unwrap_or(source_path);
+    let scan_areas = excel_reader::read_defined_names(layout_path)
+        .with_context(|| format!("读取 S5 条件格式扫描范围：{}", layout_path.display()))?
+        .into_iter()
+        .filter(|name| name.name.starts_with("条件格式区域"))
+        .flat_map(|name| name.areas.into_iter())
+        .map(|area| {
+            format!(
+                "'{}'!{}",
+                area.sheet_name.replace('\'', "''"),
+                area.reference
+            )
+        })
+        .collect::<Vec<_>>();
+    let (evaluation, workbook) = evaluate_xlsx_workbook_with_dump(source_path, &scan_areas)
         .with_context(|| format!("读取并计算 S5 条件格式：{}", source_path.display()))?;
 
     let source_file = source_path
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| source_path.to_string_lossy().into_owned());
-    let mut findings = Vec::with_capacity(evaluation.triggered.len() + evaluation.diagnostics.len());
+    let mut findings =
+        Vec::with_capacity(evaluation.triggered.len() + evaluation.diagnostics.len());
 
     for trigger in &evaluation.triggered {
         findings.push(trigger_finding(
@@ -228,13 +257,8 @@ mod tests {
 
     #[test]
     fn maps_only_true_rules_as_triggers_and_keeps_unsupported_results_visible() {
-        let result = run_s5_conditional_format(
-            fixture(),
-            "测试机构",
-            "单位贷款",
-            "I001",
-        )
-        .expect("evaluate S5 conditional formats");
+        let result = run_s5_conditional_format(fixture(), "测试机构", "单位贷款", "I001")
+            .expect("evaluate S5 conditional formats");
 
         assert_eq!(result.status, "PARTIAL");
         assert_eq!(result.rules_total, 7);
@@ -270,5 +294,43 @@ mod tests {
         assert_eq!(result.findings[0].institution_code, "I001");
         assert_eq!(result.findings[0].cell, "B2");
         assert!(!result.findings[0].cell_value.is_empty());
+    }
+
+    #[test]
+    fn optional_template_scan_area_excludes_triggers_outside_the_audit_scope() {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!("s5-cf-scope-{stamp}"));
+        std::fs::create_dir_all(&directory).unwrap();
+        let template = directory.join("template.xlsx");
+        let source = fixture();
+        let sheet = excel_reader::read_workbook(&source).unwrap().sheets[0]
+            .name
+            .clone();
+        let mut book = excel_writer::Workbook::new();
+        book.add_worksheet().set_name(&sheet).unwrap();
+        book.define_name(
+            "条件格式区域_1",
+            &format!("'{}'!$B$2", sheet.replace('\'', "''")),
+        )
+        .unwrap();
+        book.save(&template).unwrap();
+        let bounded = run_s5_conditional_format_with_template(
+            &source,
+            Some(&template),
+            "机构",
+            "报表",
+            "I001",
+        )
+        .unwrap();
+        assert!(bounded.triggered_count > 0 && bounded.triggered_count < 4);
+        assert!(bounded
+            .findings
+            .iter()
+            .filter(|finding| finding.status.starts_with("TRIGGERED"))
+            .all(|finding| finding.cell == "B2"));
+        std::fs::remove_dir_all(directory).unwrap();
     }
 }

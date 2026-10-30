@@ -352,7 +352,7 @@ pub fn load_execution_compare_config(
     Ok(config)
 }
 
-/// Load the 3.0 alert bands required by the legacy S3-F03 form renderer.
+/// Load the 3.0 alert bands required by the legacy S3-F05 form renderer.
 pub fn load_indicator_split_alert_bands(common_path: impl AsRef<Path>) -> Result<Vec<S3AlertBand>> {
     let common_path = common_path.as_ref();
     ensure_xlsx(common_path, "3.0 大集中通用配置")?;
@@ -885,6 +885,9 @@ pub fn run_execution_compare_files(
         &current.record_date,
     )?;
     let workbook_write_time_ms = workbook_started.elapsed().as_millis();
+    // Stage attribution for the write phase is derived from the validation
+    // timer captured inside execute_with_staging (write vs independent
+    // read-back verification).
     on_step("比较结果已生成");
 
     Ok(S3ExecutionCompareReport {
@@ -969,6 +972,7 @@ fn write_execution_compare_workbook(
     let headers = execution_result_headers(target_unit);
     let temporary_path = reserve_execution_result_temporary_path(output_path)?;
     let write_result = (|| -> Result<()> {
+        let workbook_save_started = Instant::now();
         {
             let mut workbook = Workbook::new();
             let worksheet = workbook.add_worksheet();
@@ -989,6 +993,7 @@ fn write_execution_compare_workbook(
                     .with_context(|| format!("写入 S3-F01 比较结果表头第 {} 列", column + 1))?;
             }
 
+            let formats = execution_compare_formats(rows);
             for (index, row) in rows.iter().enumerate() {
                 let output_row = index as u32 + 1;
                 let record = &row.record;
@@ -1034,14 +1039,22 @@ fn write_execution_compare_workbook(
                         && ((row.fill_scope == "row" && column <= 17)
                             || (row.fill_scope != "row" && column == 17));
                     if column == 1 || applies_fill {
-                        let mut format = Format::new();
-                        if column == 1 {
-                            format = format.set_num_format("yyyy/m/d");
-                        }
-                        if applies_fill {
-                            format = format.set_background_color(Color::RGB(fill_color.unwrap()));
-                        }
-                        worksheet.write_string_with_format(output_row, column, value, &format)?;
+                        let format = if column == 1 {
+                            if applies_fill {
+                                formats
+                                    .date_by_fill
+                                    .get(&fill_color.expect("fill applies to date"))
+                                    .expect("date fill format was precomputed")
+                            } else {
+                                &formats.date
+                            }
+                        } else {
+                            formats
+                                .text_by_fill
+                                .get(&fill_color.expect("fill applies to text"))
+                                .expect("text fill format was precomputed")
+                        };
+                        worksheet.write_string_with_format(output_row, column, value, format)?;
                     } else {
                         worksheet.write_string(output_row, column, value)?;
                     }
@@ -1053,6 +1066,7 @@ fn write_execution_compare_workbook(
                     &record.value,
                     Some("0.00"),
                     fill_color.filter(|_| row.fill_scope == "row"),
+                    &formats,
                 )?;
                 write_central_value(
                     worksheet,
@@ -1061,6 +1075,7 @@ fn write_execution_compare_workbook(
                     &row.previous_value,
                     Some("0.00"),
                     fill_color.filter(|_| row.fill_scope == "row"),
+                    &formats,
                 )?;
                 write_central_value(
                     worksheet,
@@ -1069,6 +1084,7 @@ fn write_execution_compare_workbook(
                     &row.change,
                     Some("0.00"),
                     fill_color.filter(|_| row.fill_scope == "row"),
+                    &formats,
                 )?;
                 write_central_value(
                     worksheet,
@@ -1077,8 +1093,9 @@ fn write_execution_compare_workbook(
                     &row.ratio,
                     Some("0.00%"),
                     fill_color.filter(|_| row.fill_scope == "row"),
+                    &formats,
                 )?;
-                worksheet.write_blank(output_row, 21, &Format::new())?;
+                worksheet.write_blank(output_row, 21, &formats.blank)?;
             }
 
             worksheet
@@ -1096,8 +1113,19 @@ fn write_execution_compare_workbook(
                 .save(&temporary_path)
                 .context("保存 S3-F01 比较结果临时工作簿失败")?;
         }
+        let workbook_saved_ms = workbook_save_started.elapsed().as_millis();
 
         validate_execution_compare_workbook(&temporary_path, &sheet_name, &headers, rows)?;
+        let workbook_validated_ms = workbook_save_started.elapsed().as_millis();
+        eprintln!(
+            "{}",
+            serde_json::json!({
+                "type": "progress",
+                "step": "s3_f01_write_stage_timing",
+                "workbook_save_ms": workbook_saved_ms,
+                "workbook_validate_ms": workbook_validated_ms.saturating_sub(workbook_saved_ms),
+            })
+        );
         fs::hard_link(&temporary_path, output_path)
             .with_context(|| format!("发布 S3-F01 比较结果失败：{}", output_path.display()))?;
         Ok(())
@@ -1139,44 +1167,86 @@ fn write_central_value(
     row: u32,
     column: u16,
     value: &CentralValue,
-    number_format: Option<&str>,
+    number_format: Option<&'static str>,
     fill_color: Option<u32>,
+    formats: &ExecutionCompareFormats,
 ) -> Result<()> {
     match value {
         CentralValue::Number(value) => {
             ensure!(value.is_finite(), "S3-F01 比较结果包含非有限数值");
-            if let Some(format) = number_format {
-                let mut cell_format = Format::new().set_num_format(format);
-                if let Some(color) = fill_color {
-                    cell_format = cell_format.set_background_color(Color::RGB(color));
-                }
-                worksheet.write_number_with_format(row, column, *value, &cell_format)?;
-            } else if let Some(color) = fill_color {
-                worksheet.write_number_with_format(
-                    row,
-                    column,
-                    *value,
-                    &Format::new().set_background_color(Color::RGB(color)),
-                )?;
+            if number_format.is_some() || fill_color.is_some() {
+                let format = formats
+                    .central
+                    .get(&(number_format, fill_color))
+                    .context("S3-F01 数值格式缓存缺少所需格式")?;
+                worksheet.write_number_with_format(row, column, *value, format)?;
             } else {
                 worksheet.write_number(row, column, *value)?;
             }
         }
         CentralValue::Text(value) => {
-            let mut format = Format::new();
-            if let Some(number_format) = number_format {
-                format = format.set_num_format(number_format);
-            }
-            if let Some(color) = fill_color {
-                format = format.set_background_color(Color::RGB(color));
-            }
             if number_format.is_some() || fill_color.is_some() {
-                worksheet.write_string_with_format(row, column, value, &format)?;
+                let format = formats
+                    .central
+                    .get(&(number_format, fill_color))
+                    .context("S3-F01 文本格式缓存缺少所需格式")?;
+                worksheet.write_string_with_format(row, column, value, format)?;
             } else {
                 worksheet.write_string(row, column, value)?;
             }
         }
         CentralValue::Empty => {
+            let format = formats
+                .central
+                .get(&(number_format, fill_color))
+                .unwrap_or(&formats.blank);
+            worksheet.write_blank(row, column, format)?;
+        }
+    }
+    Ok(())
+}
+
+struct ExecutionCompareFormats {
+    date: Format,
+    date_by_fill: HashMap<u32, Format>,
+    text_by_fill: HashMap<u32, Format>,
+    central: HashMap<(Option<&'static str>, Option<u32>), Format>,
+    blank: Format,
+}
+
+fn execution_compare_formats(rows: &[S3ExecutionCompareRow]) -> ExecutionCompareFormats {
+    let fill_colors = rows
+        .iter()
+        .filter(|row| !row.fill_scope.is_empty())
+        .filter_map(|row| row.fill_color.and_then(vba_color_index_rgb))
+        .collect::<BTreeSet<_>>();
+    let date = Format::new().set_num_format("yyyy/m/d");
+    let date_by_fill = fill_colors
+        .iter()
+        .map(|color| {
+            (
+                *color,
+                Format::new()
+                    .set_num_format("yyyy/m/d")
+                    .set_background_color(Color::RGB(*color)),
+            )
+        })
+        .collect();
+    let text_by_fill = fill_colors
+        .iter()
+        .map(|color| {
+            (
+                *color,
+                Format::new().set_background_color(Color::RGB(*color)),
+            )
+        })
+        .collect();
+    let mut central = HashMap::new();
+    for number_format in [None, Some("0.00"), Some("0.00%")] {
+        for fill_color in std::iter::once(None).chain(fill_colors.iter().copied().map(Some)) {
+            if number_format.is_none() && fill_color.is_none() {
+                continue;
+            }
             let mut format = Format::new();
             if let Some(number_format) = number_format {
                 format = format.set_num_format(number_format);
@@ -1184,10 +1254,16 @@ fn write_central_value(
             if let Some(color) = fill_color {
                 format = format.set_background_color(Color::RGB(color));
             }
-            worksheet.write_blank(row, column, &format)?;
+            central.insert((number_format, fill_color), format);
         }
     }
-    Ok(())
+    ExecutionCompareFormats {
+        date,
+        date_by_fill,
+        text_by_fill,
+        central,
+        blank: Format::new(),
+    }
 }
 
 pub(crate) fn vba_color_index_rgb(index: u8) -> Option<u32> {
@@ -1339,9 +1415,12 @@ fn validate_execution_compare_workbook(
             output_row
         );
     }
-    let workbook = excel_reader::read_workbook(path).context("校验 S3-F01 结果公式元数据失败")?;
+    // 公式检查走轻量 XML 扫描（不重复整簿解析）：read_value_columns 已经
+    // 做过一次完整读取，此处若再用 read_workbook 全量 dump 会把验证成本翻倍。
+    let formula_inventory = excel_reader::inspect_formula_cache_nodes(path)
+        .context("校验 S3-F01 结果公式元数据失败")?;
     ensure!(
-        workbook.sheets.len() == 1 && workbook.sheets[0].formulas.is_empty(),
+        formula_inventory.formula_cell_count == 0,
         "S3-F01 比较结果不应包含公式"
     );
     Ok(())
@@ -2697,7 +2776,7 @@ fn matching_alert_band(ratio: f64, bands: &[S3AlertBand]) -> Option<&S3AlertBand
     })
 }
 
-/// Resolve the VBA palette index used by S3-F03 form rendering. Unlike the
+/// Resolve the VBA palette index used by S3-F05 form rendering. Unlike the
 /// comparison result, an unmatched alert band means no fill in the form.
 pub(crate) fn indicator_split_fill_color_index(ratio: f64, bands: &[S3AlertBand]) -> Option<u8> {
     let band = matching_alert_band(ratio, bands)?;

@@ -1,3 +1,6 @@
+// This legacy filename keeps the earlier Rust label; its financial-form edit
+// batch corresponds to original Python S3-F05, not the explanation import.
+
 use anyhow::{Context, Result};
 use excel_editor::{
     inspect_xlsx_profile, BackendCapability, BackendErrorKind, CapabilityStatus, EditBackend,
@@ -36,7 +39,7 @@ impl Drop for TestDir {
 }
 
 #[test]
-fn excel_modifier_applies_s3_f3_structural_and_format_operations() -> Result<()> {
+fn excel_modifier_applies_python_s3_f5_form_edit_operations() -> Result<()> {
     let dir = TestDir::new();
     let input = dir.path("input.xlsx");
     let output = dir.path("output.xlsx");
@@ -71,9 +74,9 @@ fn excel_modifier_applies_s3_f3_structural_and_format_operations() -> Result<()>
     let source_bytes = fs::read(&input)?;
 
     let profile = inspect_xlsx_profile(&input)?;
-    let platform = "synthetic-s3-f3-edit-test";
+    let platform = "synthetic-python-s3-f5-form-edit-test";
     let plan = ExcelEditPlan {
-        request_id: "s3-f3-edit-test".to_owned(),
+        request_id: "python-s3-f5-edit-test".to_owned(),
         input: input.clone(),
         output: output.clone(),
         format: WorkbookFormat::Xlsx,
@@ -85,6 +88,16 @@ fn excel_modifier_applies_s3_f3_structural_and_format_operations() -> Result<()>
             EditOperation::DeleteColumn {
                 sheet: "表单".to_owned(),
                 column_index: 2,
+            },
+            EditOperation::SetCellValue {
+                sheet: "表单".to_owned(),
+                cell: "A2".to_owned(),
+                value: excel_editor::CellValue::Text("新填入值".to_owned()),
+            },
+            EditOperation::SetCellFillColor {
+                sheet: "表单".to_owned(),
+                cell: "A1".to_owned(),
+                argb: "FF112233".to_owned(),
             },
             EditOperation::SetCellNumberFormat {
                 sheet: "表单".to_owned(),
@@ -105,6 +118,7 @@ fn excel_modifier_applies_s3_f3_structural_and_format_operations() -> Result<()>
             PreservationRequirement::CellValuesAndTypes,
             PreservationRequirement::FormulaText,
             PreservationRequirement::CommentsAndPositions,
+            PreservationRequirement::Styles,
             PreservationRequirement::MergedRanges,
             PreservationRequirement::DefinedNames,
             PreservationRequirement::RowAndColumnDimensions,
@@ -121,6 +135,8 @@ fn excel_modifier_applies_s3_f3_structural_and_format_operations() -> Result<()>
         operations: [
             EditOperationKind::DeleteSheet,
             EditOperationKind::DeleteColumn,
+            EditOperationKind::SetCellValue,
+            EditOperationKind::SetCellFillColor,
             EditOperationKind::SetCellNumberFormat,
             EditOperationKind::SetRowHidden,
             EditOperationKind::SetSheetVisibility,
@@ -145,6 +161,8 @@ fn excel_modifier_applies_s3_f3_structural_and_format_operations() -> Result<()>
         format: WorkbookFormat::Xlsx,
         operations: [
             EditOperationKind::DeleteColumn,
+            EditOperationKind::SetCellValue,
+            EditOperationKind::SetCellFillColor,
             EditOperationKind::SetCellNumberFormat,
             EditOperationKind::SetRowHidden,
             EditOperationKind::SetSheetVisibility,
@@ -171,6 +189,10 @@ fn excel_modifier_applies_s3_f3_structural_and_format_operations() -> Result<()>
         Some("保留 A".to_owned())
     );
     assert_eq!(
+        target.cell("A2").map(|cell| cell.value().to_string()),
+        Some("新填入值".to_owned())
+    );
+    assert_eq!(
         target.cell("B1").map(|cell| cell.value().to_string()),
         Some("12.5".to_owned())
     );
@@ -192,6 +214,15 @@ fn excel_modifier_applies_s3_f3_structural_and_format_operations() -> Result<()>
             .and_then(|cell| cell.style().number_format())
             .map(|format| format.format_code()),
         Some("0.00%")
+    );
+    assert_eq!(
+        target
+            .cell("A1")
+            .and_then(|cell| cell.style().fill())
+            .and_then(|fill| fill.pattern_fill())
+            .and_then(|pattern| pattern.foreground_color())
+            .map(|color| color.get_argb_str()),
+        Some("FF112233".to_owned())
     );
     assert_eq!(visibility_of(target), SheetVisibility::Hidden);
     let other = actual.sheet_by_name("引用")?;

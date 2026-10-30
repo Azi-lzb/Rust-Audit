@@ -7,11 +7,12 @@
 use crate::{
     conditional_format::{
         evaluate_xlsx_workbook_with_dump, ConditionalDiagnostic, ConditionalEvaluationReport,
+        ConditionalTrigger, EvaluationStatus,
     },
     models::{CopyRange, Issue},
     template::normalize_template_name,
 };
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use excel_reader::{CellValue, SheetDump};
 use rayon::prelude::*;
 use serde::Serialize;
@@ -57,6 +58,7 @@ pub struct S1ConditionalBatchInput {
 pub struct S1ConditionalBatchFileSummary {
     pub source_file: String,
     pub status: &'static str,
+    pub error: Option<String>,
     pub issue_count: usize,
     pub reader: &'static str,
     pub rules_total: usize,
@@ -124,7 +126,7 @@ pub fn extract_conditional_issues(
 ) -> Result<S1ConditionalAuditResult> {
     let workbook_path = workbook_path.as_ref();
     let source_file = source_file.as_ref();
-    let (evaluation, workbook) = evaluate_xlsx_workbook_with_dump(workbook_path, scan_areas)?;
+    let (mut evaluation, workbook) = evaluate_xlsx_workbook_with_dump(workbook_path, scan_areas)?;
     let build_started = Instant::now();
     let source_stem = source_file
         .file_stem()
@@ -138,16 +140,31 @@ pub fn extract_conditional_issues(
     };
 
     let mut issues = Vec::with_capacity(evaluation.triggered.len());
+    let mut issue_build_diagnostics = Vec::new();
     let mut unresolved_indicator_count = 0usize;
     let mut comments_unverified_sheets = BTreeSet::new();
     for trigger in &evaluation.triggered {
-        let sheet = workbook
+        let Some(sheet) = workbook
             .sheets
             .iter()
             .find(|sheet| sheet.name == trigger.sheet)
-            .with_context(|| format!("条件格式结果引用了未知工作表：{}", trigger.sheet))?;
-        let (column, row) = parse_cell_address(&trigger.cell)
-            .with_context(|| format!("无法解析条件格式触发单元格：{}", trigger.cell))?;
+        else {
+            issue_build_diagnostics.push(issue_build_diagnostic(
+                trigger,
+                format!("条件格式结果引用了未知工作表：{}", trigger.sheet),
+            ));
+            continue;
+        };
+        let (column, row) = match parse_cell_address(&trigger.cell) {
+            Some(position) => position,
+            None => {
+                issue_build_diagnostics.push(issue_build_diagnostic(
+                    trigger,
+                    format!("无法解析条件格式触发单元格：{}", trigger.cell),
+                ));
+                continue;
+            }
+        };
         let check_field = resolve_indicator(sheet, structure_ranges, row, column);
         if check_field.is_empty() {
             unresolved_indicator_count += 1;
@@ -166,6 +183,16 @@ pub fn extract_conditional_issues(
                 .unwrap_or_default()
         } else {
             String::new()
+        };
+        let target_value = match issue_value(sheet.values.get(&trigger.cell)) {
+            Ok(value) => value,
+            Err(error) => {
+                issue_build_diagnostics.push(issue_build_diagnostic(
+                    trigger,
+                    format!("无法读取条件格式触发单元格的审核值：{error:#}"),
+                ));
+                continue;
+            }
         };
 
         let identity = [
@@ -197,7 +224,7 @@ pub fn extract_conditional_issues(
             severity: "条件格式触发".to_owned(),
             formula_cell: trigger.cell.clone(),
             target_cell: trigger.cell.clone(),
-            target_value: issue_value(sheet.values.get(&trigger.cell))?,
+            target_value,
             formula_result: json!(""),
             message: trigger.message.clone(),
             source_file: source_file.display().to_string(),
@@ -212,14 +239,19 @@ pub fn extract_conditional_issues(
             auditor_opinion: String::new(),
         });
     }
+    evaluation.diagnostics.extend(issue_build_diagnostics);
 
     let issue_build_time_ms = build_started.elapsed().as_millis();
     let context = S1ConditionalContextSummary {
         unresolved_indicator_count,
         comments_unverified_sheet_count: comments_unverified_sheets.len(),
     };
-    let has_partial_context =
-        context.unresolved_indicator_count > 0 || context.comments_unverified_sheet_count > 0;
+    let has_partial_context = context.unresolved_indicator_count > 0
+        || context.comments_unverified_sheet_count > 0
+        || !evaluation
+            .read_diagnostics
+            .normalized_error_cells
+            .is_empty();
     let status = if evaluation.diagnostics.is_empty() && !has_partial_context {
         "completed"
     } else {
@@ -232,6 +264,19 @@ pub fn extract_conditional_issues(
         context,
         issue_build_time_ms,
     })
+}
+
+fn issue_build_diagnostic(trigger: &ConditionalTrigger, reason: String) -> ConditionalDiagnostic {
+    ConditionalDiagnostic {
+        sheet: trigger.sheet.clone(),
+        cell: trigger.cell.clone(),
+        applies_to: trigger.applies_to.clone(),
+        rule_type: trigger.rule_type.clone(),
+        formula: trigger.formula.clone(),
+        priority: trigger.priority,
+        status: EvaluationStatus::Error,
+        reason: format!("条件格式触发结果未能转换为审核异常；已跳过该单元格：{reason}"),
+    }
 }
 
 /// Run the same conditional-format issue stage for a selected set of reports,
@@ -306,9 +351,10 @@ where
                         issue_build_time_ms: None,
                         error: Some(format!("{error:#}")),
                     });
-                    return Err(error).with_context(|| {
-                        format!("S1 条件格式审核失败：{}", input.workbook_path.display())
-                    });
+                    return Err(format!(
+                        "S1 条件格式审核失败：{}：{error:#}",
+                        input.workbook_path.display()
+                    ));
                 }
             };
 
@@ -335,33 +381,63 @@ where
             });
             Ok((source_name, report))
         })
-        .collect::<Result<Vec<_>>>()?;
+        .collect::<Vec<_>>();
 
     let mut issues = Vec::new();
     let mut files = Vec::with_capacity(reports.len());
     let mut has_diagnostics = false;
 
-    for (source_name, report) in reports {
-        let total_time_ms = report.evaluation.total_time_ms + report.issue_build_time_ms;
-        has_diagnostics |= report.status == "completed_with_diagnostics";
-        let issue_count = report.issues.len();
-        files.push(S1ConditionalBatchFileSummary {
-            source_file: source_name,
-            status: report.status,
-            issue_count,
-            reader: report.evaluation.reader,
-            rules_total: report.evaluation.rules_total,
-            rules_supported: report.evaluation.rules_supported,
-            scanned_cells: report.evaluation.scanned_cells,
-            diagnostics: report.evaluation.diagnostics,
-            unresolved_indicator_count: report.context.unresolved_indicator_count,
-            comments_unverified_sheet_count: report.context.comments_unverified_sheet_count,
-            read_time_ms: report.evaluation.read_time_ms,
-            evaluation_time_ms: report.evaluation.evaluation_time_ms,
-            issue_build_time_ms: report.issue_build_time_ms,
-            total_time_ms,
-        });
-        issues.extend(report.issues);
+    for result in reports {
+        match result {
+            Ok((source_name, report)) => {
+                let total_time_ms = report.evaluation.total_time_ms + report.issue_build_time_ms;
+                has_diagnostics |= report.status == "completed_with_diagnostics";
+                let issue_count = report.issues.len();
+                files.push(S1ConditionalBatchFileSummary {
+                    source_file: source_name,
+                    status: report.status,
+                    error: None,
+                    issue_count,
+                    reader: report.evaluation.reader,
+                    rules_total: report.evaluation.rules_total,
+                    rules_supported: report.evaluation.rules_supported,
+                    scanned_cells: report.evaluation.scanned_cells,
+                    diagnostics: report.evaluation.diagnostics,
+                    unresolved_indicator_count: report.context.unresolved_indicator_count,
+                    comments_unverified_sheet_count: report.context.comments_unverified_sheet_count,
+                    read_time_ms: report.evaluation.read_time_ms,
+                    evaluation_time_ms: report.evaluation.evaluation_time_ms,
+                    issue_build_time_ms: report.issue_build_time_ms,
+                    total_time_ms,
+                });
+                issues.extend(report.issues);
+            }
+            Err(error) => {
+                has_diagnostics = true;
+                let source_file = error
+                    .split_once("：")
+                    .and_then(|(_, remainder)| remainder.split_once("："))
+                    .map(|(path, _)| path.rsplit(['\\', '/']).next().unwrap_or(path))
+                    .unwrap_or("unknown");
+                files.push(S1ConditionalBatchFileSummary {
+                    source_file: source_file.to_owned(),
+                    status: "failed",
+                    error: Some(error),
+                    issue_count: 0,
+                    reader: "unavailable",
+                    rules_total: 0,
+                    rules_supported: 0,
+                    scanned_cells: 0,
+                    diagnostics: Vec::new(),
+                    unresolved_indicator_count: 0,
+                    comments_unverified_sheet_count: 0,
+                    read_time_ms: 0,
+                    evaluation_time_ms: 0,
+                    issue_build_time_ms: 0,
+                    total_time_ms: 0,
+                });
+            }
+        }
     }
 
     Ok(S1ConditionalBatchAuditResult {
@@ -702,5 +778,47 @@ mod tests {
         assert!(events
             .iter()
             .any(|event| event.file_index == 2 && event.source_file == "乙银行_20260731.xlsx"));
+    }
+
+    #[test]
+    fn batch_retains_successful_files_when_an_independent_workbook_fails() {
+        let valid = conditional_fixture();
+        let invalid = std::env::temp_dir().join(format!(
+            "missing-s1-conditional-{}-{}.xlsx",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let inputs = [
+            S1ConditionalBatchInput {
+                workbook_path: valid,
+                source_file: PathBuf::from("有效机构.xlsx"),
+                metadata: S1ConditionalMetadata::default(),
+            },
+            S1ConditionalBatchInput {
+                workbook_path: invalid,
+                source_file: PathBuf::from("损坏机构.xlsx"),
+                metadata: S1ConditionalMetadata::default(),
+            },
+        ];
+
+        let report = extract_conditional_issues_batch(&inputs, &[], &[], |_| {})
+            .expect("per-file errors must not stop the remaining batch");
+        assert_eq!(report.status, "completed_with_diagnostics");
+        assert_eq!(report.files.len(), 2);
+        assert_eq!(report.issues.len(), 4);
+        assert_eq!(report.files[0].status, "completed_with_diagnostics");
+        assert!(
+            !report.files[0].diagnostics.is_empty(),
+            "the retained successful workbook must keep its conditional-format diagnostics"
+        );
+        assert_eq!(report.files[1].status, "failed");
+        assert!(report.files[1]
+            .error
+            .as_deref()
+            .unwrap_or_default()
+            .contains("missing-s1-conditional"));
     }
 }

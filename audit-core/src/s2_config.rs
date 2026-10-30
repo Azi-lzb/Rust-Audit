@@ -65,12 +65,20 @@ pub fn resolve_default_config_path() -> Result<PathBuf> {
     }
 
     let current_directory = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let directories = [
+    let directories = vec![
         current_directory.join("audit-core/config-real"),
         current_directory.join("audit-core/config/默认配置"),
         current_directory.join("config-real"),
         current_directory.join("config/默认配置"),
     ];
+    #[cfg(target_os = "linux")]
+    let directories = {
+        let mut directories = directories;
+        directories.push(PathBuf::from(
+            "/usr/share/open-data-audit/config/默认配置",
+        ));
+        directories
+    };
     find_s2_config_path(&directories)
 }
 

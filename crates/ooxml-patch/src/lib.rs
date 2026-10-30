@@ -64,6 +64,21 @@ pub struct FormulaCachesClearedReport {
     pub cache_values_removed: usize,
 }
 
+/// One Excel error constant that an external calculation engine serialized as
+/// an equivalent zero-argument error formula.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PromotedErrorConstant {
+    pub sheet_name: String,
+    pub cell_reference: String,
+    pub error_token: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PromotedErrorConstantsRestoredReport {
+    pub restored_cells: Vec<PromotedErrorConstant>,
+    pub package_parts: usize,
+}
+
 /// Calculation flags stored in the workbook's `calcPr` element. `None`
 /// means the caller does not request a change to that attribute.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -297,11 +312,12 @@ fn patch_calc_pr_xml(xml: &[u8], requested: WorkbookCalculationProperties) -> Re
     apply_xml_edits(xml, vec![(insertion..insertion, element.into_bytes())])
 }
 
-/// Remove cached values and cached result types from ordinary formula cells in
-/// an XLSX copy. This lets an external calculation engine treat formulas as
-/// needing evaluation instead of reusing writer-provided placeholder caches.
-/// Formula text and every non-worksheet package part are preserved. Formula
-/// structures with attributes (such as shared/array formulas) are rejected.
+/// Remove cached values and cached result types from formula cells in an XLSX
+/// copy. This lets an external calculation engine treat formulas as needing
+/// evaluation instead of reusing writer-provided placeholder caches. Formula
+/// elements, including shared/array formula metadata, and every non-worksheet
+/// package part are preserved byte-for-byte. Unsupported nested formula XML
+/// and ambiguous multiple formula nodes are rejected.
 pub fn clear_formula_caches_for_recalculation(
     source: impl AsRef<Path>,
     output: impl AsRef<Path>,
@@ -391,6 +407,423 @@ pub fn clear_formula_caches_for_recalculation(
     Ok(report)
 }
 
+/// Restore literal Excel error cells that LibreOffice serialized as formulas
+/// such as `<f>#REF!</f><v>#REF!</v>`. The requested cells must be literal
+/// error values in `source` and exact, cached error formulas in `candidate`.
+/// All non-target package parts and worksheet content are copied unchanged.
+pub fn restore_promoted_error_constants(
+    source: impl AsRef<Path>,
+    candidate: impl AsRef<Path>,
+    output: impl AsRef<Path>,
+    cells: &[PromotedErrorConstant],
+) -> Result<PromotedErrorConstantsRestoredReport> {
+    let source = source.as_ref();
+    let candidate = candidate.as_ref();
+    let output = output.as_ref();
+    ensure!(!cells.is_empty(), "promoted error-constant patch is empty");
+    ensure!(source.is_file(), "source workbook does not exist");
+    ensure!(candidate.is_file(), "candidate workbook does not exist");
+    let canonical_candidate = fs::canonicalize(candidate).context("resolve candidate workbook")?;
+    ensure!(
+        output != candidate
+            && (!output.exists()
+                || fs::canonicalize(output).context("resolve output workbook")?
+                    != canonical_candidate),
+        "promoted error-constant patch requires a distinct output path"
+    );
+    ensure!(
+        !output.exists(),
+        "promoted error-constant patch refuses to overwrite an existing output"
+    );
+    validate_header_package(candidate).context("validate candidate package safety")?;
+
+    let mut source_zip = ZipArchive::new(fs::File::open(source)?)?;
+    let source_parts = strict_sheet_parts_from_zip(&mut source_zip, source)?
+        .into_iter()
+        .collect::<BTreeMap<_, _>>();
+    let mut candidate_zip = ZipArchive::new(fs::File::open(candidate)?)?;
+    let package_parts = candidate_zip.len();
+    let candidate_parts = strict_sheet_parts_from_zip(&mut candidate_zip, candidate)?
+        .into_iter()
+        .collect::<BTreeMap<_, _>>();
+
+    let mut requested_cells = BTreeSet::new();
+    let mut grouped = BTreeMap::<String, Vec<(String, String, String)>>::new();
+    for cell in cells {
+        ensure!(
+            is_supported_error_token(&cell.error_token),
+            "unsupported promoted error token for {}!{}",
+            cell.sheet_name,
+            cell.cell_reference
+        );
+        let cell_reference = normalize_a1_cell(&cell.cell_reference)?;
+        let source_part = source_parts
+            .get(&cell.sheet_name)
+            .with_context(|| format!("source worksheet {:?} does not exist", cell.sheet_name))?;
+        let candidate_part = candidate_parts
+            .get(&cell.sheet_name)
+            .with_context(|| format!("candidate worksheet {:?} does not exist", cell.sheet_name))?;
+        ensure!(
+            requested_cells.insert((candidate_part.clone(), cell_reference.clone())),
+            "promoted error-constant patch contains duplicate target {}!{}",
+            cell.sheet_name,
+            cell_reference
+        );
+
+        let source_xml = read_zip_part(&mut source_zip, source_part)?;
+        let source_document = Document::parse(std::str::from_utf8(&source_xml)?)
+            .context("parse source worksheet for promoted error constant")?;
+        let source_cell = worksheet_cell(&source_document, &cell_reference)?;
+        ensure!(
+            source_cell.attribute("t") == Some("e")
+                && source_cell
+                    .children()
+                    .filter(|node| node.is_element() && node.tag_name().name() == "f")
+                    .count()
+                    == 0
+                && cell_value_text(source_cell)? == cell.error_token,
+            "source cell {}!{} is not the requested literal error constant",
+            cell.sheet_name,
+            cell_reference
+        );
+
+        grouped.entry(candidate_part.clone()).or_default().push((
+            cell.sheet_name.clone(),
+            cell_reference,
+            cell.error_token.clone(),
+        ));
+    }
+
+    let mut replacements = BTreeMap::new();
+    for (candidate_part, grouped_cells) in &grouped {
+        let mut candidate_xml = read_zip_part(&mut candidate_zip, candidate_part)?;
+        let mut edits = Vec::new();
+        for (sheet_name, cell_reference, error_token) in grouped_cells {
+            let document = Document::parse(std::str::from_utf8(&candidate_xml)?)
+                .context("parse candidate worksheet for promoted error constant")?;
+            let cell = worksheet_cell(&document, cell_reference)?;
+            ensure!(
+                cell.attribute("t") == Some("e") && cell_value_text(cell)? == *error_token,
+                "candidate cell {sheet_name}!{cell_reference} does not retain the source error value"
+            );
+            let formulas = cell
+                .children()
+                .filter(|node| {
+                    node.is_element()
+                        && node.tag_name().namespace() == Some(MAIN_NS)
+                        && node.tag_name().name() == "f"
+                })
+                .collect::<Vec<_>>();
+            ensure!(
+                formulas.len() == 1,
+                "candidate cell {sheet_name}!{cell_reference} must contain one promoted formula"
+            );
+            let formula = formulas[0];
+            ensure!(
+                formula.text() == Some(error_token.as_str())
+                    && formula.children().all(|child| child.is_text())
+                    && formula.attributes().all(|attribute| {
+                        attribute.name() == "aca" && attribute.value() == "false"
+                    })
+                    && cell.children().all(|child| {
+                        child.is_text()
+                            || (child.is_element()
+                                && child.tag_name().namespace() == Some(MAIN_NS)
+                                && matches!(child.tag_name().name(), "f" | "v"))
+                    }),
+                "candidate cell {sheet_name}!{cell_reference} is not a plain promoted error formula"
+            );
+            edits.push((formula.range(), Vec::new()));
+        }
+        candidate_xml = apply_xml_edits(&candidate_xml, edits)?;
+        Document::parse(std::str::from_utf8(&candidate_xml)?)
+            .context("validate restored worksheet XML")?;
+        replacements.insert(candidate_part.clone(), candidate_xml);
+    }
+
+    if let Some(parent) = output
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent)?;
+    }
+    let mut output_created = false;
+    let write_result = (|| -> Result<()> {
+        let file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(output)
+            .with_context(|| format!("create restored workbook {}", output.display()))?;
+        output_created = true;
+        let mut writer = ZipWriter::new(file);
+        for index in 0..candidate_zip.len() {
+            let mut entry = candidate_zip.by_index(index)?;
+            let name = entry.name().to_owned();
+            let mut options = SimpleFileOptions::default().compression_method(entry.compression());
+            if let Some(modified) = entry.last_modified() {
+                options = options.last_modified_time(modified);
+            }
+            if entry.is_dir() {
+                writer.add_directory(name, options)?;
+                continue;
+            }
+            writer.start_file(&name, options)?;
+            if let Some(bytes) = replacements.get(&name) {
+                writer.write_all(bytes)?;
+            } else {
+                std::io::copy(&mut entry, &mut writer)?;
+            }
+        }
+        writer.finish()?;
+        validate_package_replacements(candidate, output, &replacements)
+            .context("validate restored workbook package")?;
+        Ok(())
+    })();
+    if let Err(error) = write_result {
+        if output_created {
+            let _ = fs::remove_file(output);
+        }
+        return Err(error);
+    }
+
+    let readback = (|| -> Result<()> {
+        let mut output_zip = ZipArchive::new(fs::File::open(output)?)?;
+        let output_parts = strict_sheet_parts_from_zip(&mut output_zip, output)?
+            .into_iter()
+            .collect::<BTreeMap<_, _>>();
+        for cell in cells {
+            let cell_reference = normalize_a1_cell(&cell.cell_reference)?;
+            let part = output_parts.get(&cell.sheet_name).with_context(|| {
+                format!("output worksheet {:?} does not exist", cell.sheet_name)
+            })?;
+            let xml = read_zip_part(&mut output_zip, part)?;
+            let document = Document::parse(std::str::from_utf8(&xml)?)?;
+            let target = worksheet_cell(&document, &cell_reference)?;
+            ensure!(
+                target.attribute("t") == Some("e")
+                    && target
+                        .children()
+                        .filter(|node| {
+                            node.is_element()
+                                && node.tag_name().namespace() == Some(MAIN_NS)
+                                && node.tag_name().name() == "f"
+                        })
+                        .count()
+                        == 0
+                    && cell_value_text(target)? == cell.error_token,
+                "restored output cell {}!{} failed read-back validation",
+                cell.sheet_name,
+                cell_reference
+            );
+        }
+        Ok(())
+    })();
+    if let Err(error) = readback {
+        let _ = fs::remove_file(output);
+        return Err(error).context("validate restored error constants after package write");
+    }
+
+    Ok(PromotedErrorConstantsRestoredReport {
+        restored_cells: cells.to_vec(),
+        package_parts,
+    })
+}
+
+fn is_supported_error_token(token: &str) -> bool {
+    matches!(
+        token,
+        "#NULL!"
+            | "#DIV/0!"
+            | "#VALUE!"
+            | "#REF!"
+            | "#NAME?"
+            | "#NUM!"
+            | "#N/A"
+            | "#SPILL!"
+            | "#CALC!"
+            | "#FIELD!"
+            | "#GETTING_DATA"
+    )
+}
+
+fn worksheet_cell<'a, 'input>(
+    document: &'a Document<'input>,
+    cell_reference: &str,
+) -> Result<roxmltree::Node<'a, 'input>> {
+    let cells = document
+        .descendants()
+        .filter(|node| {
+            node.is_element()
+                && node.tag_name().namespace() == Some(MAIN_NS)
+                && node.tag_name().name() == "c"
+                && node.attribute("r").is_some_and(|cell| {
+                    normalize_a1_cell(cell).is_ok_and(|normalized| normalized == cell_reference)
+                })
+        })
+        .collect::<Vec<_>>();
+    ensure!(
+        cells.len() == 1,
+        "expected exactly one worksheet cell {cell_reference}, found {}",
+        cells.len()
+    );
+    Ok(cells[0])
+}
+
+fn cell_value_text(cell: roxmltree::Node<'_, '_>) -> Result<String> {
+    let values = cell
+        .children()
+        .filter(|node| {
+            node.is_element()
+                && node.tag_name().namespace() == Some(MAIN_NS)
+                && node.tag_name().name() == "v"
+        })
+        .collect::<Vec<_>>();
+    ensure!(
+        values.len() == 1,
+        "error cell must contain one cached value"
+    );
+    Ok(values[0].text().unwrap_or_default().to_owned())
+}
+
+#[cfg(test)]
+mod promoted_error_constant_tests {
+    use super::{restore_promoted_error_constants, PromotedErrorConstant};
+    use anyhow::Result;
+    use std::{
+        fs::{self, File},
+        io::{Read, Write},
+        path::PathBuf,
+    };
+    use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
+
+    const MAIN_NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+    const REL_NS: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    const PACKAGE_REL_NS: &str = "http://schemas.openxmlformats.org/package/2006/relationships";
+
+    fn temp_path(label: &str) -> PathBuf {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock after epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "ooxml_error_constant_{}_{}_{}",
+            std::process::id(),
+            nonce,
+            label
+        ))
+    }
+
+    fn write_workbook(path: &PathBuf, promoted_error: bool, error_value: &str) -> Result<()> {
+        let error_cell = if promoted_error {
+            format!(r#"<c r="C211" t="e"><f aca="false">{error_value}</f><v>{error_value}</v></c>"#)
+        } else {
+            format!(r#"<c r="C211" t="e"><v>{error_value}</v></c>"#)
+        };
+        let worksheet = format!(
+            r#"<worksheet xmlns="{MAIN_NS}"><sheetData><row r="2"><c r="D2"><f>1+1</f><v>2</v></c></row><row r="211">{error_cell}</row></sheetData></worksheet>"#
+        );
+        let workbook = format!(
+            r#"<workbook xmlns="{MAIN_NS}" xmlns:r="{REL_NS}"><sheets><sheet name="参照表" sheetId="1" r:id="rId1"/></sheets></workbook>"#
+        );
+        let workbook_rels = format!(
+            r#"<Relationships xmlns="{PACKAGE_REL_NS}"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>"#
+        );
+        let package_rels = format!(
+            r#"<Relationships xmlns="{PACKAGE_REL_NS}"><Relationship Id="rId0" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>"#
+        );
+        let mut zip = ZipWriter::new(File::create(path)?);
+        for (name, contents) in [
+            ("_rels/.rels", package_rels),
+            ("xl/workbook.xml", workbook),
+            ("xl/_rels/workbook.xml.rels", workbook_rels),
+            ("xl/worksheets/sheet1.xml", worksheet),
+            ("custom/opaque.bin", "keep".to_owned()),
+        ] {
+            zip.start_file(
+                name,
+                SimpleFileOptions::default().compression_method(CompressionMethod::Deflated),
+            )?;
+            zip.write_all(contents.as_bytes())?;
+        }
+        zip.finish()?;
+        Ok(())
+    }
+
+    fn sheet_xml(path: &PathBuf) -> Result<String> {
+        let mut zip = ZipArchive::new(File::open(path)?)?;
+        let mut xml = String::new();
+        zip.by_name("xl/worksheets/sheet1.xml")?
+            .read_to_string(&mut xml)?;
+        Ok(xml)
+    }
+
+    #[test]
+    fn restores_only_matching_literal_error_formula_and_keeps_other_parts() -> Result<()> {
+        let source = temp_path("source.xlsx");
+        let candidate = temp_path("candidate.xlsx");
+        let output = temp_path("output.xlsx");
+        write_workbook(&source, false, "#REF!")?;
+        write_workbook(&candidate, true, "#REF!")?;
+
+        let report = restore_promoted_error_constants(
+            &source,
+            &candidate,
+            &output,
+            &[PromotedErrorConstant {
+                sheet_name: "参照表".to_owned(),
+                cell_reference: "C211".to_owned(),
+                error_token: "#REF!".to_owned(),
+            }],
+        )?;
+
+        assert_eq!(report.restored_cells.len(), 1);
+        let xml = sheet_xml(&output)?;
+        assert!(xml.contains(r#"<c r="C211" t="e"><v>#REF!</v></c>"#));
+        assert!(xml.contains("<f>1+1</f><v>2</v>"));
+        let mut output_zip = ZipArchive::new(File::open(&output)?)?;
+        let mut opaque = String::new();
+        output_zip
+            .by_name("custom/opaque.bin")?
+            .read_to_string(&mut opaque)?;
+        assert_eq!(opaque, "keep");
+
+        for path in [&source, &candidate, &output] {
+            fs::remove_file(path)?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn refuses_error_formula_when_cached_error_differs_from_source() -> Result<()> {
+        let source = temp_path("source_mismatch.xlsx");
+        let candidate = temp_path("candidate_mismatch.xlsx");
+        let output = temp_path("output_mismatch.xlsx");
+        write_workbook(&source, false, "#REF!")?;
+        write_workbook(&candidate, true, "#N/A")?;
+
+        let error = restore_promoted_error_constants(
+            &source,
+            &candidate,
+            &output,
+            &[PromotedErrorConstant {
+                sheet_name: "参照表".to_owned(),
+                cell_reference: "C211".to_owned(),
+                error_token: "#REF!".to_owned(),
+            }],
+        )
+        .expect_err("the cached error must match the literal source error");
+        assert!(error
+            .to_string()
+            .contains("does not retain the source error value"));
+        assert!(!output.exists());
+
+        for path in [&source, &candidate] {
+            fs::remove_file(path)?;
+        }
+        Ok(())
+    }
+}
+
 fn clear_formula_caches_for_recalculation_xml(
     source_xml: &[u8],
 ) -> Result<(Vec<u8>, usize, usize)> {
@@ -422,8 +855,13 @@ fn clear_formula_caches_for_recalculation_xml(
             continue;
         }
         ensure!(
-            formulas.len() == 1 && formulas[0].attributes().next().is_none(),
-            "formula cell {:?} uses an unsupported shared/array or annotated formula",
+            formulas.len() == 1,
+            "formula cell {:?} contains multiple formula nodes",
+            cell.attribute("r")
+        );
+        ensure!(
+            !formulas[0].children().any(|node| node.is_element()),
+            "formula cell {:?} contains nested formula XML",
             cell.attribute("r")
         );
         formula_cells += 1;
@@ -3619,13 +4057,44 @@ mod formula_cache_recalculation_tests {
     }
 
     #[test]
-    fn rejects_shared_or_annotated_formula_shapes_without_output() -> Result<()> {
+    fn clears_shared_formula_caches_without_changing_formula_metadata() -> Result<()> {
         let xml = format!(
-            r#"<x:worksheet xmlns:x="{MAIN_NS}"><x:sheetData><x:row r="1"><x:c r="A1"><x:f t="shared">1+1</x:f><x:v>0</x:v></x:c></x:row></x:sheetData></x:worksheet>"#
+            r#"<x:worksheet xmlns:x="{MAIN_NS}"><x:sheetData><x:row r="1"><x:c r="A1" t="str"><x:f t="shared" si="0" ref="A1:A2">1+1</x:f><x:v>0</x:v></x:c></x:row><x:row r="2"><x:c r="A2" t="str"><x:f t="shared" si="0"/><x:v>2</x:v></x:c></x:row></x:sheetData></x:worksheet>"#
         );
-        let error = super::clear_formula_caches_for_recalculation_xml(xml.as_bytes())
-            .expect_err("shared formula shape must be rejected");
-        assert!(error.to_string().contains("unsupported shared/array"));
+        let (patched, formula_cells, caches_removed) =
+            super::clear_formula_caches_for_recalculation_xml(xml.as_bytes())?;
+        assert_eq!(formula_cells, 2);
+        assert_eq!(caches_removed, 2);
+        let original_document = Document::parse(&xml)?;
+        let patched_xml = std::str::from_utf8(&patched)?;
+        let patched_document = Document::parse(patched_xml)?;
+        let formula_signatures = |document: &Document<'_>| {
+            document
+                .descendants()
+                .filter(|node| {
+                    node.is_element()
+                        && node.tag_name().namespace() == Some(MAIN_NS)
+                        && node.tag_name().name() == "f"
+                })
+                .map(|formula| {
+                    (
+                        formula
+                            .attributes()
+                            .map(|attribute| {
+                                (attribute.name().to_owned(), attribute.value().to_owned())
+                            })
+                            .collect::<Vec<_>>(),
+                        formula.text().unwrap_or_default().to_owned(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            formula_signatures(&original_document),
+            formula_signatures(&patched_document)
+        );
+        assert!(!patched_xml.contains("<x:v>"));
+        assert!(!patched_xml.contains(" t=\"str\""));
         Ok(())
     }
 }

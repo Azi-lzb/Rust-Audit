@@ -315,3 +315,52 @@ fn import_range_translation_works_across_workbooks_and_rejects_structured_refs()
     let _ = fs::remove_file(raw_output);
     Ok(())
 }
+
+#[test]
+fn same_coordinate_import_preserves_structured_and_external_formula_text() -> Result<()> {
+    let source = temp_path("same-coordinate-source.xlsx");
+    let target = temp_path("same-coordinate-target.xlsx");
+    let output = temp_path("same-coordinate-output.xlsx");
+    write_source(&source)?;
+    write_target(&target)?;
+    let source_before = fs::read(&source)?;
+    let plan = plan(
+        &target,
+        &output,
+        vec![EditOperation::ImportRangeWithFormulaTranslation {
+            source_workbook: source.clone(),
+            source_sheet: "Source".to_owned(),
+            source_range: "B7:B8".to_owned(),
+            target_sheet: "Target".to_owned(),
+            target_start: "B7".to_owned(),
+            copy_values: true,
+            copy_formulas: true,
+            style_mode: RangeStyleMode::None,
+            copy_comments: false,
+            copy_merges: false,
+            copy_row_heights: false,
+            copy_column_widths: false,
+            copy_row_hidden: false,
+            copy_column_hidden: false,
+            copy_outline_levels: false,
+            copy_all_row_dimensions: false,
+            copy_all_column_dimensions: false,
+            materialize_blank_cells: false,
+            hide_zero: false,
+        }],
+    )?;
+    plan.validate()?;
+    backend([EditOperationKind::ImportRangeWithFormulaTranslation])?
+        .apply(&plan)
+        .map_err(|failure| anyhow::anyhow!(failure.message))?;
+
+    let output_formulas = formulas(&output)?;
+    assert!(output_formulas.contains(&("B7".to_owned(), "SUM(Table1[Amount])".to_owned())));
+    assert!(output_formulas.contains(&("B8".to_owned(), "'[External.xlsx]Sheet1'!A1".to_owned())));
+    assert_eq!(fs::read(&source)?, source_before);
+
+    let _ = fs::remove_file(source);
+    let _ = fs::remove_file(target);
+    let _ = fs::remove_file(output);
+    Ok(())
+}

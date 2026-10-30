@@ -4,11 +4,22 @@
 //! package owns only Audit-specific probes, fixtures, rules, and future business
 //! workflows.
 
+// The GUI state literal in web_bridge.rs is one large `json!` expression; the
+// serde_json macro expansion needs more recursion depth than the default 128.
+#![recursion_limit = "512"]
+
+pub mod app_settings;
 pub mod central_csv;
+pub mod acceptance_runner;
 pub mod conditional_format;
 pub mod discovery;
+pub mod excel_route;
 pub mod models;
 pub mod name_config;
+#[cfg(windows)]
+pub mod native_office_com;
+#[cfg(windows)]
+pub mod native_recalculation;
 pub mod period_pairs;
 pub mod report_source;
 pub mod s1_conditional_audit;
@@ -17,6 +28,7 @@ pub mod s1_formula_copy;
 pub mod s1_history;
 pub mod s1_issue_chain;
 pub mod s1_recalculation;
+pub mod s1_recovery;
 pub mod s1_region_summary;
 pub mod s1_result_workbook;
 pub mod s1_structure_compare;
@@ -59,6 +71,7 @@ pub mod s5_scan;
 pub mod s5_schema_snapshots;
 pub mod s5_service;
 pub mod s5_template_matching;
+pub mod s5_validation_formula_scan;
 pub mod s5_web;
 pub mod template;
 pub mod unit_conversion;

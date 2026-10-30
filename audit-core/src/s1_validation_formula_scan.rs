@@ -9,8 +9,8 @@ use crate::{
 };
 use anyhow::{ensure, Context, Result};
 use excel_reader::{
-    read_defined_names, read_workbook, CellValue, DefinedNameArea, DefinedNameParseStatus,
-    SheetDump, WorkbookDump,
+    read_defined_names, read_workbook, read_workbook_with_diagnostics, CellValue, DefinedNameArea,
+    DefinedNameParseStatus, SheetDump, WorkbookDump, WorkbookReadDiagnostics,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -53,6 +53,7 @@ pub struct S1ValidationFormulaError {
 pub struct S1ValidationFormulaScanReport {
     pub status: &'static str,
     pub reader: &'static str,
+    pub read_diagnostics: WorkbookReadDiagnostics,
     pub reason: String,
     pub template_count: usize,
     pub formula_cells_scanned: usize,
@@ -158,6 +159,7 @@ impl S1ValidationFormulaScanPlan {
             return Ok(S1ValidationFormulaScanReport {
                 status: "SKIPPED",
                 reader: READER,
+                read_diagnostics: WorkbookReadDiagnostics::default(),
                 reason: "本次规则没有读取布局模板；源工作簿也不提供可信的校验区域定义".to_owned(),
                 template_count: 0,
                 formula_cells_scanned: 0,
@@ -169,8 +171,10 @@ impl S1ValidationFormulaScanPlan {
         }
 
         let read_started = Instant::now();
-        let source = read_workbook(source_path)
+        let source_report = read_workbook_with_diagnostics(source_path)
             .with_context(|| format!("读取源工作簿校验公式结果 {}", source_path.display()))?;
+        let read_diagnostics = source_report.diagnostics;
+        let source = source_report.workbook;
         let read_time_ms = read_started.elapsed().as_millis();
         let source_display = resolved_path(source_path);
         let mut errors = self.template_errors.clone();
@@ -209,6 +213,28 @@ impl S1ValidationFormulaScanPlan {
             merge_scan_error(&mut errors, &mut error_indices, &error, true);
         }
 
+        for cell in read_diagnostics
+            .normalized_error_cells
+            .iter()
+            .filter(|cell| cell.formula_cell)
+        {
+            let key = (cell.sheet_name.clone(), cell.coordinate.clone());
+            let Some(formula) = self.formulas.get(&key) else {
+                continue;
+            };
+            let error = S1ValidationFormulaError {
+                sheet: cell.sheet_name.clone(),
+                cell: cell.coordinate.clone(),
+                value: cell.token.clone(),
+                formula: formula.clone(),
+                source: source_display.clone(),
+                origin: "source_cached_value".to_owned(),
+                template_paths: Vec::new(),
+                formula_error_tokens: vec![cell.token.clone()],
+            };
+            merge_scan_error(&mut errors, &mut error_indices, &error, true);
+        }
+
         for error in &mut errors {
             if error.source.is_empty() {
                 error.source = source_display.clone();
@@ -218,6 +244,7 @@ impl S1ValidationFormulaScanPlan {
         Ok(S1ValidationFormulaScanReport {
             status: "COMPLETED",
             reader: READER,
+            read_diagnostics,
             reason: String::new(),
             template_count: self.template_paths.len(),
             formula_cells_scanned: self.formulas.len(),

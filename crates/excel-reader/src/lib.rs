@@ -8,7 +8,7 @@ use std::{
     fs,
     io::{Read, Write},
     ops::Range,
-    path::Path,
+    path::{Path, PathBuf},
 };
 use zip::{write::SimpleFileOptions, ZipArchive, ZipWriter};
 
@@ -117,13 +117,74 @@ pub struct WorkbookDump {
     pub sheets: Vec<SheetDump>,
 }
 
-/// Diagnostics returned by the opt-in unsupported error-token compatibility
-/// reader. The count is safe for structured logs and does not expose cell data.
+/// A local unsupported error token identified in OOXML before the normalized
+/// temporary package was retried through Calamine.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct UnknownErrorTokenCell {
+    pub sheet_name: String,
+    pub coordinate: String,
+    pub token: String,
+    pub formula_cell: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkbookReadFailureClass {
+    FileMissing,
+    PermissionDenied,
+    UnsupportedFormat,
+    UnsupportedCellErrorToken,
+    WorksheetRead,
+    CorruptWorkbook,
+    Unknown,
+}
+
+impl WorkbookReadFailureClass {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::FileMissing => "file_missing",
+            Self::PermissionDenied => "permission_denied",
+            Self::UnsupportedFormat => "unsupported_format",
+            Self::UnsupportedCellErrorToken => "unsupported_cell_error_token",
+            Self::WorksheetRead => "worksheet_read_error",
+            Self::CorruptWorkbook => "corrupt_workbook",
+            Self::Unknown => "unknown_read_error",
+        }
+    }
+}
+
+/// Diagnostics for Calamine-first reading and the narrowly supported OOXML
+/// error-token compatibility path.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct WorkbookReadDiagnostics {
+    pub primary_reader: String,
+    pub primary_error: Option<String>,
+    pub failure_class: Option<WorkbookReadFailureClass>,
+    pub fallback_reader: Option<String>,
+    pub fallback_status: String,
+    pub normalized_error_cells: Vec<UnknownErrorTokenCell>,
+    pub elapsed_ms: u128,
+}
+
+#[derive(Debug)]
+pub struct WorkbookReadReport {
+    pub workbook: WorkbookDump,
+    pub diagnostics: WorkbookReadDiagnostics,
+}
+
+#[derive(Debug)]
+pub struct ValueColumnsReadReport {
+    pub sheets: Vec<SheetValues>,
+    pub diagnostics: WorkbookReadDiagnostics,
+}
+
+/// Diagnostics returned by the explicit unsupported error-token compatibility API.
 #[derive(Debug)]
 pub struct UnknownErrorTokenRead {
     pub workbook: WorkbookDump,
     pub compatibility_normalization_used: bool,
     pub normalized_cell_count: usize,
+    pub normalized_cells: Vec<UnknownErrorTokenCell>,
 }
 
 /// A lightweight projection of stored values from a sheet.
@@ -154,6 +215,179 @@ pub struct WorksheetExtent {
     pub min_column: usize,
     pub max_row: usize,
     pub max_column: usize,
+}
+
+/// One formula cell whose cache node is absent from an OOXML worksheet.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct FormulaCacheLocation {
+    pub sheet_name: String,
+    pub cell: String,
+}
+
+/// Package-level inventory of formula cells and their cached-value nodes.
+/// An empty `<v/>` counts as a cache node; this only proves cache presence,
+/// not that a value is fresh or mathematically correct.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct FormulaCacheInventory {
+    pub formula_cell_count: usize,
+    pub cached_formula_cell_count: usize,
+    pub missing_cache_cells: Vec<FormulaCacheLocation>,
+}
+
+/// One formula whose cached result is absent, empty, or has no recognized
+/// value type in the Calamine readback.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct FormulaResultValueLocation {
+    pub sheet_name: String,
+    pub cell: String,
+}
+
+/// Coverage of formula cells with readable, typed cached results.
+///
+/// A formula cached as an empty string remains typed as `string` and counts as
+/// a result. Missing values or `empty` values do not count.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct FormulaResultValueCoverage {
+    pub formula_cell_count: usize,
+    pub typed_result_cell_count: usize,
+    pub missing_result_cells: Vec<FormulaResultValueLocation>,
+}
+
+/// Count formulas that Calamine can read back with a typed cached result.
+/// Formula text and cache-node presence alone do not prove that a formula has
+/// a usable result for Audit extraction.
+pub fn formula_result_value_coverage(workbook: &WorkbookDump) -> FormulaResultValueCoverage {
+    let mut coverage = FormulaResultValueCoverage::default();
+    for sheet in &workbook.sheets {
+        for cell in sheet.formulas.keys() {
+            coverage.formula_cell_count += 1;
+            let has_typed_result = sheet
+                .values
+                .get(cell)
+                .and_then(|value| value.get("type"))
+                .and_then(Value::as_str)
+                .is_some_and(|value_type| value_type != "empty");
+            if has_typed_result {
+                coverage.typed_result_cell_count += 1;
+            } else {
+                coverage
+                    .missing_result_cells
+                    .push(FormulaResultValueLocation {
+                        sheet_name: sheet.name.clone(),
+                        cell: cell.clone(),
+                    });
+            }
+        }
+    }
+    coverage
+}
+
+/// Compare formula locations and text while allowing LibreOffice's harmless
+/// serialization of the Excel boolean constants `TRUE`/`FALSE` as
+/// zero-argument calls `TRUE()`/`FALSE()`. All other formula text, including
+/// sheet references and ranges, must remain identical.
+pub fn formula_texts_equivalent_after_recalculation(
+    source: &WorkbookDump,
+    result: &WorkbookDump,
+) -> bool {
+    if source.sheets.len() != result.sheets.len() {
+        return false;
+    }
+    source
+        .sheets
+        .iter()
+        .zip(&result.sheets)
+        .all(|(before, after)| {
+            before.name == after.name
+                && before.formulas.len() == after.formulas.len()
+                && before.formulas.iter().all(|(cell, formula)| {
+                    after.formulas.get(cell).is_some_and(|result_formula| {
+                        canonicalize_formula_boolean_literals(formula)
+                            == canonicalize_formula_boolean_literals(result_formula)
+                    })
+                })
+        })
+}
+
+/// Canonicalize only the boolean literal spelling known to differ after
+/// LibreOffice saves an XLSX. Quoted formula strings are copied byte-for-byte.
+pub fn canonicalize_formula_boolean_literals(formula: &str) -> String {
+    let chars = formula.chars().collect::<Vec<_>>();
+    let mut normalized = String::with_capacity(formula.len());
+    let mut index = 0usize;
+    let mut in_string = false;
+    let mut in_sheet_name = false;
+
+    while index < chars.len() {
+        let current = chars[index];
+        if current == '"' && !in_sheet_name {
+            normalized.push(current);
+            if in_string && chars.get(index + 1) == Some(&'"') {
+                normalized.push('"');
+                index += 2;
+                continue;
+            }
+            in_string = !in_string;
+            index += 1;
+            continue;
+        }
+
+        if current == '\'' && !in_string {
+            normalized.push(current);
+            if in_sheet_name && chars.get(index + 1) == Some(&'\'') {
+                normalized.push('\'');
+                index += 2;
+                continue;
+            }
+            in_sheet_name = !in_sheet_name;
+            index += 1;
+            continue;
+        }
+
+        if !in_string && !in_sheet_name {
+            let remaining = &chars[index..];
+            let token_len = if remaining.len() >= 4
+                && remaining[..4]
+                    .iter()
+                    .copied()
+                    .collect::<String>()
+                    .eq_ignore_ascii_case("TRUE")
+            {
+                4
+            } else if remaining.len() >= 5
+                && remaining[..5]
+                    .iter()
+                    .copied()
+                    .collect::<String>()
+                    .eq_ignore_ascii_case("FALSE")
+            {
+                5
+            } else {
+                0
+            };
+            let previous_is_identifier = index > 0
+                && (chars[index - 1].is_alphanumeric() || matches!(chars[index - 1], '_' | '.'));
+            let next_is_identifier = chars.get(index + token_len).is_some_and(|character| {
+                character.is_alphanumeric() || matches!(character, '_' | '.')
+            });
+            let followed_by_empty_call = token_len > 0
+                && chars.get(index + token_len) == Some(&'(')
+                && chars.get(index + token_len + 1) == Some(&')');
+            if token_len > 0
+                && !previous_is_identifier
+                && !next_is_identifier
+                && followed_by_empty_call
+            {
+                normalized.extend(chars[index..index + token_len].iter());
+                index += token_len + 2;
+                continue;
+            }
+        }
+
+        normalized.push(current);
+        index += 1;
+    }
+    normalized
 }
 
 #[derive(Default)]
@@ -653,7 +887,71 @@ fn merges_for(
 }
 
 pub fn read_workbook(path: impl AsRef<Path>) -> Result<WorkbookDump> {
+    read_workbook_with_diagnostics(path).map(|report| report.workbook)
+}
+
+/// Read with Calamine first and use a temporary, cell-scoped OOXML
+/// compatibility copy only when Calamine rejects an unsupported error token
+/// error token. All other failures retain their original error chain.
+pub fn read_workbook_with_diagnostics(path: impl AsRef<Path>) -> Result<WorkbookReadReport> {
     let path = path.as_ref();
+    let started = std::time::Instant::now();
+    match read_workbook_calamine(path) {
+        Ok(workbook) => Ok(WorkbookReadReport {
+            workbook,
+            diagnostics: WorkbookReadDiagnostics {
+                primary_reader: "calamine".to_owned(),
+                primary_error: None,
+                failure_class: None,
+                fallback_reader: None,
+                fallback_status: "not_needed".to_owned(),
+                normalized_error_cells: Vec::new(),
+                elapsed_ms: started.elapsed().as_millis(),
+            },
+        }),
+        Err(primary_error) => {
+            let failure_class = classify_read_failure(path, &primary_error);
+            if failure_class != WorkbookReadFailureClass::UnsupportedCellErrorToken {
+                let primary_context = format!("{primary_error:#}");
+                return Err(primary_error).context(format!(
+                    "Calamine read failed ({}) for {}; no safe OOXML value fallback applies: {primary_context}",
+                    failure_class.as_str(),
+                    path.display()
+                ));
+            }
+            let (temporary_copy, normalized_error_cells) =
+                create_normalized_error_copy(path).with_context(|| {
+                    format!(
+                        "Calamine read failed ({}) for {}: {:#}; targeted OOXML fallback preparation failed",
+                        failure_class.as_str(),
+                        path.display(),
+                        primary_error
+                    )
+                })?;
+            let workbook = read_workbook_calamine(temporary_copy.path()).with_context(|| {
+                format!(
+                    "Calamine retry failed after targeted OOXML error-token normalization for {}: primary error: {:#}",
+                    path.display(),
+                    primary_error
+                )
+            })?;
+            Ok(WorkbookReadReport {
+                workbook,
+                diagnostics: WorkbookReadDiagnostics {
+                    primary_reader: "calamine".to_owned(),
+                    primary_error: Some(format!("{primary_error:#}")),
+                    failure_class: Some(failure_class),
+                    fallback_reader: Some("ooxml_error_token_normalization+calamine".to_owned()),
+                    fallback_status: "succeeded".to_owned(),
+                    normalized_error_cells,
+                    elapsed_ms: started.elapsed().as_millis(),
+                },
+            })
+        }
+    }
+}
+
+fn read_workbook_calamine(path: &Path) -> Result<WorkbookDump> {
     validate_legacy_xls_signature(path)?;
     let started = std::time::Instant::now();
     let mut workbook =
@@ -758,6 +1056,86 @@ pub fn read_workbook(path: impl AsRef<Path>) -> Result<WorkbookDump> {
     })
 }
 
+fn classify_read_failure(path: &Path, error: &anyhow::Error) -> WorkbookReadFailureClass {
+    for cause in error.chain() {
+        if let Some(io_error) = cause.downcast_ref::<std::io::Error>() {
+            if io_error.kind() == std::io::ErrorKind::PermissionDenied {
+                return WorkbookReadFailureClass::PermissionDenied;
+            }
+            if io_error.kind() == std::io::ErrorKind::NotFound {
+                return WorkbookReadFailureClass::FileMissing;
+            }
+        }
+    }
+    if !path.exists() {
+        return WorkbookReadFailureClass::FileMissing;
+    }
+    let extension = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if !matches!(extension.as_str(), "xlsx" | "xlsm" | "xls" | "xlsb" | "ods") {
+        return WorkbookReadFailureClass::UnsupportedFormat;
+    }
+    let message = format!("{error:#}").to_ascii_lowercase();
+    if message.contains("unsupported cell error value") {
+        return WorkbookReadFailureClass::UnsupportedCellErrorToken;
+    }
+    if message.contains("read values for ") || message.contains("read merge regions for ") {
+        return WorkbookReadFailureClass::WorksheetRead;
+    }
+    if matches!(extension.as_str(), "xlsx" | "xlsm") {
+        return WorkbookReadFailureClass::CorruptWorkbook;
+    }
+    WorkbookReadFailureClass::Unknown
+}
+
+struct TemporaryWorkbookCopy(PathBuf);
+
+impl TemporaryWorkbookCopy {
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TemporaryWorkbookCopy {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+    }
+}
+
+fn create_normalized_error_copy(
+    path: &Path,
+) -> Result<(TemporaryWorkbookCopy, Vec<UnknownErrorTokenCell>)> {
+    ensure!(
+        path.extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| {
+                extension.eq_ignore_ascii_case("xlsx") || extension.eq_ignore_ascii_case("xlsm")
+            }),
+        "targeted OOXML error-token fallback supports XLSX/XLSM only"
+    );
+    let (replacements, normalized_cells) = prepare_unknown_error_token_replacements(path)?;
+    ensure!(
+        !replacements.is_empty() && !normalized_cells.is_empty(),
+        "Calamine reported an unsupported cell error but no safe literal OOXML error token was found"
+    );
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_nanos();
+    let temp = std::env::temp_dir().join(format!(
+        "excel-reader-error-text-{}-{nonce}.xlsx",
+        std::process::id()
+    ));
+    if let Err(error) = write_package_with_replacements(path, &temp, &replacements) {
+        let _ = fs::remove_file(&temp);
+        return Err(error)
+            .context("write temporary workbook with unsupported error tokens normalized");
+    }
+    Ok((TemporaryWorkbookCopy(temp), normalized_cells))
+}
+
 /// Read traditional cell comments and author names from an OOXML workbook.
 ///
 /// The map is keyed by worksheet name and then absolute A1 coordinate. This is
@@ -783,80 +1161,46 @@ pub fn read_ooxml_comments(
         .collect())
 }
 
-/// Read a workbook while treating OOXML error tokens unsupported by Calamine
-/// as ordinary text values. The default `read_workbook` contract is unchanged:
-/// this compatibility path is opt-in, limited to XLSX/XLSM, and normalizes
-/// only literal `<c t="e"><v>…</v></c>` cells in a temporary package copy.
-/// Formula cells and malformed/unknown error-cell structures are rejected.
+/// Read a workbook with the same safe error-token compatibility used by the
+/// default reader and expose the normalized cell locations to diagnostics.
 pub fn read_workbook_with_unknown_error_tokens_as_text(
     path: impl AsRef<Path>,
 ) -> Result<UnknownErrorTokenRead> {
-    let path = path.as_ref();
-    match read_workbook(path) {
-        Ok(workbook) => {
-            return Ok(UnknownErrorTokenRead {
-                workbook,
-                compatibility_normalization_used: false,
-                normalized_cell_count: 0,
-            });
-        }
-        Err(error) if !format!("{error:#}").contains("Unsupported cell error value") => {
-            return Err(error);
-        }
-        Err(_) => {}
-    }
-    ensure!(
-        path.extension()
-            .and_then(|extension| extension.to_str())
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("xlsx")
-                || extension.eq_ignore_ascii_case("xlsm")),
-        "unknown error-token compatibility reader supports XLSX/XLSM only"
-    );
-    let (replacements, normalized_cell_count) = prepare_unknown_error_token_replacements(path)?;
-    ensure!(!replacements.is_empty(), "Calamine reported an unsupported cell error but no literal unsupported OOXML error token was found");
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)?
-        .as_nanos();
-    let temp = std::env::temp_dir().join(format!(
-        "excel-reader-error-text-{}-{nonce}.xlsx",
-        std::process::id()
-    ));
-    let write_result = write_package_with_replacements(path, &temp, &replacements);
-    if let Err(error) = write_result {
-        let _ = fs::remove_file(&temp);
-        return Err(error)
-            .context("write temporary workbook with unsupported error tokens normalized");
-    }
-    let result = read_workbook(&temp).context("read normalized temporary workbook with Calamine");
-    let _ = fs::remove_file(&temp);
+    let report = read_workbook_with_diagnostics(path)?;
+    let normalized_cell_count = report.diagnostics.normalized_error_cells.len();
+    let compatibility_normalization_used = report.diagnostics.fallback_reader.is_some();
     Ok(UnknownErrorTokenRead {
-        workbook: result?,
-        compatibility_normalization_used: true,
+        workbook: report.workbook,
+        compatibility_normalization_used,
         normalized_cell_count,
+        normalized_cells: report.diagnostics.normalized_error_cells,
     })
 }
 
 fn prepare_unknown_error_token_replacements(
     path: &Path,
-) -> Result<(BTreeMap<String, Vec<u8>>, usize)> {
+) -> Result<(BTreeMap<String, Vec<u8>>, Vec<UnknownErrorTokenCell>)> {
     let mut zip = ZipArchive::new(fs::File::open(path).context("open workbook package")?)?;
     let mut replacements = BTreeMap::new();
-    let mut normalized_cell_count = 0;
-    for (_, part) in ooxml_worksheet_parts(&mut zip)? {
+    let mut normalized_cells = Vec::new();
+    for (sheet_name, part) in ooxml_worksheet_parts(&mut zip)? {
         let xml = zip_read(&mut zip, &part)?.into_bytes();
-        let (patched, cell_count) = normalize_unknown_error_cells(&xml)?;
+        let (patched, cells) = normalize_unknown_error_cells(&xml, &sheet_name)?;
         if patched != xml {
             replacements.insert(part, patched);
-            normalized_cell_count += cell_count;
+            normalized_cells.extend(cells);
         }
     }
-    Ok((replacements, normalized_cell_count))
+    Ok((replacements, normalized_cells))
 }
 
-fn normalize_unknown_error_cells(xml: &[u8]) -> Result<(Vec<u8>, usize)> {
+fn normalize_unknown_error_cells(
+    xml: &[u8],
+    sheet_name: &str,
+) -> Result<(Vec<u8>, Vec<UnknownErrorTokenCell>)> {
     let document = Document::parse(std::str::from_utf8(xml)?)?;
     let mut edits = Vec::<(Range<usize>, Vec<u8>)>::new();
-    let mut normalized_cell_count = 0;
+    let mut normalized_cells = Vec::new();
     for cell in document.descendants().filter(|node| {
         node.is_element()
             && node.tag_name().namespace() == Some(SPREADSHEET_MAIN_NS)
@@ -891,29 +1235,38 @@ fn normalize_unknown_error_cells(xml: &[u8]) -> Result<(Vec<u8>, usize)> {
         if is_calamine_error_token(value) {
             continue;
         }
-        ensure!(
-            cell.children().all(|child| {
-                !child.is_element()
-                    || child.tag_name().namespace() != Some(SPREADSHEET_MAIN_NS)
-                    || child.tag_name().name() != "f"
-            }),
-            "formula error cell {:?} cannot be normalized as a literal string",
-            cell.attribute("r")
-        );
+        let formula_cell = cell.children().any(|child| {
+            child.is_element()
+                && child.tag_name().namespace() == Some(SPREADSHEET_MAIN_NS)
+                && child.tag_name().name() == "f"
+        });
         let type_attribute = cell
             .attribute_node("t")
             .context("error cell is missing type attribute")?;
-        edits.push((type_attribute.range_value(), b"inlineStr".to_vec()));
-        let value_node = value_nodes[0];
-        let prefix = xml_element_qname(xml, cell)?;
-        let is_name = child_qname(&prefix, "is");
-        let text_name = child_qname(&prefix, "t");
-        let text = escape_xml_text(value);
-        let replacement = format!("<{is_name}><{text_name}>{text}</{text_name}></{is_name}>");
-        edits.push((value_node.range(), replacement.into_bytes()));
-        normalized_cell_count += 1;
+        if formula_cell {
+            // A formula cache may legally be stored as a string result. Keep
+            // the formula and value intact while allowing Calamine to read
+            // the unsupported error token as text; the diagnostic preserves
+            // the fact that the OOXML cell was typed as an error.
+            edits.push((type_attribute.range_value(), b"str".to_vec()));
+        } else {
+            edits.push((type_attribute.range_value(), b"inlineStr".to_vec()));
+            let value_node = value_nodes[0];
+            let prefix = xml_element_qname(xml, cell)?;
+            let is_name = child_qname(&prefix, "is");
+            let text_name = child_qname(&prefix, "t");
+            let text = escape_xml_text(value);
+            let replacement = format!("<{is_name}><{text_name}>{text}</{text_name}></{is_name}>");
+            edits.push((value_node.range(), replacement.into_bytes()));
+        }
+        normalized_cells.push(UnknownErrorTokenCell {
+            sheet_name: sheet_name.to_owned(),
+            coordinate: cell.attribute("r").unwrap_or_default().to_owned(),
+            token: value.to_owned(),
+            formula_cell,
+        });
     }
-    Ok((apply_xml_edits(xml, edits)?, normalized_cell_count))
+    Ok((apply_xml_edits(xml, edits)?, normalized_cells))
 }
 
 fn is_calamine_error_token(value: &str) -> bool {
@@ -1233,7 +1586,7 @@ fn parse_ooxml_range_reference(reference: &str) -> Result<(usize, usize, usize, 
 /// worksheet range (normally the cached result); callers that require formula
 /// text must use `read_workbook` and inspect `SheetDump::formulas` separately.
 pub fn read_value_columns(path: impl AsRef<Path>, max_columns: usize) -> Result<Vec<SheetValues>> {
-    read_value_columns_impl(path.as_ref(), max_columns, false)
+    read_value_columns_with_diagnostics(path, max_columns).map(|report| report.sheets)
 }
 
 /// Read stored values while representing Calamine date-formatted cells as ISO
@@ -1243,10 +1596,90 @@ pub fn read_value_columns_with_iso_dates(
     path: impl AsRef<Path>,
     max_columns: usize,
 ) -> Result<Vec<SheetValues>> {
-    read_value_columns_impl(path.as_ref(), max_columns, true)
+    read_value_columns_with_iso_dates_and_diagnostics(path, max_columns).map(|report| report.sheets)
 }
 
-fn read_value_columns_impl(
+pub fn read_value_columns_with_diagnostics(
+    path: impl AsRef<Path>,
+    max_columns: usize,
+) -> Result<ValueColumnsReadReport> {
+    read_value_columns_with_mode_and_diagnostics(path.as_ref(), max_columns, false)
+}
+
+pub fn read_value_columns_with_iso_dates_and_diagnostics(
+    path: impl AsRef<Path>,
+    max_columns: usize,
+) -> Result<ValueColumnsReadReport> {
+    read_value_columns_with_mode_and_diagnostics(path.as_ref(), max_columns, true)
+}
+
+fn read_value_columns_with_mode_and_diagnostics(
+    path: &Path,
+    max_columns: usize,
+    iso_dates: bool,
+) -> Result<ValueColumnsReadReport> {
+    let started = std::time::Instant::now();
+    match read_value_columns_calamine(path, max_columns, iso_dates) {
+        Ok(sheets) => Ok(ValueColumnsReadReport {
+            sheets,
+            diagnostics: WorkbookReadDiagnostics {
+                primary_reader: "calamine".to_owned(),
+                primary_error: None,
+                failure_class: None,
+                fallback_reader: None,
+                fallback_status: "not_needed".to_owned(),
+                normalized_error_cells: Vec::new(),
+                elapsed_ms: started.elapsed().as_millis(),
+            },
+        }),
+        Err(primary_error) => {
+            let failure_class = classify_read_failure(path, &primary_error);
+            if failure_class != WorkbookReadFailureClass::UnsupportedCellErrorToken {
+                let primary_context = format!("{primary_error:#}");
+                return Err(primary_error).context(format!(
+                    "Calamine value read failed ({}) for {}; no safe OOXML value fallback applies: {primary_context}",
+                    failure_class.as_str(),
+                    path.display()
+                ));
+            }
+            let (temporary_copy, normalized_error_cells) =
+                create_normalized_error_copy(path).with_context(|| {
+                    format!(
+                        "Calamine value read failed ({}) for {}: {:#}; targeted OOXML fallback preparation failed",
+                        failure_class.as_str(),
+                        path.display(),
+                        primary_error
+                    )
+                })?;
+            let sheets = read_value_columns_calamine(
+                temporary_copy.path(),
+                max_columns,
+                iso_dates,
+            )
+            .with_context(|| {
+                format!(
+                    "Calamine value retry failed after targeted OOXML error-token normalization for {}: primary error: {:#}",
+                    path.display(),
+                    primary_error
+                )
+            })?;
+            Ok(ValueColumnsReadReport {
+                sheets,
+                diagnostics: WorkbookReadDiagnostics {
+                    primary_reader: "calamine".to_owned(),
+                    primary_error: Some(format!("{primary_error:#}")),
+                    failure_class: Some(failure_class),
+                    fallback_reader: Some("ooxml_error_token_normalization+calamine".to_owned()),
+                    fallback_status: "succeeded".to_owned(),
+                    normalized_error_cells,
+                    elapsed_ms: started.elapsed().as_millis(),
+                },
+            })
+        }
+    }
+}
+
+fn read_value_columns_calamine(
     path: &Path,
     max_columns: usize,
     iso_dates: bool,
@@ -1459,6 +1892,58 @@ fn ooxml_worksheet_parts(zip: &mut ZipArchive<fs::File>) -> Result<Vec<(String, 
         "workbook contains no resolvable worksheet relationships"
     );
     Ok(worksheets)
+}
+
+/// Inspect formula/cache node presence without asking Calamine to interpret
+/// individual cached values. This is useful after a real calculation engine
+/// or a user manually recalculates a workbook.
+pub fn inspect_formula_cache_nodes(path: impl AsRef<Path>) -> Result<FormulaCacheInventory> {
+    let path = path.as_ref();
+    ensure!(
+        path.extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| {
+                extension.eq_ignore_ascii_case("xlsx") || extension.eq_ignore_ascii_case("xlsm")
+            }),
+        "formula cache inventory supports XLSX/XLSM only"
+    );
+    let mut zip = ZipArchive::new(fs::File::open(path).context("open formula cache workbook")?)?;
+    let worksheets = ooxml_worksheet_parts(&mut zip)?;
+    let mut inventory = FormulaCacheInventory::default();
+    for (sheet_name, part) in worksheets {
+        let xml = zip_read(&mut zip, &part)?.into_bytes();
+        let document = Document::parse(std::str::from_utf8(&xml)?)
+            .with_context(|| format!("parse formula cache worksheet {part}"))?;
+        for cell in document.descendants().filter(|node| {
+            node.is_element()
+                && node.tag_name().namespace() == Some(SPREADSHEET_MAIN_NS)
+                && node.tag_name().name() == "c"
+                && node.children().any(|child| {
+                    child.is_element()
+                        && child.tag_name().namespace() == Some(SPREADSHEET_MAIN_NS)
+                        && child.tag_name().name() == "f"
+                })
+        }) {
+            inventory.formula_cell_count += 1;
+            let coordinate = cell
+                .attribute("r")
+                .with_context(|| format!("formula cell in {part} has no coordinate"))?;
+            let has_cache_node = cell.children().any(|child| {
+                child.is_element()
+                    && child.tag_name().namespace() == Some(SPREADSHEET_MAIN_NS)
+                    && child.tag_name().name() == "v"
+            });
+            if has_cache_node {
+                inventory.cached_formula_cell_count += 1;
+            } else {
+                inventory.missing_cache_cells.push(FormulaCacheLocation {
+                    sheet_name: sheet_name.clone(),
+                    cell: coordinate.to_owned(),
+                });
+            }
+        }
+    }
+    Ok(inventory)
 }
 
 fn xml_element_value(node: roxmltree::Node<'_, '_>) -> Value {
@@ -1763,6 +2248,40 @@ mod tests {
         Ok(path)
     }
 
+    fn unknown_error_token_fixture() -> Result<(PathBuf, Vec<u8>)> {
+        let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../audit-core/tests/fixtures/synthetic_probe.xlsx");
+        let original = fs::read(&source)?;
+        let path = std::env::temp_dir().join(format!(
+            "excel-reader-error-token-{}-{}.xlsx",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_nanos()
+        ));
+        let mut archive = ZipArchive::new(fs::File::open(&source)?)?;
+        let worksheet = zip_read(&mut archive, "xl/worksheets/sheet1.xml")?;
+        let marker = "<c r=\"J1\"";
+        ensure!(
+            worksheet.contains(marker),
+            "synthetic worksheet marker missing"
+        );
+        let patched = worksheet.replacen(
+            marker,
+            concat!(
+                "<c r=\"B1\" t=\"e\"><v>#CUSTOMERR!</v></c>",
+                "<c r=\"C1\" t=\"e\"><f>1+1</f><v>#CUSTOMERR!</v></c>",
+                "<c r=\"D1\"><f>1+2</f></c>",
+                "<c r=\"J1\""
+            ),
+            1,
+        );
+        let replacements =
+            BTreeMap::from([("xl/worksheets/sheet1.xml".to_owned(), patched.into_bytes())]);
+        write_package_with_replacements(&source, &path, &replacements)?;
+        Ok((path, original))
+    }
+
     #[test]
     fn cell_value_json_shape_remains_compatible_and_typed() {
         let cases = [
@@ -1950,6 +2469,204 @@ mod tests {
     }
 
     #[test]
+    fn unknown_error_tokens_use_cell_scoped_ooxml_normalization_and_preserve_formula_text(
+    ) -> Result<()> {
+        let (fixture, original) = unknown_error_token_fixture()?;
+        let original_source = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../audit-core/tests/fixtures/synthetic_probe.xlsx");
+        let report = read_workbook_with_diagnostics(&fixture)?;
+        assert_eq!(report.diagnostics.primary_reader, "calamine");
+        assert_eq!(
+            report.diagnostics.failure_class,
+            Some(WorkbookReadFailureClass::UnsupportedCellErrorToken)
+        );
+        assert_eq!(
+            report.diagnostics.fallback_reader.as_deref(),
+            Some("ooxml_error_token_normalization+calamine")
+        );
+        assert_eq!(report.diagnostics.fallback_status, "succeeded");
+        assert_eq!(report.diagnostics.normalized_error_cells.len(), 2);
+        assert!(report
+            .diagnostics
+            .normalized_error_cells
+            .iter()
+            .any(|cell| {
+                cell.sheet_name == "Synthetic"
+                    && cell.coordinate == "B1"
+                    && cell.token == "#CUSTOMERR!"
+                    && !cell.formula_cell
+            }));
+        assert!(report
+            .diagnostics
+            .normalized_error_cells
+            .iter()
+            .any(|cell| { cell.coordinate == "C1" && cell.formula_cell }));
+        let sheet = report
+            .workbook
+            .sheets
+            .iter()
+            .find(|sheet| sheet.name == "Synthetic")
+            .context("Synthetic sheet missing")?;
+        assert_eq!(
+            sheet.values["B1"],
+            json!({"type":"string", "value":"#CUSTOMERR!"})
+        );
+        assert_eq!(
+            sheet.values["C1"],
+            json!({"type":"string", "value":"#CUSTOMERR!"})
+        );
+        assert_eq!(sheet.formulas["C1"], "1+1");
+        assert_eq!(sheet.formulas["D1"], "1+2");
+        assert_eq!(
+            sheet.values["A1"]["type"], "number",
+            "unrelated ordinary data remains unchanged"
+        );
+        assert_eq!(fs::read(&original_source)?, original);
+
+        let value_report = read_value_columns_with_diagnostics(&fixture, 4)?;
+        assert_eq!(value_report.diagnostics.fallback_status, "succeeded");
+        assert_eq!(
+            value_report.sheets[0].values["B1"],
+            CellValue::Text("#CUSTOMERR!".to_owned())
+        );
+        let baseline_values = read_value_columns(&original_source, 4)?;
+        assert_eq!(
+            value_report.sheets[0].values["A1"], baseline_values[0].values["A1"],
+            "fallback preserves ordinary stored data exactly"
+        );
+        let _ = fs::remove_file(fixture);
+        Ok(())
+    }
+
+    #[test]
+    fn formula_cache_inventory_distinguishes_cache_nodes_from_missing_nodes() -> Result<()> {
+        let (fixture, _) = unknown_error_token_fixture()?;
+        let inventory = inspect_formula_cache_nodes(&fixture)?;
+        assert_eq!(inventory.formula_cell_count, 3);
+        assert_eq!(inventory.cached_formula_cell_count, 2);
+        assert_eq!(
+            inventory.missing_cache_cells,
+            vec![FormulaCacheLocation {
+                sheet_name: "Synthetic".to_owned(),
+                cell: "D1".to_owned(),
+            }]
+        );
+        let _ = fs::remove_file(fixture);
+        Ok(())
+    }
+
+    #[test]
+    fn formula_result_coverage_accepts_typed_errors_and_empty_text_only() {
+        let workbook = WorkbookDump {
+            schema_version: 1,
+            reader: "test",
+            elapsed_ms: 0,
+            sheets: vec![SheetDump {
+                name: "Audit".to_owned(),
+                values: BTreeMap::from([
+                    ("A1".to_owned(), json!({"type": "error", "value": "Div0"})),
+                    ("A2".to_owned(), json!({"type": "string", "value": ""})),
+                    ("A3".to_owned(), json!({"type": "empty"})),
+                ]),
+                formulas: BTreeMap::from([
+                    ("A1".to_owned(), "1/0".to_owned()),
+                    ("A2".to_owned(), "IF(TRUE,\"\",\"x\")".to_owned()),
+                    ("A3".to_owned(), "A4".to_owned()),
+                    ("A4".to_owned(), "A5".to_owned()),
+                ]),
+                formula_status: "ok".to_owned(),
+                merges: Vec::new(),
+                merge_status: "ok".to_owned(),
+                comments: BTreeMap::new(),
+                comments_status: "ok".to_owned(),
+                conditional_formatting: Vec::new(),
+                conditional_formatting_status: "ok".to_owned(),
+                data_validations: Vec::new(),
+                data_validations_status: "ok".to_owned(),
+            }],
+        };
+
+        let coverage = formula_result_value_coverage(&workbook);
+        assert_eq!(coverage.formula_cell_count, 4);
+        assert_eq!(coverage.typed_result_cell_count, 2);
+        assert_eq!(
+            coverage.missing_result_cells,
+            vec![
+                FormulaResultValueLocation {
+                    sheet_name: "Audit".to_owned(),
+                    cell: "A3".to_owned(),
+                },
+                FormulaResultValueLocation {
+                    sheet_name: "Audit".to_owned(),
+                    cell: "A4".to_owned(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn formula_comparison_allows_only_libreoffice_boolean_literal_normalization() {
+        assert_eq!(
+            canonicalize_formula_boolean_literals("IF(A1=TRUE(),B1,FALSE())"),
+            "IF(A1=TRUE,B1,FALSE)"
+        );
+        assert_eq!(
+            canonicalize_formula_boolean_literals("=\"TRUE()\"&FALSE()"),
+            "=\"TRUE()\"&FALSE"
+        );
+        assert_eq!(
+            canonicalize_formula_boolean_literals("=MYTRUE()+FALSE_VALUE"),
+            "=MYTRUE()+FALSE_VALUE"
+        );
+        assert_eq!(
+            canonicalize_formula_boolean_literals("'TRUE()'!A1"),
+            "'TRUE()'!A1"
+        );
+
+        let workbook = |formula: &str| WorkbookDump {
+            schema_version: 1,
+            reader: "test",
+            elapsed_ms: 0,
+            sheets: vec![SheetDump {
+                name: "Audit".to_owned(),
+                values: BTreeMap::new(),
+                formulas: BTreeMap::from([("D2".to_owned(), formula.to_owned())]),
+                formula_status: "ok".to_owned(),
+                merges: Vec::new(),
+                merge_status: "ok".to_owned(),
+                comments: BTreeMap::new(),
+                comments_status: "ok".to_owned(),
+                conditional_formatting: Vec::new(),
+                conditional_formatting_status: "ok".to_owned(),
+                data_validations: Vec::new(),
+                data_validations_status: "ok".to_owned(),
+            }],
+        };
+        assert!(formula_texts_equivalent_after_recalculation(
+            &workbook("VLOOKUP(A1,Ref!A:B,2,FALSE)"),
+            &workbook("VLOOKUP(A1,Ref!A:B,2,FALSE())")
+        ));
+        assert!(!formula_texts_equivalent_after_recalculation(
+            &workbook("VLOOKUP(A1,Ref!A:B,2,FALSE)"),
+            &workbook("VLOOKUP(A1,Other!A:B,2,FALSE())")
+        ));
+        assert!(!formula_texts_equivalent_after_recalculation(
+            &workbook("'TRUE()'!A1"),
+            &workbook("'TRUE'!A1")
+        ));
+    }
+
+    #[test]
+    fn unsafe_unknown_error_token_xml_is_rejected_instead_of_silently_normalized() {
+        let xml = format!(
+            r#"<worksheet xmlns="{SPREADSHEET_MAIN_NS}"><sheetData><row r="1"><c t="e"><v>#CUSTOMERR!</v></c></row></sheetData></worksheet>"#
+        );
+        let error = normalize_unknown_error_cells(xml.as_bytes(), "Synthetic")
+            .expect_err("an error cell without a coordinate is unsafe to recover");
+        assert!(error.to_string().contains("missing a coordinate"));
+    }
+
+    #[test]
     fn invalid_legacy_xls_signature_is_rejected_as_unsupported_format() {
         let path = std::env::temp_dir().join(format!(
             "excel-reader-invalid-xls-{}.xls",
@@ -1960,6 +2677,81 @@ mod tests {
         let _ = fs::remove_file(&path);
         assert!(error.to_string().contains("格式不支持"));
         assert!(error.to_string().contains("CFB/OLE"));
+    }
+
+    #[test]
+    fn workbook_read_failures_are_classified_without_broadening_fallback() -> Result<()> {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "excel-reader-failure-classes-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root)?;
+        let missing = root.join("missing.xlsx");
+        let missing_error = anyhow::Error::new(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "missing workbook",
+        ));
+        assert_eq!(
+            classify_read_failure(&missing, &missing_error),
+            WorkbookReadFailureClass::FileMissing
+        );
+        let permission_error = anyhow::Error::new(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "workbook is locked",
+        ));
+        assert_eq!(
+            classify_read_failure(&missing, &permission_error),
+            WorkbookReadFailureClass::PermissionDenied
+        );
+
+        let unsupported = root.join("input.csv");
+        fs::write(&unsupported, b"a,b")?;
+        assert_eq!(
+            classify_read_failure(&unsupported, &anyhow::Error::msg("reader failed")),
+            WorkbookReadFailureClass::UnsupportedFormat
+        );
+
+        let worksheet = root.join("worksheet.xlsx");
+        fs::write(&worksheet, b"fixture")?;
+        assert_eq!(
+            classify_read_failure(
+                &worksheet,
+                &anyhow::Error::msg("read values for Data: invalid cell value")
+            ),
+            WorkbookReadFailureClass::WorksheetRead
+        );
+        assert_eq!(
+            classify_read_failure(&worksheet, &anyhow::Error::msg("malformed ZIP directory")),
+            WorkbookReadFailureClass::CorruptWorkbook
+        );
+        assert_eq!(
+            classify_read_failure(
+                &worksheet,
+                &anyhow::Error::msg("unsupported cell error value: #CUSTOMERR!")
+            ),
+            WorkbookReadFailureClass::UnsupportedCellErrorToken
+        );
+
+        let unsupported_reader = root.join("input.ods");
+        fs::write(&unsupported_reader, b"fixture")?;
+        assert_eq!(
+            classify_read_failure(
+                &unsupported_reader,
+                &anyhow::Error::msg("reader failed without a known category")
+            ),
+            WorkbookReadFailureClass::Unknown
+        );
+
+        let missing_read = read_workbook_with_diagnostics(&missing)
+            .expect_err("a missing workbook must not be sent to the OOXML fallback");
+        let diagnostic = format!("{missing_read:#}");
+        assert!(diagnostic.contains("file_missing"));
+        assert!(diagnostic.contains("no safe OOXML value fallback applies"));
+        fs::remove_dir_all(root)?;
+        Ok(())
     }
 
     #[test]

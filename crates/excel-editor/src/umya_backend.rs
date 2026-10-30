@@ -2463,9 +2463,11 @@ fn apply_operation(workbook: &mut crate::Workbook, operation: &EditOperation) ->
             let target = workbook
                 .get_sheet_by_name_mut(sheet)
                 .with_context(|| format!("worksheet {sheet:?} not found"))?;
+            // Idempotent rewrite: drop only the comment at the operation's own
+            // coordinate; comments elsewhere in the sheet must survive.
             target
                 .comments_mut()
-                .retain(|comment| comment.coordinate().to_string().eq_ignore_ascii_case(cell));
+                .retain(|comment| !comment.coordinate().to_string().eq_ignore_ascii_case(cell));
             if let Some(text) = text {
                 let mut comment = umya_spreadsheet::Comment::default();
                 comment.new_comment(cell.as_str());
@@ -3002,11 +3004,12 @@ fn copy_range(
                 let dest_row = target_row + row - min_row;
                 let dest_col = target_col + col - min_col;
                 let cell_value = if cell.cell_value().is_formula() && copy_formulas {
-                    let value = if translate_formula_references {
-                        translated_formula_copy_value(cell, dest_col, dest_row)?
-                    } else {
-                        cell.cell_value().clone()
-                    };
+                    let value =
+                        if translate_formula_references && (dest_row != row || dest_col != col) {
+                            translated_formula_copy_value(cell, dest_col, dest_row)?
+                        } else {
+                            cell.cell_value().clone()
+                        };
                     Some(ImportCellValue::Typed(value))
                 } else if copy_values && cell.cell_value().is_formula() {
                     Some(ImportCellValue::FormulaResult(cell.value().to_string()))
@@ -3217,18 +3220,22 @@ fn import_range(
                 let address = cell_address(row, col);
                 let Some(cell) = source.get_cell(address.as_str()) else {
                     if materialize_blank_cells {
-                        cells.push((row, col, None, None, None));
+                        // An omitted source cell is still part of an explicit
+                        // materialized import range. Clear any preexisting
+                        // target value/formula at the corresponding address.
+                        cells.push((row, col, None, true, None, None));
                     }
                     continue;
                 };
                 let value = if cell.cell_value().is_formula() && copy_formulas {
                     let dest_row = target_row + row - min_row;
                     let dest_col = target_col + col - min_col;
-                    let value = if translate_formula_references {
-                        translated_formula_copy_value(cell, dest_col, dest_row)?
-                    } else {
-                        cell.cell_value().clone()
-                    };
+                    let value =
+                        if translate_formula_references && (dest_row != row || dest_col != col) {
+                            translated_formula_copy_value(cell, dest_col, dest_row)?
+                        } else {
+                            cell.cell_value().clone()
+                        };
                     Some(ImportCellValue::Typed(value))
                 } else if copy_values && cell.cell_value().is_formula() {
                     let mut cached_value = cell.cell_value().clone();
@@ -3263,7 +3270,7 @@ fn import_range(
                 } else {
                     None
                 };
-                cells.push((row, col, value, style, comment));
+                cells.push((row, col, value, false, style, comment));
             }
         }
         let merge_ranges = if copy_merges {
@@ -3352,11 +3359,14 @@ fn import_range(
     let target = target_workbook
         .get_sheet_by_name_mut(target_sheet)
         .with_context(|| format!("target worksheet {target_sheet:?} not found"))?;
-    for (row, col, value, style, comment) in snapshots.0 {
+    for (row, col, value, clear_value, style, comment) in snapshots.0 {
         let dest_row = target_row + row - min_row;
         let dest_col = target_col + col - min_col;
         let dest = cell_address(dest_row, dest_col);
         let cell = target.cell_mut(dest.as_str());
+        if clear_value {
+            cell.set_blank();
+        }
         if let Some(style) = style {
             cell.set_style(style);
         }

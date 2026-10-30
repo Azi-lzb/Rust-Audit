@@ -1,19 +1,19 @@
-//! Read-only S3-F03 planning for importing institution feedback.
+//! S3-F03 planning and institution-feedback write-back.
 //!
-//! The Python workflow mutates an existing explanation workbook. This Rust
-//! slice reads the target and feedback workbooks, applies the business identity
-//! and conflict rules, and emits an ExcelEditPlan plus a conflict workbook.
-//! It deliberately does not execute an unverified ExcelModifier capability.
+//! Planning remains read-only and records an ExcelEditPlan plus conflict
+//! workbook. The production GUI path applies a candidate through the
+//! capability-gated ExcelModifier, creates a byte-identical backup beside the
+//! selected target, then updates that target in place with rollback on failure.
 
 use anyhow::{bail, ensure, Context, Result};
 use chrono::Local;
 use excel_editor::{
-    inspect_xlsx_profile, CellValue as EditCellValue, EditOperation, ExcelEditPlan,
-    PreservationRequirement, WorkbookFormat,
+    inspect_xlsx_profile, CellValue as EditCellValue, EditExecutionReport, EditOperation,
+    ExcelEditPlan, ExcelModifier, PreservationRequirement, WorkbookFormat,
 };
 use excel_reader::{read_value_columns_with_iso_dates, CellValue, SheetValues};
 use excel_writer::{Color, Format, Workbook};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
@@ -47,6 +47,7 @@ const CONFLICT_WIDTHS: [f64; 10] = [10.0, 14.0, 26.0, 14.0, 32.0, 14.0, 14.0, 20
 
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 static PLAN_COUNTER: AtomicU64 = AtomicU64::new(0);
+static STAGING_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 type Identity = (String, String, String, String);
 
@@ -73,12 +74,30 @@ pub struct S3ExplanationFeedbackPlanSummary {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct S3ExplanationFeedbackExecutionReport {
+    pub output_workbook: PathBuf,
+    pub backup_workbook: Option<PathBuf>,
+    pub rollback_cleanup_warning: Option<String>,
+    pub imported: usize,
+    pub unmatched: usize,
+    pub conflicts: usize,
+    pub planned_cell_updates: usize,
+    pub conflict_report_path: Option<PathBuf>,
+    pub edit: Option<EditExecutionReport>,
+    pub copied_without_edits: bool,
+    pub target_read_time_ms: u128,
+    pub feedback_read_time_ms: u128,
+    pub writeback_time_ms: u128,
+    pub total_time_ms: u128,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct InputSnapshot {
     path: PathBuf,
     sha256: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct PlanCounts {
     imported: usize,
     unmatched: usize,
@@ -86,11 +105,11 @@ struct PlanCounts {
     planned_cell_updates: usize,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct PlanDocument {
     schema_version: u32,
-    feature: &'static str,
-    status: &'static str,
+    feature: String,
+    status: String,
     created_at: String,
     applied: bool,
     target: InputSnapshot,
@@ -457,8 +476,8 @@ pub fn plan_explanation_feedback_import(
     let feedback_snapshots = snapshots.collect::<Vec<_>>();
     let document = PlanDocument {
         schema_version: 1,
-        feature: "S3-F03",
-        status: "planned_not_applied",
+        feature: "S3-F03".to_owned(),
+        status: "planned_not_applied".to_owned(),
         created_at: Local::now().to_rfc3339(),
         applied: false,
         target: target_snapshot,
@@ -546,6 +565,406 @@ pub fn plan_explanation_feedback_import(
         plan_write_time_ms,
         total_time_ms: started.elapsed().as_millis(),
     })
+}
+
+/// Retained independent-copy workflow for callers that explicitly request it.
+/// The existing plan and conflict report remain the source of matching and
+/// conflict behavior. The candidate is published only after Excel-Core
+/// succeeds and all original input hashes still match their pre-run values.
+/// The S3-F03 GUI uses execute_explanation_feedback_import, which follows the
+/// confirmed backup-then-update-in-place contract.
+pub fn execute_explanation_feedback_import_to_copy(
+    target_path: impl AsRef<Path>,
+    feedback_paths: &[PathBuf],
+    output_directory: impl AsRef<Path>,
+    modifier: &ExcelModifier,
+) -> Result<S3ExplanationFeedbackExecutionReport> {
+    let started = Instant::now();
+    let target_path = target_path.as_ref();
+    let output_directory = output_directory.as_ref();
+    ensure_workbook_path(target_path, true)?;
+    ensure!(
+        target_path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("xlsx")),
+        "S3-F03 目标说明文件目前仅接受 .xlsx"
+    );
+    ensure!(!feedback_paths.is_empty(), "请至少选择一个机构反馈说明文件");
+    fs::create_dir_all(output_directory)
+        .with_context(|| format!("创建 S3-F03 输出目录：{}", output_directory.display()))?;
+    let output_directory = fs::canonicalize(output_directory)
+        .with_context(|| format!("解析 S3-F03 输出目录：{}", output_directory.display()))?;
+    // normalize_new_path strips the Windows verbatim prefix when it
+    // canonicalizes the candidate parent, and the edit report's output path is
+    // compared against the local candidate below; keep both representations
+    // identical or the same location compares unequal.
+    let output_directory = strip_windows_verbatim_prefix(output_directory);
+    ensure!(output_directory.is_dir(), "S3-F03 输出路径不是目录");
+
+    let snapshot_paths = std::iter::once(target_path.to_path_buf())
+        .chain(feedback_paths.iter().cloned())
+        .collect::<Vec<_>>();
+    let source_hashes = snapshot_paths
+        .iter()
+        .map(|path| sha256_file(path))
+        .collect::<Result<Vec<_>>>()?;
+    let output_path = next_feedback_output_path(&output_directory, target_path)?;
+    let staging = S3FeedbackStagingDirectory::create(&output_directory)?;
+    let candidate_path = staging.path().join("反馈写回结果.xlsx");
+    let plan_path = staging.path().join("反馈写回计划.json");
+    let summary =
+        plan_explanation_feedback_import(target_path, feedback_paths, &candidate_path, &plan_path)
+            .context("规划 S3-F03 机构说明回写")?;
+
+    ensure!(
+        source_hashes
+            == snapshot_paths
+                .iter()
+                .map(|path| sha256_file(path))
+                .collect::<Result<Vec<_>>>()?,
+        "S3-F03 规划期间输入工作簿发生变化，未应用回写"
+    );
+    let writeback_started = Instant::now();
+    let edit = if let Some(edit_plan) = summary_edit_plan(&plan_path)? {
+        let edit = modifier.execute(&edit_plan).with_context(|| {
+            summary
+                .conflict_report_path
+                .as_ref()
+                .map(|path| {
+                    format!(
+                        "通过 Excel-Core 写入 S3-F03 机构反馈说明；冲突明细见 {}",
+                        path.display()
+                    )
+                })
+                .unwrap_or_else(|| "通过 Excel-Core 写入 S3-F03 机构反馈说明".to_owned())
+        })?;
+        ensure!(
+            edit.output == candidate_path && candidate_path.is_file(),
+            "S3-F03 Excel-Core 未生成请求的候选说明文件"
+        );
+        Some(edit)
+    } else {
+        fs::copy(target_path, &candidate_path)
+            .with_context(|| format!("复制无待写入内容的说明文件：{}", target_path.display()))?;
+        None
+    };
+    ensure!(
+        source_hashes
+            == snapshot_paths
+                .iter()
+                .map(|path| sha256_file(path))
+                .collect::<Result<Vec<_>>>()?,
+        "S3-F03 写入期间源说明或反馈文件发生变化，候选结果已丢弃"
+    );
+    let writeback_time_ms = writeback_started.elapsed().as_millis();
+    publish_staged_file(&candidate_path, &output_path)?;
+    Ok(S3ExplanationFeedbackExecutionReport {
+        output_workbook: output_path,
+        backup_workbook: None,
+        rollback_cleanup_warning: None,
+        imported: summary.imported,
+        unmatched: summary.unmatched,
+        conflicts: summary.conflicts,
+        planned_cell_updates: summary.planned_cell_updates,
+        conflict_report_path: summary.conflict_report_path,
+        edit,
+        copied_without_edits: summary.planned_cell_updates == 0,
+        target_read_time_ms: summary.target_read_time_ms,
+        feedback_read_time_ms: summary.feedback_read_time_ms,
+        writeback_time_ms,
+        total_time_ms: started.elapsed().as_millis(),
+    })
+}
+
+/// Apply institution feedback to the selected explanation workbook in place.
+/// A byte-for-byte backup is created beside the target before the candidate
+/// workbook replaces it. If publication fails, the original target is restored
+/// from a same-directory rollback copy; both backup and recovery paths are
+/// included in errors when restoration itself fails.
+pub fn execute_explanation_feedback_import(
+    target_path: impl AsRef<Path>,
+    feedback_paths: &[PathBuf],
+    modifier: &ExcelModifier,
+) -> Result<S3ExplanationFeedbackExecutionReport> {
+    let started = Instant::now();
+    let target_path = target_path.as_ref();
+    ensure_workbook_path(target_path, true)?;
+    ensure!(
+        target_path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("xlsx")),
+        "S3-F03 原地写回目前仅接受 .xlsx 目标说明文件"
+    );
+    ensure!(!feedback_paths.is_empty(), "请至少选择一个机构反馈说明文件");
+
+    let target_path = strip_windows_verbatim_prefix(
+        fs::canonicalize(target_path)
+            .with_context(|| format!("解析 S3-F03 目标说明文件：{}", target_path.display()))?,
+    );
+    let feedback_paths = feedback_paths
+        .iter()
+        .map(|path| {
+            fs::canonicalize(path)
+                .with_context(|| format!("解析 S3-F03 机构反馈文件：{}", path.display()))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let target_identity = normalized_identity(&target_path)?;
+    for feedback_path in &feedback_paths {
+        ensure!(
+            normalized_identity(feedback_path)? != target_identity,
+            "S3-F03 目标说明文件不能同时作为机构反馈输入"
+        );
+    }
+
+    let parent = target_path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .context("S3-F03 目标说明文件缺少父目录")?;
+    let mut staging = S3FeedbackStagingDirectory::create(parent)?;
+    let before_hashes = std::iter::once(target_path.clone())
+        .chain(feedback_paths.iter().cloned())
+        .map(|path| sha256_file(&path))
+        .collect::<Result<Vec<_>>>()?;
+    let target_permissions = fs::metadata(&target_path)
+        .with_context(|| format!("读取目标说明文件属性：{}", target_path.display()))?
+        .permissions();
+
+    let staged_report = execute_explanation_feedback_import_to_copy(
+        &target_path,
+        &feedback_paths,
+        staging.path(),
+        modifier,
+    )
+    .context("生成 S3-F03 原地写回候选文件")?;
+    let candidate_path = staged_report.output_workbook;
+    ensure!(
+        candidate_path.starts_with(staging.path()) && candidate_path.is_file(),
+        "S3-F03 候选说明文件未留在目标文件同目录暂存区"
+    );
+    fs::set_permissions(&candidate_path, target_permissions.clone())
+        .with_context(|| format!("保留目标说明文件权限：{}", candidate_path.display()))?;
+
+    let current_hashes = std::iter::once(target_path.clone())
+        .chain(feedback_paths.iter().cloned())
+        .map(|path| sha256_file(&path))
+        .collect::<Result<Vec<_>>>()?;
+    ensure!(
+        current_hashes == before_hashes,
+        "S3-F03 写回前目标说明或反馈输入发生变化，未更新目标文件"
+    );
+
+    let backup_path = create_feedback_backup(&target_path, &target_permissions)?;
+    ensure!(
+        sha256_file(&backup_path)? == before_hashes[0],
+        "S3-F03 备份校验失败；原目标未更新，备份文件保留在 {}",
+        backup_path.display()
+    );
+    let final_hashes = std::iter::once(target_path.clone())
+        .chain(feedback_paths.iter().cloned())
+        .map(|path| sha256_file(&path))
+        .collect::<Result<Vec<_>>>()?;
+    ensure!(
+        final_hashes == before_hashes,
+        "S3-F03 备份期间输入文件发生变化；目标未更新，备份文件保留在 {}",
+        backup_path.display()
+    );
+
+    let rollback_path = staging.path().join(
+        target_path
+            .file_name()
+            .context("S3-F03 目标说明文件缺少文件名")?,
+    );
+    let rollback_cleanup_warning = publish_candidate_in_place(
+        &candidate_path,
+        &target_path,
+        &rollback_path,
+        &backup_path,
+        &mut staging,
+    )?;
+
+    Ok(S3ExplanationFeedbackExecutionReport {
+        output_workbook: target_path,
+        backup_workbook: Some(backup_path),
+        rollback_cleanup_warning,
+        imported: staged_report.imported,
+        unmatched: staged_report.unmatched,
+        conflicts: staged_report.conflicts,
+        planned_cell_updates: staged_report.planned_cell_updates,
+        conflict_report_path: staged_report.conflict_report_path,
+        edit: staged_report.edit,
+        copied_without_edits: staged_report.copied_without_edits,
+        target_read_time_ms: staged_report.target_read_time_ms,
+        feedback_read_time_ms: staged_report.feedback_read_time_ms,
+        writeback_time_ms: staged_report.writeback_time_ms,
+        total_time_ms: started.elapsed().as_millis(),
+    })
+}
+
+fn create_feedback_backup(target: &Path, permissions: &std::fs::Permissions) -> Result<PathBuf> {
+    let parent = target.parent().context("目标说明文件缺少父目录")?;
+    let stem = target
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("说明文件");
+    let timestamp = Local::now().format("%Y%m%d_%H%M%S_%3f");
+    for _ in 0..128 {
+        let sequence = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let path = parent.join(format!(
+            "{stem}_导入前备份_{timestamp}_{sequence}.xlsx"
+        ));
+        let mut backup = match OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("创建 S3-F03 原说明文件备份：{}", path.display()))
+            }
+        };
+        let copy_result = (|| -> Result<()> {
+            let mut source = File::open(target)
+                .with_context(|| format!("打开待备份说明文件：{}", target.display()))?;
+            std::io::copy(&mut source, &mut backup)
+                .with_context(|| format!("复制 S3-F03 原说明文件到备份：{}", path.display()))?;
+            backup
+                .sync_all()
+                .with_context(|| format!("刷新 S3-F03 原说明文件备份：{}", path.display()))?;
+            Ok(())
+        })();
+        drop(backup);
+        if let Err(error) = copy_result {
+            let _ = fs::remove_file(&path);
+            return Err(error);
+        }
+        fs::set_permissions(&path, permissions.clone())
+            .with_context(|| format!("保留 S3-F03 备份文件权限：{}", path.display()))?;
+        return Ok(path);
+    }
+    bail!("无法为 S3-F03 创建不覆盖现有文件的原说明备份")
+}
+
+fn publish_candidate_in_place(
+    candidate: &Path,
+    target: &Path,
+    rollback: &Path,
+    backup: &Path,
+    staging: &mut S3FeedbackStagingDirectory,
+) -> Result<Option<String>> {
+    ensure!(!rollback.exists(), "S3-F03 回滚暂存路径已存在");
+    fs::rename(target, rollback).with_context(|| {
+        format!(
+            "S3-F03 无法暂存原目标说明文件；备份保留在 {}",
+            backup.display()
+        )
+    })?;
+    if let Err(install_error) = fs::rename(candidate, target) {
+        if let Err(restore_error) = fs::rename(rollback, target) {
+            staging.preserve();
+            bail!(
+                "S3-F03 更新失败且自动回滚失败；原文件备份：{}；可恢复原件：{}；候选文件：{}；发布错误：{install_error}; 回滚错误：{restore_error}",
+                backup.display(),
+                rollback.display(),
+                candidate.display()
+            );
+        }
+        bail!(
+            "S3-F03 更新失败，原目标文件已恢复；安全备份保留在 {}；发布错误：{install_error}",
+            backup.display()
+        );
+    }
+    Ok(fs::remove_file(rollback)
+        .err()
+        .map(|error| format!("S3-F03 已更新目标；回滚暂存文件清理失败：{} ({error})", rollback.display())))
+}
+
+fn summary_edit_plan(plan_path: &Path) -> Result<Option<ExcelEditPlan>> {
+    let document: PlanDocument = serde_json::from_reader(
+        File::open(plan_path)
+            .with_context(|| format!("打开 S3-F03 回写计划：{}", plan_path.display()))?,
+    )
+    .with_context(|| format!("读取 S3-F03 回写计划：{}", plan_path.display()))?;
+    ensure!(
+        document.feature == "S3-F03" && document.schema_version == 1 && !document.applied,
+        "S3-F03 回写计划标识或版本不匹配"
+    );
+    Ok(document.edit_plan)
+}
+
+fn next_feedback_output_path(output_directory: &Path, target_path: &Path) -> Result<PathBuf> {
+    let stem = target_path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("说明文件");
+    let timestamp = Local::now().format("%Y%m%d_%H%M%S_%3f");
+    for suffix in 0..128 {
+        let name = if suffix == 0 {
+            format!("{stem}_回写_{timestamp}.xlsx")
+        } else {
+            format!("{stem}_回写_{timestamp}_{suffix}.xlsx")
+        };
+        let path = output_directory.join(name);
+        if !path.exists() {
+            return Ok(path);
+        }
+    }
+    bail!("无法为 S3-F03 生成唯一的回写输出文件名")
+}
+
+fn publish_staged_file(staged: &Path, output: &Path) -> Result<()> {
+    fs::hard_link(staged, output).with_context(|| {
+        format!(
+            "安全发布 S3-F03 回写结果失败（目标已存在或文件系统不支持硬链接）：{}",
+            output.display()
+        )
+    })?;
+    fs::remove_file(staged).with_context(|| format!("清理 S3-F03 暂存文件：{}", staged.display()))
+}
+
+struct S3FeedbackStagingDirectory {
+    path: PathBuf,
+    preserve_on_drop: bool,
+}
+
+impl S3FeedbackStagingDirectory {
+    fn create(parent: &Path) -> Result<Self> {
+        for _ in 0..128 {
+            let sequence = STAGING_COUNTER.fetch_add(1, Ordering::Relaxed);
+            let path = parent.join(format!(".audit-s3-f3-{}-{sequence}", std::process::id()));
+            match fs::create_dir(&path) {
+                Ok(()) => {
+                    return Ok(Self {
+                        path,
+                        preserve_on_drop: false,
+                    });
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => {
+                    return Err(error)
+                        .with_context(|| format!("创建 S3-F03 暂存目录：{}", path.display()))
+                }
+            }
+        }
+        bail!("无法创建唯一的 S3-F03 暂存目录")
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+
+    fn preserve(&mut self) {
+        self.preserve_on_drop = true;
+    }
+}
+
+impl Drop for S3FeedbackStagingDirectory {
+    fn drop(&mut self) {
+        if !self.preserve_on_drop {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
 }
 
 fn ensure_workbook_path(path: &Path, must_exist: bool) -> Result<()> {
@@ -1042,8 +1461,61 @@ fn publish_without_overwrite(temporary: &Path, output: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{amount_value, code_value, quantize_half_up_four_places, DecimalQuantization};
+    use super::{
+        amount_value, code_value, create_feedback_backup, execute_explanation_feedback_import,
+        execute_explanation_feedback_import_to_copy, publish_candidate_in_place,
+        S3FeedbackStagingDirectory,
+        quantize_half_up_four_places, required_preservation, sha256_file, DecimalQuantization,
+    };
+    use anyhow::Result;
+    use excel_editor::{
+        BackendCapability, CapabilityEvidence, CapabilityStatus, EditOperationKind, EngineId,
+        ExcelEditPlan, ExcelModifier, OutputValidator, UmyaXlsxBackend, UmyaXlsxValidator,
+        WorkbookFormat,
+    };
     use excel_reader::CellValue;
+    use excel_writer::Workbook;
+    use std::{
+        fs,
+        path::Path,
+        sync::Arc,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    struct AcceptAllValidator;
+
+    impl OutputValidator for AcceptAllValidator {
+        fn validate(&self, _plan: &ExcelEditPlan, _candidate_output: &Path) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    fn write_explanation(path: &Path, reason: &str) {
+        let mut workbook = Workbook::new();
+        let sheet = workbook.add_worksheet();
+        sheet.set_name("说明文件").unwrap();
+        for (column, header) in [
+            "机构代码",
+            "机构名称",
+            "指标代码",
+            "指标名称",
+            "数据值",
+            "增减额(亿元)",
+            "变动原因",
+        ]
+        .iter()
+        .enumerate()
+        {
+            sheet.write_string(0, column as u16, *header).unwrap();
+        }
+        for (column, value) in ["0001", "测试机构", "I001", "测试指标"].iter().enumerate() {
+            sheet.write_string(1, column as u16, *value).unwrap();
+        }
+        sheet.write_number(1, 4, 100.0).unwrap();
+        sheet.write_number(1, 5, 20.0).unwrap();
+        sheet.write_string(1, 6, reason).unwrap();
+        workbook.save(path).unwrap();
+    }
 
     #[test]
     fn s3_feedback_identity_normalizes_codes_and_half_up_amounts() {
@@ -1085,5 +1557,205 @@ mod tests {
             quantize_half_up_four_places("1.23455e2"),
             DecimalQuantization::Rounded(value) if value == "123.4550"
         ));
+    }
+
+    #[test]
+    fn execution_without_a_passed_route_keeps_inputs_and_publishes_no_workbook() {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("audit_s3_f3_execution_{suffix}"));
+        let output = root.join("output");
+        fs::create_dir_all(&output).unwrap();
+        let target = root.join("说明文件.xlsx");
+        let feedback = root.join("机构反馈.xlsx");
+        write_explanation(&target, "");
+        write_explanation(&feedback, "核实后调整");
+        let before = [
+            sha256_file(&target).unwrap(),
+            sha256_file(&feedback).unwrap(),
+        ];
+        let modifier =
+            ExcelModifier::new("test-platform", Vec::new(), Arc::new(AcceptAllValidator)).unwrap();
+
+        let error = execute_explanation_feedback_import(&target, &[feedback.clone()], &modifier)
+            .expect_err("S3-F03 must not apply without a Passed Excel-Core route");
+        assert!(format!("{error:#}").contains("NoEligibleBackend"));
+        assert_eq!(
+            before,
+            [
+                sha256_file(&target).unwrap(),
+                sha256_file(&feedback).unwrap()
+            ]
+        );
+        assert!(fs::read_dir(&output).unwrap().next().is_none());
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn successful_execution_writes_feedback_to_a_new_workbook_and_keeps_sources_unchanged(
+    ) -> Result<()> {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("audit_s3_f3_success_{suffix}"));
+        let output = root.join("output");
+        fs::create_dir_all(&output)?;
+        let target = root.join("说明文件.xlsx");
+        let feedback = root.join("机构反馈.xlsx");
+        write_explanation(&target, "");
+        write_explanation(&feedback, "核实后调整");
+        let before = [sha256_file(&target)?, sha256_file(&feedback)?];
+
+        // The synthetic Passed capability exists only to exercise ExcelModifier's
+        // successful route in this focused test. It is not production evidence.
+        let platform = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
+        let profile = excel_editor::inspect_xlsx_profile(&target)?;
+        let capability = BackendCapability {
+            engine: EngineId::UmyaSpreadsheet,
+            status: CapabilityStatus::Passed,
+            format: WorkbookFormat::Xlsx,
+            operations: [EditOperationKind::SetCellValue].into_iter().collect(),
+            supported_features: profile.features_present.clone(),
+            preserved: required_preservation(),
+            platform: platform.clone(),
+            evidence: Some(CapabilityEvidence {
+                sample_id: "synthetic-s3-f03-feedback-test".to_owned(),
+                report_path: "test-only://s3-f03-feedback-execution".to_owned(),
+                adapter_version: "test fixture".to_owned(),
+                engine_version: "test fixture".to_owned(),
+                platform,
+            }),
+        };
+        let backend = Arc::new(UmyaXlsxBackend::new(capability)?);
+        let modifier = ExcelModifier::new(
+            format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
+            vec![backend],
+            Arc::new(UmyaXlsxValidator),
+        )?;
+
+        let report =
+            execute_explanation_feedback_import_to_copy(
+                &target,
+                &[feedback.clone()],
+                &output,
+                &modifier,
+            )?;
+
+        assert_eq!(report.imported, 1);
+        assert_eq!(report.planned_cell_updates, 1);
+        assert_eq!(report.conflicts, 0);
+        assert!(report.output_workbook.is_file());
+        assert_ne!(report.output_workbook, target);
+        assert_eq!(
+            before,
+            [sha256_file(&target)?, sha256_file(&feedback)?],
+            "the target explanation and institution feedback workbooks must remain unchanged"
+        );
+        let workbook = excel_editor::open_xlsx(&report.output_workbook)?;
+        let sheet = workbook.sheet_by_name("说明文件")?;
+        assert_eq!(
+            sheet.cell("G2").map(|cell| cell.value().to_string()),
+            Some("核实后调整".to_owned())
+        );
+
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn successful_execution_backs_up_then_updates_the_target_in_place() -> Result<()> {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("audit_s3_f3_in_place_{suffix}"));
+        fs::create_dir_all(&root)?;
+        let target = root.join("说明文件.xlsx");
+        let feedback = root.join("机构反馈.xlsx");
+        write_explanation(&target, "");
+        write_explanation(&feedback, "核实后调整");
+        let target_hash_before = sha256_file(&target)?;
+        let feedback_hash_before = sha256_file(&feedback)?;
+
+        let platform = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
+        let profile = excel_editor::inspect_xlsx_profile(&target)?;
+        let capability = BackendCapability {
+            engine: EngineId::UmyaSpreadsheet,
+            status: CapabilityStatus::Passed,
+            format: WorkbookFormat::Xlsx,
+            operations: [EditOperationKind::SetCellValue].into_iter().collect(),
+            supported_features: profile.features_present.clone(),
+            preserved: required_preservation(),
+            platform: platform.clone(),
+            evidence: Some(CapabilityEvidence {
+                sample_id: "synthetic-s3-f03-in-place-test".to_owned(),
+                report_path: "test-only://s3-f03-in-place".to_owned(),
+                adapter_version: "test fixture".to_owned(),
+                engine_version: "test fixture".to_owned(),
+                platform: platform.clone(),
+            }),
+        };
+        let backend = Arc::new(UmyaXlsxBackend::new(capability)?);
+        let modifier =
+            ExcelModifier::new(platform, vec![backend], Arc::new(UmyaXlsxValidator))?;
+
+        let report = execute_explanation_feedback_import(&target, &[feedback.clone()], &modifier)?;
+
+        assert_eq!(report.output_workbook, target);
+        assert_eq!(report.imported, 1);
+        assert_eq!(report.planned_cell_updates, 1);
+        assert_eq!(report.conflicts, 0);
+        assert_ne!(sha256_file(&target)?, target_hash_before);
+        assert_eq!(sha256_file(&feedback)?, feedback_hash_before);
+        let backup = report.backup_workbook.expect("pre-write target backup");
+        assert!(backup.is_file());
+        assert_eq!(sha256_file(&backup)?, target_hash_before);
+        let workbook = excel_editor::open_xlsx(&report.output_workbook)?;
+        let sheet = workbook.sheet_by_name("说明文件")?;
+        assert_eq!(
+            sheet.cell("G2").map(|cell| cell.value().to_string()),
+            Some("核实后调整".to_owned())
+        );
+
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn failed_candidate_install_restores_the_target_and_retains_its_backup() -> Result<()> {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("audit_s3_f3_rollback_{suffix}"));
+        fs::create_dir_all(&root)?;
+        let target = root.join("说明文件.xlsx");
+        fs::write(&target, b"original target bytes")?;
+        let original = fs::read(&target)?;
+        let permissions = fs::metadata(&target)?.permissions();
+        let backup = create_feedback_backup(&target, &permissions)?;
+        let mut staging = S3FeedbackStagingDirectory::create(&root)?;
+        let rollback = staging.path().join("说明文件.xlsx");
+        let missing_candidate = staging.path().join("missing-candidate.xlsx");
+
+        let error = publish_candidate_in_place(
+            &missing_candidate,
+            &target,
+            &rollback,
+            &backup,
+            &mut staging,
+        )
+        .expect_err("missing staged output must abort publication and roll back");
+
+        assert!(format!("{error:#}").contains("原目标文件已恢复"));
+        assert_eq!(fs::read(&target)?, original);
+        assert_eq!(fs::read(&backup)?, original);
+        assert!(!rollback.exists());
+        fs::remove_dir_all(root)?;
+        Ok(())
     }
 }

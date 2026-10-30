@@ -8,7 +8,9 @@ use crate::{
     template::{normalize_template_name, parse_formula_result},
 };
 use anyhow::{ensure, Context, Result};
-use excel_reader::{read_value_columns, CellValue, SheetValues};
+use excel_reader::{
+    read_value_columns_with_diagnostics, CellValue, SheetValues, WorkbookReadDiagnostics,
+};
 use serde::Serialize;
 use serde_json::Value;
 use std::{
@@ -46,6 +48,7 @@ pub struct S1FormulaMetadata {
 #[derive(Clone, Debug, Serialize)]
 pub struct S1FormulaAuditSummary {
     pub reader: &'static str,
+    pub read_diagnostics: WorkbookReadDiagnostics,
     pub rules_total: usize,
     pub rules_enabled: usize,
     pub rules_selected: usize,
@@ -126,8 +129,16 @@ pub fn extract_s1_formula_issues(
     }
 
     let read_started = Instant::now();
-    let workbook = read_value_columns(audit_path, max_column)
+    let read_report = read_value_columns_with_diagnostics(audit_path, max_column)
         .with_context(|| format!("读取审核副本中的公式结果值：{}", audit_path.display()))?;
+    let normalized_formula_errors = read_report
+        .diagnostics
+        .normalized_error_cells
+        .iter()
+        .filter(|cell| cell.formula_cell)
+        .cloned()
+        .collect::<Vec<_>>();
+    let workbook = read_report.sheets;
     let read_time_ms = read_started.elapsed().as_millis();
     let sheets = workbook
         .iter()
@@ -152,6 +163,21 @@ pub fn extract_s1_formula_issues(
         let formula_result = cell_value(sheet, &rule.formula_cell);
         if !is_empty_formula_result(&formula_result) {
             formula_result_values_nonempty += 1;
+        }
+
+        if let Some(error) = normalized_formula_errors
+            .iter()
+            .find(|cell| cell.sheet_name == rule.sheet_name && cell.coordinate == rule.formula_cell)
+        {
+            issues.push(formula_error_issue(
+                rule,
+                source_path,
+                &source_display,
+                &audit_display,
+                metadata,
+                &error.token,
+            ));
+            continue;
         }
 
         if let Some(error) = formula_error(&formula_result) {
@@ -226,6 +252,7 @@ pub fn extract_s1_formula_issues(
     let issue_build_time_ms = issue_build_started.elapsed().as_millis();
     let summary = S1FormulaAuditSummary {
         reader: READER,
+        read_diagnostics: read_report.diagnostics,
         rules_total: definition.rules.len(),
         rules_enabled: definition.rules.iter().filter(|rule| rule.enabled).count(),
         rules_selected: selected_rules.len(),

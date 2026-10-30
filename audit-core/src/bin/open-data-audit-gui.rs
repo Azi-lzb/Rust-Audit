@@ -20,6 +20,14 @@ struct Cli {
 }
 
 fn main() {
+    #[cfg(windows)]
+    if let Some(result) = audit_core::native_recalculation::maybe_run_native_com_worker() {
+        if let Err(error) = result {
+            eprintln!("原生 COM 计算工作进程失败：{error:#}");
+            std::process::exit(2);
+        }
+        return;
+    }
     if let Err(error) = run() {
         eprintln!("open-data-audit-gui: {error:#}");
         std::process::exit(2);

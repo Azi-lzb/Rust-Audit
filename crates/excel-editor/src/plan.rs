@@ -2039,6 +2039,86 @@ mod tests {
     }
 
     #[test]
+    fn umya_primary_rejection_falls_back_to_ooxml_from_a_fresh_original_copy() {
+        let directory = TestDir::new();
+        let plan = plan(&directory.0, vec![set_value()]);
+        let original_bytes = fs::read(&plan.input).unwrap();
+        let observed = Arc::new(Mutex::new(Vec::new()));
+        // Synthetic capabilities exercise only ExcelModifier's retry contract.
+        // They do not register SetCellValue as a production OOXML Patch feature.
+        let modifier = ExcelModifier::new(
+            "test-linux-x86_64",
+            vec![
+                backend(
+                    capability(
+                        EngineId::UmyaSpreadsheet,
+                        [EditOperationKind::SetCellValue],
+                    ),
+                    Action::UnsupportedBeforeWrite,
+                    Arc::clone(&observed),
+                ),
+                backend(
+                    capability(EngineId::OoxmlPatch, [EditOperationKind::SetCellValue]),
+                    Action::Write,
+                    Arc::clone(&observed),
+                ),
+            ],
+            Arc::new(PrefixValidator),
+        )
+        .unwrap();
+
+        let report = modifier.execute(&plan).unwrap();
+        let attempts = observed.lock().unwrap();
+        assert_eq!(attempts.len(), 2);
+        assert_ne!(attempts[0].0, attempts[1].0);
+        assert_eq!(attempts[0].1, original_bytes);
+        assert_eq!(attempts[1].1, original_bytes);
+        assert_eq!(fs::read(&plan.input).unwrap(), original_bytes);
+        assert_eq!(
+            fs::read(&plan.output).unwrap(),
+            b"edited:original workbook bytes"
+        );
+        assert_eq!(report.engine, EngineId::OoxmlPatch);
+        assert_eq!(report.attempts[0].engine, EngineId::UmyaSpreadsheet);
+        assert_eq!(
+            report.attempts[0].outcome,
+            BackendAttemptOutcome::RejectedBeforeWrite
+        );
+        assert_eq!(report.attempts[1].engine, EngineId::OoxmlPatch);
+        assert_eq!(report.attempts[1].outcome, BackendAttemptOutcome::Succeeded);
+    }
+
+    #[test]
+    fn both_umya_and_ooxml_unsupported_fail_closed_without_touching_source() {
+        let directory = TestDir::new();
+        let plan = plan(&directory.0, vec![set_value()]);
+        let original_bytes = fs::read(&plan.input).unwrap();
+        let observed = Arc::new(Mutex::new(Vec::new()));
+        let mut umya = capability(EngineId::UmyaSpreadsheet, [EditOperationKind::SetCellValue]);
+        umya.status = CapabilityStatus::Unsupported;
+        let mut ooxml = capability(EngineId::OoxmlPatch, [EditOperationKind::SetCellValue]);
+        ooxml.status = CapabilityStatus::Unsupported;
+        let modifier = ExcelModifier::new(
+            "test-linux-x86_64",
+            vec![
+                backend(umya, Action::Write, Arc::clone(&observed)),
+                backend(ooxml, Action::Write, Arc::clone(&observed)),
+            ],
+            Arc::new(PrefixValidator),
+        )
+        .unwrap();
+
+        let error = modifier.execute(&plan).unwrap_err();
+        assert_eq!(error.kind, ExcelModifierErrorKind::NoEligibleBackend);
+        assert_eq!(error.route_decisions.len(), 2);
+        assert!(error.route_decisions.iter().all(|decision| !decision.eligible));
+        assert!(error.attempts.is_empty());
+        assert!(observed.lock().unwrap().is_empty());
+        assert_eq!(fs::read(&plan.input).unwrap(), original_bytes);
+        assert!(!plan.output.exists());
+    }
+
+    #[test]
     fn output_validation_failure_stops_without_trying_another_engine() {
         let directory = TestDir::new();
         let plan = plan(&directory.0, vec![set_value()]);

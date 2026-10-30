@@ -51,6 +51,11 @@ fn write_target(path: &Path) -> Result<()> {
         .get_sheet_by_name_mut("Sheet1")
         .context("default worksheet missing")?;
     sheet.set_name("Source");
+    sheet
+        .cell_mut("B2")
+        .set_formula("1+1")
+        .set_formula_result_number(2.0);
+    sheet.cell_mut("C2").set_value_string("stale target value");
     umya_spreadsheet::writer::xlsx::write(&workbook, path)
         .with_context(|| format!("write target fixture {}", path.display()))
 }
@@ -142,6 +147,12 @@ fn imports_full_sheet_properties_and_dimensions_beyond_cell_range() -> Result<()
         output_sheet.get_cell("A1").map(|cell| cell.style()),
         source_sheet.get_cell("A1").map(|cell| cell.style())
     );
+    assert!(output_sheet.get_cell("B2").map_or(true, |cell| {
+        !cell.cell_value().is_formula() && cell.value().to_string().is_empty()
+    }));
+    assert!(output_sheet
+        .get_cell("C2")
+        .map_or(true, |cell| cell.value().to_string().is_empty()));
     let imported_formula_cache = output_sheet
         .get_cell("C3")
         .context("cached value missing")?;

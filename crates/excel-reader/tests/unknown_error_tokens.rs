@@ -1,4 +1,6 @@
-use excel_reader::{read_workbook, read_workbook_with_unknown_error_tokens_as_text};
+use excel_reader::{
+    read_workbook, read_workbook_with_diagnostics, read_workbook_with_unknown_error_tokens_as_text,
+};
 use serde_json::json;
 use std::{fs::File, io::Write, path::PathBuf};
 use zip::{write::SimpleFileOptions, ZipWriter};
@@ -46,15 +48,28 @@ fn fixture() -> PathBuf {
 }
 
 #[test]
-fn opt_in_reader_normalizes_only_unsupported_literal_error_tokens() {
+fn default_reader_uses_targeted_fallback_for_unsupported_literal_error_tokens() {
     let path = fixture();
     let original = std::fs::read(&path).expect("read fixture bytes");
 
-    let default_error = read_workbook(&path).expect_err("default reader remains fail-closed");
-    assert!(format!("{default_error:#}").contains("Unsupported cell error value '#DATA!'"));
+    let report = read_workbook_with_diagnostics(&path).expect("default targeted fallback");
+    assert_eq!(report.diagnostics.primary_reader, "calamine");
+    assert!(report
+        .diagnostics
+        .primary_error
+        .as_deref()
+        .unwrap()
+        .contains("#DATA!"));
+    assert_eq!(report.diagnostics.fallback_status, "succeeded");
+    assert_eq!(report.diagnostics.normalized_error_cells.len(), 1);
+    let default_dump = read_workbook(&path).expect("default compatibility read");
+    assert_eq!(
+        default_dump.sheets[0].values.get("A1"),
+        Some(&json!({"type":"string", "value":"#DATA!"}))
+    );
 
     let dump =
-        read_workbook_with_unknown_error_tokens_as_text(&path).expect("opt-in compatibility read");
+        read_workbook_with_unknown_error_tokens_as_text(&path).expect("compatibility read details");
     assert!(dump.compatibility_normalization_used);
     assert_eq!(dump.normalized_cell_count, 1);
     let errors = dump

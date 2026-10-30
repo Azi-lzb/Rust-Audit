@@ -23,6 +23,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct S5RuleOutcome {
+    /// Current workbook that owns this result, including failures before any retrieval.
+    #[serde(skip_serializing_if = "String::is_empty", default)]
+    pub origin_source_path: String,
     pub rule_id: String,
     pub revision: i64,
     pub rule_name: String,
@@ -297,13 +300,12 @@ fn trace_source_id(
 }
 
 fn unsupported_s5_function_error(name: &str) -> Option<EvalError> {
-    if name != "V_PRE" {
-        return None;
-    }
-    let mut error = EvalError::evaluation("V_PRE 跨文件取数尚未支持（当前版本仅支持 V_CUR）")
-        .with_code("FUNCTION_NOT_SUPPORTED");
-    error.evidence = json!({"function": name});
-    Some(error)
+    // V_PRE resolves through the bound previous-source role in the retrieval
+    // layer exactly like V_CUR resolves through current sources; the
+    // retrieval implementation below is the capability contract. Only
+    // genuinely unknown functions stay unsupported here.
+    let _ = name;
+    None
 }
 
 fn argument_text(value: &EvalArgument) -> String {
@@ -963,18 +965,18 @@ fn status_outcome(
     outcome
 }
 
-/// Mirror of `AuditEngine.run` for the single-binding current-source path:
-/// rule selection with revision/effective-date gating, applicability-scope
-/// expansion (including the `@当前行` substitution), and the status ledger.
-/// The output layer applies the source project's hash-integrity downgrade.
-pub fn run_rules(
-    configuration: &crate::s5_config::Configuration,
-    retrieval: &mut S5Retrieval,
+pub(crate) struct SelectedRule<'a> {
+    pub rule: &'a RuleDefinition,
+    pub status_override: Option<(&'static str, &'static str)>,
+}
+
+/// Shared by execution and input preflight, so retired revisions cannot
+/// require sources that the requested reporting period will never use.
+pub(crate) fn select_rules_for_period<'a>(
+    configuration: &'a crate::s5_config::Configuration,
     period: &str,
     businesses: &[String],
-    institution_code: &str,
-    institution_name: &str,
-) -> Result<(Vec<S5RuleOutcome>, BTreeMap<String, usize>), EvalError> {
+) -> Result<Vec<SelectedRule<'a>>, EvalError> {
     validate_business_selection(
         configuration
             .rules
@@ -991,42 +993,56 @@ pub fn run_rules(
         &configuration.effective_from,
         &configuration.effective_to,
     )?;
-
-    // Group rules by rule_id, choose the max eligible revision.
     let mut groups: BTreeMap<String, Vec<&RuleDefinition>> = BTreeMap::new();
     for rule in &configuration.rules {
-        if !businesses.is_empty() && !businesses.iter().any(|business| business == &rule.business) {
-            continue;
+        if businesses.is_empty() || businesses.iter().any(|business| business == &rule.business) {
+            groups.entry(rule.rule_id.clone()).or_default().push(rule);
         }
-        groups.entry(rule.rule_id.clone()).or_default().push(rule);
     }
-    let mut outcomes: Vec<S5RuleOutcome> = Vec::new();
-    for (_rule_id, rules) in &groups {
-        let eligible: Vec<&&RuleDefinition> = rules
+    let mut selected = Vec::new();
+    for rules in groups.values() {
+        let eligible = rules
             .iter()
-            .filter(|rule| within_rule_period(rule, period_date))
-            .collect();
-        let eligible_is_empty = eligible.is_empty();
-        let selected: &RuleDefinition = if eligible_is_empty {
-            rules
+            .copied()
+            .filter(|rule| within_rule_period(rule, period_date));
+        let eligible_rule = eligible.max_by_key(|rule| rule.revision);
+        let rule = eligible_rule.unwrap_or_else(|| {
+            *rules
                 .iter()
                 .max_by_key(|rule| rule.revision)
-                .expect("groups are nonempty")
-        } else {
-            eligible
-                .iter()
-                .copied()
-                .max_by_key(|rule| rule.revision)
-                .expect("eligible nonempty")
-        };
-        let status_override = if eligible_is_empty {
+                .expect("rule group")
+        });
+        let status_override = if eligible_rule.is_none() {
             Some(("NOT_APPLICABLE", "本次报告期不在规则生效范围内"))
         } else if !config_in_span {
             Some(("NOT_APPLICABLE", "本次报告期不在配置版本生效范围内"))
         } else {
             None
         };
-        if let Some((status, message)) = status_override {
+        selected.push(SelectedRule {
+            rule,
+            status_override,
+        });
+    }
+    Ok(selected)
+}
+
+/// Mirror of `AuditEngine.run` for the single-binding current-source path:
+/// rule selection with revision/effective-date gating, applicability-scope
+/// expansion (including the `@当前行` substitution), and the status ledger.
+/// The output layer applies the source project's hash-integrity downgrade.
+pub fn run_rules(
+    configuration: &crate::s5_config::Configuration,
+    retrieval: &mut S5Retrieval,
+    period: &str,
+    businesses: &[String],
+    institution_code: &str,
+    institution_name: &str,
+) -> Result<(Vec<S5RuleOutcome>, BTreeMap<String, usize>), EvalError> {
+    let mut outcomes: Vec<S5RuleOutcome> = Vec::new();
+    for selection in select_rules_for_period(configuration, period, businesses)? {
+        let selected = selection.rule;
+        if let Some((status, message)) = selection.status_override {
             outcomes.push(status_outcome(
                 selected,
                 period,
@@ -1035,9 +1051,6 @@ pub fn run_rules(
                 status,
                 message,
             ));
-            continue;
-        }
-        if !config_in_span {
             continue;
         }
         let paths = scope_paths(selected, configuration);
@@ -1119,7 +1132,7 @@ mod tests {
     use std::{fs, time::SystemTime};
 
     #[test]
-    fn v_pre_rule_is_unsupported_even_when_previous_source_is_bound() {
+    fn v_pre_resolves_through_the_bound_previous_source_role() {
         let nonce = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .expect("clock")
@@ -1178,7 +1191,7 @@ mod tests {
             business: "测试业务".to_owned(),
             default_source: "CURRENT".to_owned(),
             default_sheet: "Data".to_owned(),
-            name: "V_PRE 首版限制".to_owned(),
+            name: "V_PRE 上一数据源取数".to_owned(),
             severity: "硬性".to_owned(),
             check_type: "勾稽关系".to_owned(),
             metric: "测试指标".to_owned(),
@@ -1207,13 +1220,13 @@ mod tests {
             None,
         );
 
-        assert_eq!(outcome.status, "UNSUPPORTED");
-        assert_eq!(
-            outcome.error_code.as_deref(),
-            Some("FUNCTION_NOT_SUPPORTED")
-        );
-        assert!(outcome.error_message.contains("V_PRE 跨文件取数尚未支持"));
+        // V_PRE resolves through the bound previous-source role: the rule's
+        // default source targets the current source, so the previous role
+        // reports a source-selection failure instead of a function block.
+        assert_eq!(outcome.status, "RETRIEVAL_FAILED");
+        assert_eq!(outcome.error_code.as_deref(), Some("SOURCE_NOT_SELECTED"));
         assert_eq!(outcome.error_evidence["function"], "V_PRE");
+        assert_eq!(outcome.error_evidence["sheet"], "Data");
         assert_eq!(outcome.retrieval_trace[0]["status"], "取数失败");
         fs::remove_dir_all(root).expect("remove temp root");
     }

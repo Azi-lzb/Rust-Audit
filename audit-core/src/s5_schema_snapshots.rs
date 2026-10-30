@@ -26,6 +26,8 @@ const SECRET_NAME: &str = ".schema-key";
 
 #[derive(Clone, Debug)]
 pub struct S5StructureObservation {
+    /// Batch ownership metadata; excluded from the shared baseline identity.
+    pub context: Option<Value>,
     pub role: String,
     pub source_id: String,
     pub business: String,
@@ -69,6 +71,7 @@ pub fn collect_observations(
         .map(|table| {
             let search_region = table.column_region.as_ref().unwrap_or(&table.region);
             S5StructureObservation {
+                context: None,
                 role: role.to_owned(),
                 source_id: source_id.to_owned(),
                 business: business.to_owned(),
@@ -129,7 +132,15 @@ impl PendingSnapshots {
 
     /// Persist only after source/configuration integrity has been confirmed.
     /// A logical structure change keeps the accepted baseline for review.
-    pub fn finish(mut self, inputs_unchanged: bool) -> Vec<Value> {
+    pub fn finish(self, inputs_unchanged: bool) -> Vec<Value> {
+        self.finish_with_persistence(inputs_unchanged, true)
+    }
+
+    pub fn finish_read_only(self, inputs_unchanged: bool) -> Vec<Value> {
+        self.finish_with_persistence(inputs_unchanged, false)
+    }
+
+    fn finish_with_persistence(mut self, inputs_unchanged: bool, persist: bool) -> Vec<Value> {
         if self.records.is_empty() {
             return Vec::new();
         }
@@ -148,6 +159,18 @@ impl PendingSnapshots {
                 .records
                 .into_iter()
                 .map(|record| record.event)
+                .collect();
+        }
+
+        if !persist {
+            return self
+                .records
+                .into_iter()
+                .map(|record| {
+                    let mut event = record.event;
+                    event["baseline_persisted"] = json!(false);
+                    event
+                })
                 .collect();
         }
 
@@ -321,6 +344,9 @@ fn compare_one(
         "row_region": row_region,
         "column_region": column_region,
     });
+    if let Some(context) = &observation.context {
+        event["context"] = context.clone();
+    }
     match fs::read_to_string(&path) {
         Ok(text) => match serde_json::from_str::<Value>(&text) {
             Ok(previous) if !previous.is_object() => {
@@ -624,6 +650,7 @@ mod tests {
             max_col: 4,
         };
         S5StructureObservation {
+            context: None,
             role: "current".to_owned(),
             source_id: "CURRENT".to_owned(),
             business: "单位贷款".to_owned(),
@@ -719,6 +746,32 @@ mod tests {
         assert_eq!(status(&events), "SNAPSHOT_NOT_SAVED");
         assert_eq!(fs::read_dir(&directory).unwrap().count(), 1);
         fs::remove_dir_all(directory).expect("remove schema snapshot test data");
+    }
+
+    #[test]
+    fn batch_comparison_retains_each_owner_and_does_not_replace_the_shared_baseline() {
+        let directory = temporary_directory("batch_read_only");
+        let event = PendingSnapshots::compare(&[observation("贷款余额", 5, 2)], &directory)
+            .unwrap()
+            .finish(true)
+            .remove(0);
+        let path = directory.join(format!("{}.json", event["snapshot_id"].as_str().unwrap()));
+        let baseline = fs::read(&path).unwrap();
+        let mut first = observation("贷款余额", 5, 2);
+        first.context = Some(serde_json::json!({"institution_code": "I001"}));
+        let mut second = observation("贷款余额", 7, 3);
+        second.context = Some(serde_json::json!({"institution_code": "I002"}));
+        let events = PendingSnapshots::compare(&[first, second], &directory)
+            .unwrap()
+            .finish_read_only(true);
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0]["context"]["institution_code"], "I001");
+        assert_eq!(events[1]["context"]["institution_code"], "I002");
+        assert!(events
+            .iter()
+            .all(|event| event["baseline_persisted"] == false));
+        assert_eq!(fs::read(&path).unwrap(), baseline);
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]

@@ -142,8 +142,45 @@ impl ExternalLayout {
         Ok((entry.code.clone(), entry.name.clone()))
     }
 
+    /// Read only the institution reference. Identity validation must not
+    /// depend on discovering numeric report columns or parsing report dates.
+    pub fn institution_catalog(book: &ScanBook) -> Result<Option<Self>, ExternalLayoutFailure> {
+        match discover_institution_mapping(book, false) {
+            Ok((mapping_sheet, mapping_rows)) if !mapping_rows.is_empty() => Ok(Some(Self {
+                mapping_sheet,
+                mapping_rows,
+                columns: Vec::new(),
+                warnings: Vec::new(),
+            })),
+            Ok(_) => Ok(None),
+            Err(error) if error.code == "MAPPING_SHEET_MISSING" => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
+    pub fn contains_institution_code(&self, code: &str) -> bool {
+        let key = normalize_external_label(code);
+        self.mapping_rows
+            .iter()
+            .any(|entry| normalize_external_label(&entry.code) == key)
+    }
+
+    pub fn resolve_institution_identity_from_names(
+        &self,
+        code: &str,
+        names: &[String],
+    ) -> Result<(String, String, String), ExternalLayoutFailure> {
+        let names = names.iter().map(String::as_str).collect::<Vec<_>>();
+        let (entry, _) = self.institution_entry_from_names(code, &names)?;
+        Ok((
+            entry.code.clone(),
+            entry.name.clone(),
+            entry.report_item.clone(),
+        ))
+    }
+
     pub fn discover(book: &ScanBook) -> Result<Self, ExternalLayoutFailure> {
-        let (mapping_sheet, mapping_rows) = discover_institution_mapping(book)?;
+        let (mapping_sheet, mapping_rows) = discover_institution_mapping(book, true)?;
         let targets: BTreeSet<String> = mapping_rows
             .iter()
             .filter(|entry| !entry.report_item.is_empty())
@@ -528,8 +565,20 @@ impl ExternalLayout {
         institution_code: &str,
         institution_name: &str,
     ) -> Result<(&InstitutionMapping, String), ExternalLayoutFailure> {
+        self.institution_entry_from_names(institution_code, &[institution_name])
+    }
+
+    fn institution_entry_from_names(
+        &self,
+        institution_code: &str,
+        institution_names: &[&str],
+    ) -> Result<(&InstitutionMapping, String), ExternalLayoutFailure> {
         let code_key = normalize_external_label(institution_code);
-        let name_key = normalize_external_label(institution_name);
+        let name_keys: BTreeSet<String> = institution_names
+            .iter()
+            .map(|name| normalize_external_label(name))
+            .filter(|name| !name.is_empty())
+            .collect();
         let mut entries: Vec<&InstitutionMapping> = self
             .mapping_rows
             .iter()
@@ -551,9 +600,7 @@ impl ExternalLayout {
             entries = self
                 .mapping_rows
                 .iter()
-                .filter(|entry| {
-                    !name_key.is_empty() && normalize_external_label(&entry.name) == name_key
-                })
+                .filter(|entry| name_keys.contains(&normalize_external_label(&entry.name)))
                 .collect();
             method = "机构名称";
             if entries.iter().any(|entry| entry.disabled) {
@@ -613,6 +660,7 @@ impl ExternalLayout {
 
 fn discover_institution_mapping(
     book: &ScanBook,
+    require_report_items: bool,
 ) -> Result<(String, Vec<InstitutionMapping>), ExternalLayoutFailure> {
     for sheet in MAPPING_SHEETS {
         if !book.sheet_names().iter().any(|name| name == sheet) {
@@ -677,6 +725,9 @@ fn discover_institution_mapping(
         }
         let Some((header_row, code_column, name_column, target_column, disabled_column)) = header
         else {
+            if !require_report_items {
+                break;
+            }
             continue;
         };
         let mut entries = Vec::new();
@@ -723,7 +774,7 @@ fn discover_institution_mapping(
                 target_column,
             });
         }
-        if entries.iter().any(|entry| !entry.report_item.is_empty()) {
+        if !require_report_items || entries.iter().any(|entry| !entry.report_item.is_empty()) {
             return Ok((sheet.to_owned(), entries));
         }
     }

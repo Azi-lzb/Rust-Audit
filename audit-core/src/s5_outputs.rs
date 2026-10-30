@@ -16,7 +16,8 @@ use serde_json::{json, Value as JsonValue};
 use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fs,
+    fs::{self, File, OpenOptions},
+    io,
     path::{Path, PathBuf},
 };
 
@@ -130,7 +131,7 @@ fn safe_name(value: &str) -> String {
     }
 }
 
-fn file_sha256(path: &Path) -> Result<String, String> {
+pub(crate) fn file_sha256(path: &Path) -> Result<String, String> {
     let bytes = fs::read(path)
         .map_err(|error| format!("读取文件计算 SHA-256 失败 {}：{error}", path.display()))?;
     let mut hasher = Sha256::new();
@@ -140,6 +141,39 @@ fn file_sha256(path: &Path) -> Result<String, String> {
 
 fn copy_identity(path: &Path) -> PathBuf {
     fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
+fn copy_source_unique(source: &Path, preferred: &Path) -> Result<PathBuf, String> {
+    let stem = path_stem(preferred);
+    let extension = preferred
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("");
+    for sequence in 1..=10_000 {
+        let candidate = if sequence == 1 {
+            preferred.to_path_buf()
+        } else {
+            preferred.with_file_name(format!("{stem}_{sequence:02}.{extension}"))
+        };
+        let mut destination = match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(format!("创建独立审核副本失败：{error}")),
+        };
+        let copied =
+            File::open(source).and_then(|mut input| io::copy(&mut input, &mut destination));
+        drop(destination);
+        if let Err(error) = copied {
+            let _ = fs::remove_file(&candidate);
+            return Err(format!("复制审核来源 {} 失败：{error}", source.display()));
+        }
+        return Ok(candidate);
+    }
+    Err("无法分配不覆盖已有文件的审核副本名".to_owned())
 }
 
 fn capture_copied_snapshot(
@@ -158,13 +192,22 @@ fn record_input_hash(
     source_id: &str,
     path: &Path,
     expected: &str,
+    key_by_path: bool,
     hashes: &mut BTreeMap<String, JsonValue>,
 ) -> bool {
     let actual = file_sha256(path).unwrap_or_else(|_| "MISSING".to_owned());
-    hashes.insert(
-        format!("{role}:{source_id}"),
-        json!({"sha256_before": expected, "sha256_after": actual}),
-    );
+    let mut value = json!({"sha256_before": expected, "sha256_after": actual});
+    let key = if key_by_path {
+        let physical_path = copy_identity(path).to_string_lossy().into_owned();
+        value["source_path"] = json!(physical_path);
+        format!(
+            "{role}:{source_id}:{:x}",
+            Sha256::digest(physical_path.as_bytes())
+        )
+    } else {
+        format!("{role}:{source_id}")
+    };
+    hashes.insert(key, value);
     actual == expected
 }
 
@@ -257,7 +300,13 @@ fn outcome_source_path<'a>(
         .filter_map(|entry| entry.get("source_path").and_then(JsonValue::as_str))
         .find(|path| copy_by_source.contains_key(*path))
         .map(Path::new)
-        .unwrap_or(default_source)
+        .unwrap_or_else(|| {
+            if item.origin_source_path.is_empty() {
+                default_source
+            } else {
+                Path::new(&item.origin_source_path)
+            }
+        })
 }
 
 fn workbook_name(path: &Path) -> String {
@@ -442,6 +491,27 @@ pub fn write_run_outputs_with_conditional_format(
     output_root: &Path,
     conditional_format: Option<&S5ConditionalFormatRun>,
 ) -> Result<S5WriteOutputsSummary, String> {
+    write_outputs(request, output_root, conditional_format, true, None)
+}
+
+/// GUI batches compare each institution with the accepted baseline without
+/// replacing that shared baseline with the last institution in the batch.
+pub fn write_batch_outputs_with_conditional_format(
+    request: &S5OutputRequest<'_>,
+    output_root: &Path,
+    conditional_format: Option<&S5ConditionalFormatRun>,
+    batch: &JsonValue,
+) -> Result<S5WriteOutputsSummary, String> {
+    write_outputs(request, output_root, conditional_format, false, Some(batch))
+}
+
+fn write_outputs(
+    request: &S5OutputRequest<'_>,
+    output_root: &Path,
+    conditional_format: Option<&S5ConditionalFormatRun>,
+    persist_schema_snapshots: bool,
+    batch: Option<&JsonValue>,
+) -> Result<S5WriteOutputsSummary, String> {
     let pending_snapshots = request
         .schema_snapshot_dir
         .map(|directory| {
@@ -487,8 +557,7 @@ pub fn write_run_outputs_with_conditional_format(
                 .map(|extension| format!(".{}", extension.to_string_lossy().to_lowercase()))
                 .unwrap_or_default()
         ));
-        fs::copy(request.source_path, &source_copy)
-            .map_err(|error| format!("复制数据源失败：{error}"))?;
+        let source_copy = copy_source_unique(request.source_path, &source_copy)?;
         let (sha_after, sha_copy, matches_snapshot) = capture_copied_snapshot(
             request.source_path,
             request.source_sha256_before,
@@ -527,8 +596,7 @@ pub fn write_run_outputs_with_conditional_format(
             safe_name(&path_stem(source.path)),
             extension
         ));
-        fs::copy(source.path, &source_copy)
-            .map_err(|error| format!("复制附加数据源失败：{error}"))?;
+        let source_copy = copy_source_unique(source.path, &source_copy)?;
         let (sha_after, sha_copy, matches_snapshot) =
             capture_copied_snapshot(source.path, source.sha256_before, &source_copy)?;
         manifest.push(S5OutputManifestEntry {
@@ -563,8 +631,7 @@ pub fn write_run_outputs_with_conditional_format(
             safe_name(&path_stem(template.path)),
             extension
         ));
-        fs::copy(template.path, &template_copy)
-            .map_err(|error| format!("复制数字区域布局模板失败：{error}"))?;
+        let template_copy = copy_source_unique(template.path, &template_copy)?;
         let (sha_after, sha_copy, matches_snapshot) =
             capture_copied_snapshot(template.path, template.sha256_before, &template_copy)?;
         manifest.push(S5OutputManifestEntry {
@@ -589,7 +656,7 @@ pub fn write_run_outputs_with_conditional_format(
                 .map(|extension| format!(".{}", extension.to_string_lossy().to_lowercase()))
                 .unwrap_or_default()
         ));
-        fs::copy(request.config_path, &path).map_err(|error| format!("复制配置失败：{error}"))?;
+        let path = copy_source_unique(request.config_path, &path)?;
         let (sha_after, sha_copy, matches_snapshot) =
             capture_copied_snapshot(request.config_path, request.config_sha256_before, &path)?;
         manifest.push(S5OutputManifestEntry {
@@ -607,12 +674,33 @@ pub fn write_run_outputs_with_conditional_format(
         None
     };
 
+    let mut input_key_counts = BTreeMap::<String, usize>::new();
+    *input_key_counts
+        .entry(format!("current:{}", request.source_id))
+        .or_default() += 1;
+    for source in request
+        .additional_sources
+        .iter()
+        .chain(request.selected_templates.iter())
+    {
+        *input_key_counts
+            .entry(format!("{}:{}", source.role, source.source_id))
+            .or_default() += 1;
+    }
+    let key_by_path = |role: &str, source_id: &str| {
+        input_key_counts
+            .get(&format!("{role}:{source_id}"))
+            .copied()
+            .unwrap_or_default()
+            > 1
+    };
     let mut input_hashes = BTreeMap::new();
     let mut inputs_unchanged = record_input_hash(
         "current",
         request.source_id,
         request.source_path,
         request.source_sha256_before,
+        key_by_path("current", request.source_id),
         &mut input_hashes,
     );
     for source in request.additional_sources {
@@ -621,6 +709,7 @@ pub fn write_run_outputs_with_conditional_format(
             source.source_id,
             source.path,
             source.sha256_before,
+            key_by_path(source.role, source.source_id),
             &mut input_hashes,
         );
     }
@@ -630,12 +719,13 @@ pub fn write_run_outputs_with_conditional_format(
             template.source_id,
             template.path,
             template.sha256_before,
+            key_by_path(template.role, template.source_id),
             &mut input_hashes,
         );
     }
     let configuration_after =
         file_sha256(request.config_path).unwrap_or_else(|_| "MISSING".to_owned());
-    let configuration_unchanged = configuration_after == request.config_sha256_before;
+    let mut configuration_unchanged = configuration_after == request.config_sha256_before;
     input_hashes.insert(
         "configuration".to_owned(),
         json!({
@@ -643,6 +733,21 @@ pub fn write_run_outputs_with_conditional_format(
             "sha256_after": configuration_after,
         }),
     );
+    for entry in &mut manifest {
+        let copy_hash =
+            file_sha256(Path::new(&entry.copy_path)).unwrap_or_else(|_| "MISSING".to_owned());
+        entry.matches_snapshot &=
+            copy_hash == entry.sha256_copy && copy_hash == entry.sha256_before;
+        entry.sha256_copy = copy_hash;
+    }
+    inputs_unchanged &= manifest
+        .iter()
+        .filter(|entry| entry.role != "configuration")
+        .all(|entry| entry.matches_snapshot);
+    configuration_unchanged &= manifest
+        .iter()
+        .filter(|entry| entry.role == "configuration")
+        .all(|entry| entry.matches_snapshot);
     let integrity_changed = !inputs_unchanged || !configuration_unchanged;
     let input_integrity = if inputs_unchanged {
         "UNCHANGED"
@@ -665,13 +770,32 @@ pub fn write_run_outputs_with_conditional_format(
         .unwrap_or_default();
     let run_status = if integrity_changed {
         "INPUT_CHANGED_DURING_RUN"
+    } else if batch.is_some_and(|batch| batch["files_processed"].as_u64() == Some(0)) {
+        "FAILED"
+    } else if batch.is_some_and(|batch| {
+        batch["files_failed"].as_u64().unwrap_or_default() > 0
+            || batch["previous_source_issues"]
+                .as_array()
+                .is_some_and(|issues| !issues.is_empty())
+            || request
+                .outcomes
+                .iter()
+                .any(|outcome| failure_type(&outcome.status).is_some())
+    }) {
+        "COMPLETED_WITH_ISSUES"
     } else if conditional_format_diagnostic_count > 0 {
         "COMPLETED_WITH_CONDITIONAL_FORMAT_LIMITATIONS"
     } else {
         "COMPLETED"
     };
     let structure_checks = pending_snapshots
-        .map(|pending| pending.finish(!integrity_changed))
+        .map(|pending| {
+            if persist_schema_snapshots {
+                pending.finish(!integrity_changed)
+            } else {
+                pending.finish_read_only(!integrity_changed)
+            }
+        })
         .unwrap_or_default();
     let mut outcomes = request.outcomes.to_vec();
     let mut status_counts = request.status_counts.clone();
@@ -954,8 +1078,7 @@ pub fn write_run_outputs_with_conditional_format(
             ));
         }
         for (index, finding) in conditional_findings.iter().enumerate() {
-            let row = u32::try_from(index + 1)
-                .map_err(|_| "S5 条件格式结果行号溢出".to_owned())?;
+            let row = u32::try_from(index + 1).map_err(|_| "S5 条件格式结果行号溢出".to_owned())?;
             let (status, detail) = if integrity_changed {
                 (
                     "INVALIDATED_INPUT_CHANGED",
@@ -1113,7 +1236,7 @@ pub fn write_run_outputs_with_conditional_format(
             })
         })
         .unwrap_or_else(|| json!({"status": "NOT_EVALUATED"}));
-    let ledger = json!({
+    let mut ledger = json!({
         "run_id": request.run_id,
         "period": request.period,
         "institution_code": request.institution_code,
@@ -1131,6 +1254,9 @@ pub fn write_run_outputs_with_conditional_format(
         "audit_copy_manifest": manifest,
         "output_files": output_files_json,
     });
+    if let Some(batch) = batch {
+        ledger["batch"] = batch.clone();
+    }
     fs::write(
         &ledger_path,
         serde_json::to_vec_pretty(&ledger).map_err(|error| error.to_string())?,
@@ -1166,11 +1292,12 @@ mod tests {
     use crate::{
         s5_layout::NamedRegion, s5_scan::ScanTable, s5_schema_snapshots::S5StructureObservation,
     };
+    use serde_json::json;
     use std::{
         collections::BTreeMap,
         fs,
         io::Read,
-        path::PathBuf,
+        path::{Path, PathBuf},
         time::{SystemTime, UNIX_EPOCH},
     };
 
@@ -1190,6 +1317,93 @@ mod tests {
     #[test]
     fn unsupported_rules_are_kept_as_explicit_result_failures() {
         assert_eq!(failure_type("UNSUPPORTED"), Some("规则不支持"));
+    }
+
+    #[test]
+    fn batch_outputs_keep_physical_sources_unique_and_attribute_failures_to_their_owner() {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("s5-batch-evidence-{stamp}"));
+        fs::create_dir_all(&root).unwrap();
+        let first = root.join("甲(1).xlsx");
+        let second = root.join("甲[1].xlsx");
+        let config = root.join("config.xlsx");
+        fs::write(&first, b"first physical source").unwrap();
+        fs::write(&second, b"second physical source").unwrap();
+        fs::write(&config, b"configuration snapshot").unwrap();
+        let first_hash = file_sha256(&first).unwrap();
+        let second_hash = file_sha256(&second).unwrap();
+        let config_hash = file_sha256(&config).unwrap();
+        let mut outcome = test_outcome("RETRIEVAL_FAILED");
+        outcome.origin_source_path = second.to_string_lossy().into_owned();
+        outcome.error_evidence = json!({"sheet": "数据表", "function": "V_PRE"});
+        let outcomes = [outcome];
+        let counts = count_outcome_statuses(&outcomes);
+        let sources = [super::S5OutputSource {
+            role: "current",
+            path: &second,
+            source_id: "CUR",
+            sha256_before: &second_hash,
+        }];
+        let request = S5OutputRequest {
+            run_id: "batch",
+            period: "2026-07-31",
+            institution_code: "",
+            institution_name: "多个机构",
+            outcomes: &outcomes,
+            status_counts: &counts,
+            data_quality_warnings: &[],
+            source_path: &first,
+            source_id: "CUR",
+            source_sha256_before: &first_hash,
+            additional_sources: &sources,
+            selected_templates: &[],
+            config_path: &config,
+            config_sha256_before: &config_hash,
+            config_version: "",
+            structure_observations: &[],
+            schema_snapshot_dir: None,
+        };
+        let summary = super::write_batch_outputs_with_conditional_format(
+            &request,
+            &root.join("output"),
+            None,
+            &json!({"files_processed": 2, "files_failed": 0, "previous_source_issues": []}),
+        )
+        .unwrap();
+        assert_eq!(summary.run_status, "COMPLETED_WITH_ISSUES");
+        assert_eq!(
+            output_cell_text(&summary.output_files.result_workbook, "A2"),
+            "甲[1].xlsx"
+        );
+        let copied = summary
+            .manifest
+            .iter()
+            .filter(|entry| entry.role == "current")
+            .collect::<Vec<_>>();
+        assert_ne!(copied[0].copy_path, copied[1].copy_path);
+        for entry in &summary.manifest {
+            assert!(entry.matches_snapshot);
+            assert_eq!(
+                file_sha256(Path::new(&entry.copy_path)).unwrap(),
+                entry.sha256_before
+            );
+        }
+        let ledger: serde_json::Value =
+            serde_json::from_slice(&fs::read(&summary.output_files.run_ledger).unwrap()).unwrap();
+        let hashes = ledger["input_hashes"].as_object().unwrap();
+        assert_eq!(
+            hashes
+                .keys()
+                .filter(|key| key.starts_with("current:CUR:"))
+                .count(),
+            2
+        );
+        assert_eq!(hashes.len(), 3);
+        assert_eq!(ledger["batch"]["files_processed"], 2);
+        fs::remove_dir_all(root).unwrap();
     }
 
     fn output_cell_text(path: &std::path::Path, address: &str) -> String {
@@ -1300,7 +1514,10 @@ mod tests {
             Some(&conditional),
         )
         .expect("write output including conditional findings");
-        assert_eq!(summary.run_status, "COMPLETED_WITH_CONDITIONAL_FORMAT_LIMITATIONS");
+        assert_eq!(
+            summary.run_status,
+            "COMPLETED_WITH_CONDITIONAL_FORMAT_LIMITATIONS"
+        );
         assert_eq!(summary.conditional_format_trigger_count, 4);
         assert_eq!(summary.conditional_format_diagnostic_count, 4);
 
@@ -1323,9 +1540,24 @@ mod tests {
             .filter_map(|(_, value)| value["value"].as_str().map(str::to_owned))
             .collect::<Vec<_>>();
         statuses.sort();
-        assert_eq!(statuses.iter().filter(|status| *status == "TRIGGERED").count(), 4);
-        assert_eq!(statuses.iter().filter(|status| *status == "UNSUPPORTED").count(), 3);
-        assert_eq!(statuses.iter().filter(|status| *status == "ERROR").count(), 1);
+        assert_eq!(
+            statuses
+                .iter()
+                .filter(|status| *status == "TRIGGERED")
+                .count(),
+            4
+        );
+        assert_eq!(
+            statuses
+                .iter()
+                .filter(|status| *status == "UNSUPPORTED")
+                .count(),
+            3
+        );
+        assert_eq!(
+            statuses.iter().filter(|status| *status == "ERROR").count(),
+            1
+        );
         fs::remove_dir_all(root).expect("remove isolated output root");
     }
 
@@ -1908,6 +2140,7 @@ mod tests {
             max_col: 4,
         };
         let structure_observations = [S5StructureObservation {
+            context: None,
             role: "current".to_owned(),
             source_id: "CURRENT".to_owned(),
             business: "单位贷款".to_owned(),

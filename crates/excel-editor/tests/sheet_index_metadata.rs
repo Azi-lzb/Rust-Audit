@@ -15,20 +15,34 @@ use rust_xlsxwriter::Workbook;
 use std::{
     fs,
     path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
+
+static TEST_DIR_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 struct TestDir(PathBuf);
 
 impl TestDir {
     fn new() -> Self {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system time is after epoch")
-            .as_nanos();
-        let path = std::env::temp_dir().join(format!("excel-editor-sheet-index-{nonce}"));
-        fs::create_dir_all(&path).expect("create test directory");
-        Self(path)
+        let temp_dir = std::env::temp_dir();
+        for _ in 0..100 {
+            let nonce = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system time is after epoch")
+                .as_nanos();
+            let sequence = TEST_DIR_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+            let path = temp_dir.join(format!(
+                "excel-editor-sheet-index-{}-{nonce}-{sequence}",
+                std::process::id()
+            ));
+            match fs::create_dir(&path) {
+                Ok(()) => return Self(path),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => panic!("create test directory {}: {error}", path.display()),
+            }
+        }
+        panic!("could not create a unique Excel editor test directory");
     }
 
     fn path(&self, name: &str) -> PathBuf {

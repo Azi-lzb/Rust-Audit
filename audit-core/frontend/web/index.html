@@ -420,6 +420,9 @@ body.dag-extras-locked .dag-extras-card{display:none}
 body.legacy-audit-mode .dag-extras-card{display:none}
 body.collect-legacy-locked .egg-btn{display:none}
 .dag-extras-card{display:flex;flex-direction:column;gap:10px}
+.s1-recovery-panel{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2)}
+.s1-recovery-panel[hidden]{display:none}
+#s1F3RecoveryButton[hidden]{display:none!important}
 #toast{position:fixed;left:50%;bottom:88px;transform:translateX(-50%) translateY(8px);z-index:90;background:#0c1626;color:#e8f0fb;font-size:12.5px;line-height:1.5;padding:10px 16px;border-radius:10px;border:1px solid rgba(255,255,255,.16);box-shadow:0 6px 18px rgba(0,0,0,.28);opacity:0;visibility:hidden;pointer-events:none;transition:opacity .18s,visibility .18s,transform .18s}
 #toast.show{opacity:1;visibility:visible;transform:translateX(-50%) translateY(0)}
 .settings-content{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
@@ -875,8 +878,16 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
 
   <div class="operation-stack">
     <div class="card actionbar">
-      <button class="btn primary" id="auditPrimaryButton" data-action="dag:汇总核查表校验" onclick="startAuditPrimary()" title="当前 Rust 迁移版尚未接通 S1-F01；执行时会显示具体状态">F1 汇总核查表校验（尚未接通）</button>
+      <button class="btn primary" id="auditPrimaryButton" data-action="dag:汇总核查表校验" onclick="startAuditPrimary()" title="执行模板匹配、表结构检查、公式复制与真实重算，输出公式和条件格式异常；自动重算失败时保留审核副本供恢复，原始文件不修改。">F1 汇总核查表校验</button>
       <button class="btn" id="auditSummaryButton" data-action="dag:汇总校验结果说明" onclick="startAuditSummary()" title="执行汇总校验结果说明">F2 汇总校验结果说明</button>
+      <button class="btn" id="s1F3RecoveryButton" hidden onclick="toggleS1F3RecoveryPanel()" title="仅在存在已保存的待人工重算审核副本时显示">S1-F3 从审核副本汇总校验核查表</button>
+      <div class="collect-tip" id="s1F3RecoveryWarning" hidden></div>
+      <div class="s1-recovery-panel" id="s1F3RecoveryPanel" hidden>
+        <label for="s1F3TaskSelect">选择已人工重算并保存的审核副本</label>
+        <select id="s1F3TaskSelect"></select>
+        <div class="collect-tip">开始前请先在 Excel 中按 Ctrl+Alt+F9，等待计算完成后 Ctrl+S 保存并关闭。此功能会检查公式文本和缓存节点；OOXML 无法证明缓存的新鲜度。</div>
+        <button class="btn primary" id="s1F3StartButton" onclick="startS1F3Recovery()">从所选副本恢复审核</button>
+      </div>
       <div class="dag-extras-card" id="dagExtrasCard">
         <button class="btn" onclick="startDagMerge()">F3 组合工作表（核查表）</button>
         <button class="btn" onclick="startDagFlow('dag:组合工作表')">F4 组合工作表（按配置）</button>
@@ -986,6 +997,14 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
             <button class="btn" onclick="pickCentral('centralOutput')" title="比较结果与核对结果的输出目录；默认为本期数据文件同级的“执行结果”">选择</button>
           </div>
         </div>
+        <div class="field">
+          <div class="field-head"><label>金融表单输出目录</label><button class="pin-btn" id="centralFormOutputPin" onclick="toggleCentralOutputPin('centralFormOutput')" title="固定输出目录" aria-label="固定输出目录"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="17" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg></button></div>
+          <div class="input-group">
+            <div class="path-name empty link" id="centralFormOutputName" onclick="openCentralPath('centralFormOutput')" title="">未选择</div>
+            <button class="btn" onclick="pickCentral('centralFormOutput')" title="选择金融表单生成目录；默认使用比较文件所在目录">选择</button>
+          </div>
+          <div class="engine-detail" id="centralFormOutputResult"></div>
+        </div>
         <div class="field central-compare-file">
           <div class="field-head"><label>比较文件</label></div>
           <div class="input-group">
@@ -1015,7 +1034,7 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
           <button class="btn" data-action="centralExplain" onclick="runCentralExplanationExport()" title="先在比较文件最右侧的“输出说明”列填写“是”，再导出为简化说明文件">F2 比较文件 ⇨ 说明文件</button>
           <button class="btn primary" data-action="centralImportExplain" onclick="runCentralExplanationImport()" title="批量选择机构反馈说明文件，按机构代码、指标代码、指标名称、数据值、增减额回写变动原因">F3 机构说明 ⇨ 说明文件</button>
           <button class="btn" data-action="centralCross" onclick="runCentralCrossPeriod()" title="使用本期数值核对文件和输出目录，按本期数值核对规则生成数值核对文件">F4 本期数值核对</button>
-          <button class="btn primary" data-action="centralForms" disabled title="当前 Rust 迁移版尚未接通 S3 指标比较拆分">F5 比较文件 ⇨ 金融表单（尚未接通）</button>
+          <button class="btn primary" data-action="centralForms" onclick="runCentralForms()" title="读取比较文件、3.0 通用配置与 3.3 表单配置，按机构生成金融表单">F5 比较文件 ⇨ 金融表单</button>
       </div>
     </div>
     <div class="card collect-card">
@@ -1067,13 +1086,15 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
   <div id="s5-panel-f1">
   <main class="layout">
     <section class="card paths-card"><div class="paths-grid">
-      <div class="field"><div class="field-head"><label>源数据目录</label></div><div class="input-group"><div class="path-name empty" id="s5-input_dir-name">未选择</div><button class="btn" onclick="pickS5('input_dir')">选择</button></div></div>
+      <div class="field"><div class="field-head"><label>本期源数据目录</label></div><div class="input-group"><div class="path-name empty" id="s5-input_dir-name">未选择</div><button class="btn" onclick="pickS5('input_dir')">选择</button></div></div>
+      <div class="field"><div class="field-head"><label>上期文件目录（可选） <span class="count-pill" id="s5-previous-file-count">0 份</span></label></div><div class="input-group"><div class="path-name empty" id="s5-previous_dir-name">未选择</div><button class="btn" onclick="pickS5('previous_dir')">选择</button></div><p class="hint">目录中的 XLSX/XLSM 会自动扫描，并按机构代码与本期文件匹配。</p></div>
+      <div class="field"><div class="field-head"><label>上期报告期</label></div><input id="s5-previous-period" type="date" onchange="updateS5PreviousPeriod(this.value)" aria-label="S5 上期报告期"><p class="hint">选择上期文件时必填，且必须早于本期。没有上期文件时留空。</p></div>
       <div class="field"><div class="field-head"><label>模板文件目录</label></div><div class="input-group"><div class="path-name empty" id="s5-template_dir-name">未选择</div><button class="btn" onclick="pickS5('template_dir')">选择</button></div></div>
       <div class="field"><div class="field-head"><label>输出目录</label><button class="pin-btn" id="s5OutputPin" onclick="toggleS5OutputPin()" title="固定输出目录" aria-label="固定输出目录"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 17v5M5 17h14l-4-6V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v5z"/></svg></button></div><div class="input-group"><div class="path-name empty" id="s5-output_dir-name">未选择</div><button class="btn" onclick="pickS5('output_dir')">修改</button></div></div>
       <div class="field"><div class="field-head tight"><label>配置版系统配置</label><span class="s5-config-check-actions"><button class="btn soft micro" onclick="checkS5Config('current_business')" title="只检查当前匹配模板对应业务的启用规则">检查当前业务</button><button class="btn soft micro" onclick="checkS5Config('all_enabled')" title="按模板目录逐业务检查所有启用规则">检查全量</button></span></div><div class="input-group"><div class="path-name empty" id="s5-config_path-name">未选择</div><button class="btn" onclick="pickS5('config_path')">选择</button></div></div>
       <div class="field"><div class="field-head"><label>大集中系统数据</label></div><div class="input-group"><div class="path-name empty" id="s5-external_path-name">未选择</div><button class="btn" onclick="pickS5('external_path')">选择</button></div></div>
       <div class="field"><div class="field-head tight"><label>匹配模板</label><button class="btn soft micro" onclick="recognizeS5Template()" title="点击后按当前勾选文件识别模板、业务和报告期">识别模板</button></div><div class="input-group"><div class="path-name empty" id="s5-template_path-name">未选择</div><button class="btn" onclick="pickS5('template_path')">手动选择</button></div></div>
-    </div><div class="collect-tip" id="s5-config-status" role="status">请选择源数据目录和模板目录，再手动点击“识别模板”；配置检查也需要手动点击。</div></section>
+    </div><div class="collect-tip" id="s5-config-status" role="status">请选择本期源数据目录和模板目录；如使用 V_PRE，再选择上期目录并填写上期报告期。手动点击“识别模板”后核对业务，再开始审核。</div></section>
     <div class="files-wrap only-files">
       <div class="file-panel"><div class="file-head"><span class="file-title">待处理文件 <span class="count-pill" id="s5-file-count"></span></span><span class="file-actions"><button class="btn soft micro" id="s5-file-filter-toggle" onclick="toggleS5FileFilters()" aria-expanded="false" aria-controls="s5-file-filters" title="按模板匹配、业务类型和报告日期筛选">筛选</button><button class="btn tiny" onclick="selectS5Files(true)">全选</button><button class="btn tiny" onclick="selectS5Files(false)">取消</button><button class="btn tiny" onclick="refreshS5Files()">刷新</button></span></div><div class="pair-filter-panel s5-file-filter-panel" id="s5-file-filters" hidden>
         <label class="pair-filter-field">模板匹配<select id="s5-match-filter" onchange="setS5FileFilter('match',this.value)"><option value="">全部状态</option></select></label>
@@ -1414,7 +1435,7 @@ const ICON={
 function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function shortName(p){p=String(p==null?'':p).replace(/[\\/]+$/,'');const i=Math.max(p.lastIndexOf('\\'),p.lastIndexOf('/'));return i>=0?p.slice(i+1):p}
 function values(){let o={};fields.forEach(x=>o[x]=state[x]||'');return o}
-async function sync(){await bridge.api.update(values())}
+async function sync(){const o=values();delete o.output;await bridge.api.update(o)}
 
 /* ---- 浏览器原生目录/文件选择（Flask 外壳，无 tk 依赖） ----
    openBrowse({title, mode, start, select}) 打开目录浏览模态框；
@@ -1514,15 +1535,14 @@ async function pick(f,t){
     if(v){
       state[f]=v;
       const o=values();
-      if(f==='input')delete o.output;
+      if(f!=='output')delete o.output;
       await bridge.api.update(o);
     }
     await refresh();
     return;
   }
   const start=state[f]||'';
-  // 与系统原生选择器同口径：openpyxl 读取入口只放行 OOXML；
-  // 大集中系统数据是逐笔外部文件（openpyxl 复制链路），同样只放行 OOXML。
+  // 浏览器选择器仅允许当前 S1 链路支持的 OOXML 工作簿；旧版 .xls 不在此入口支持范围内。
   const PICK_MODES={template:'excel_ooxml',external:'excel_ooxml',historyConfig:'excel_ooxml'};
   const mode=!isFolder?PICK_MODES[f]||'':'';
   const paths=await pickPathViaBrowser({
@@ -1537,7 +1557,7 @@ async function pick(f,t){
   else await bridge.api.choose_file(f,v);
   state[f]=v;
   const o=values();
-  if(f==='input')delete o.output;   // 修改源数据目录时不要推送输出目录，由后端保持跟随/图钉状态
+  if(f!=='output')delete o.output; // 只有用户明确选择输出目录时才提交 output；其余路径变化由后端维护跟随/固定状态
   await bridge.api.update(o);
   await refresh();
 }
@@ -1863,7 +1883,7 @@ function editionFaqItems(items){
 }
 function updateAuditWorkbenchMode(){
   const primary=document.getElementById('auditPrimaryButton'),summary=document.getElementById('auditSummaryButton');
-  if(primary){primary.dataset.action='dag:汇总核查表校验';primary.title='当前 Rust 迁移版尚未接通 S1-F01；执行时会显示具体状态';primary.textContent='F1 汇总核查表校验（尚未接通）';}
+  if(primary){primary.dataset.action='dag:汇总核查表校验';primary.title='执行模板匹配、表结构检查、公式复制与真实重算，输出公式和条件格式异常；自动重算失败时保留审核副本供恢复，原始文件不修改。';primary.textContent='F1 汇总核查表校验';}
   if(summary){summary.dataset.action='dag:汇总校验结果说明';summary.title='DAG 主流程：汇总校验结果与报送说明';}
 }
 function openAuditWorkbench(){
@@ -2145,7 +2165,7 @@ const GUIDE_FLOWS=[
   {n:'S1F3',editionSystem:'S1',name:'组合工作表（核查表）',egg:true,scenario:'文件名规范、需要把同一机构的多类报表（如个人贷款和单位贷款）合成一本，供制作联合模板或跨表核查。',prep:'源文件主名第一个下划线前必须是机构全称。',steps:'① 选择源数据目录；② 需要时勾选递归；③ 点击“组合工作表（核查表）”。',output:'每家机构一本合并工作簿。',tip:'同名工作表只保留先复制的一张；本流程不需要模板、外部文件或数据期。'},
   {n:'S1F4',editionSystem:'S1',name:'组合工作表（按配置）',egg:true,scenario:'按设置中心中当前选择的组合方案分组，适合机构名称或文件命名不规则的情况。',prep:'连续点击“设置中心”五次，进入“组合工作表配置”维护方案与分组。',steps:'① 选择源数据目录；② 在设置中心保存组合方案；③ 点击“组合工作表（按配置）”。',output:'按当前方案生成组合工作簿。',tip:'文件名正则和文件名关键字两种分组方式均可用。'},
   {n:'S1F5',editionSystem:'S1',name:'制作联合模板',egg:true,scenario:'需要把多个模板的独有工作表合并成一本“联合模板”，集中存放集中系统数据、参照表等公共依赖工作表，供跨表核查或制作模板时使用；这是低频的模板制作动作。',prep:'准备一个“基准模板”（包含集中系统数据、参照表等公共依赖工作表）和若干要并入的模板文件。',steps:'① 点击主界面“制作联合模板”按钮；② 阅读中文说明并确认；③ 第 1 步选择“基准模板”；④ 第 2 步批量选择“并入模板”；⑤ 等待制作完成。',output:'基准模板同级的“联合模板”目录：联合模板文件与“联合模板检查报告”。',tip:'基准模板只会另存为最终联合模板，原文件不修改；同名工作表保留先出现的一张，后续跳过；本动作不使用页面路径，也不会自动识别模板，不要将普通业务模板误选为基准模板。'},
-  {n:'S5F1',editionSystem:'S5',name:'汇总核查表校验',scenario:'使用 S5 独立审核配置，对一个业务的报送文件执行规则校验。',prep:'选择本期源目录、模板目录与 S5 审核配置；手动点击“识别模板”后核对业务和报告期。外部核对需要外部文件。',steps:'① 选择源数据目录和模板目录；② 点击“识别模板”，或手动选择匹配模板；③ 按匹配状态、业务类型和日期筛选待处理文件并勾选；④ 需要时手动点击“检查配置”；⑤ 点击 F1 汇总核查表校验。',output:'审核结果直接保存到“执行结果”目录，每次只生成一份汇总 XLSX，运行记录显示各阶段耗时。',tip:'配置检查和模板识别均由用户手动触发；S5 使用独立配置规则引擎，不调用 S1-F01 模板公式审核流程。上期选择框暂不显示；V_PRE 跨文件取数首版不支持，规则启用时会明确报告“规则不支持”。'}
+  {n:'S5F1',editionSystem:'S5',name:'汇总核查表校验',scenario:'使用 S5 独立审核配置，对同一模板和业务的一批本期报送文件执行规则校验。',prep:'选择本期源目录、模板目录与 S5 审核配置；手动点击“识别模板”后核对业务和报告期。需要执行 V_PRE 时，另选上期目录并填写上期报告期；V_EXT 规则需要大集中系统数据。',steps:'① 选择本期源数据目录和模板目录；② 如需上期数据，选择上期文件目录并填上期报告期，系统按机构代码匹配；③ 点击“识别模板”，或手动选择匹配模板；④ 按匹配状态、业务类型和日期筛选本期文件并勾选；⑤ 需要时手动点击“检查配置”；⑥ 点击 F1 汇总核查表校验。',output:'审核结果保存到“执行结果”目录，每批生成一份汇总 XLSX 和运行总账；运行记录显示处理数量、失败原因与结果路径。',tip:'配置检查和模板识别均由用户手动触发；S5 使用独立配置规则引擎，不调用 S1-F01 模板公式审核流程。上期文件为可选输入；已选上期文件但未匹配到同机构时，V_PRE 会明确报告取数失败。'}
 ];
 /* 设置中心卡片标题条：点击收起/展开卡片内容（事件委托，重渲染后仍有效）。 */
 document.getElementById('settingsPane').addEventListener('click',function(e){
@@ -2446,6 +2466,10 @@ async function openS5Workbench(){
   await refresh();
 }
 function s5FormValues(){return {}}
+async function updateS5PreviousPeriod(value){
+  try{await bridge.api.update_s5({previous_period:value});await refresh()}
+  catch(e){showToast(e.message||String(e))}
+}
 async function toggleS5OutputPin(){
   await bridge.api.update_s5({output_pinned:!((state.s5||{}).output_pinned)});await refresh();
 }
@@ -2460,7 +2484,7 @@ async function pickS5(field){
   try{
     let path='';
     if(usesBrowserPathPicker()){
-      const folder=['input_dir','template_dir','output_dir'].includes(field);
+      const folder=['input_dir','previous_dir','template_dir','output_dir'].includes(field);
       const paths=await pickPathViaBrowser({title:'选择 S5 '+(folder?'目录':'文件'),select:folder?'dir':'file',mode:folder?'':'excel_ooxml',start:(state.s5||{})[field]||''});
       if(!paths.length)return;
       path=paths[0];
@@ -2634,9 +2658,13 @@ function runS5(action){
 }
 function renderS5(s){
   const form=s.s5;if(!form)return;
-  ['input_dir','template_dir','output_dir','config_path','template_path','external_path'].forEach(key=>{
+  ['input_dir','previous_dir','template_dir','output_dir','config_path','template_path','external_path'].forEach(key=>{
     renderS5PathName('s5-'+key+'-name',form[key]);
   });
+  const previousPeriod=document.getElementById('s5-previous-period');
+  if(previousPeriod){previousPeriod.value=form.previous_period||'';previousPeriod.disabled=!!s.busy}
+  const previousCount=document.getElementById('s5-previous-file-count');
+  if(previousCount)previousCount.textContent=(form.previous_files||[]).length+' 份';
   const recognition=form.recognition||{},messages=[];
   if(form.business)messages.push('识别业务：'+form.business);
   if(form.period)messages.push('本期：'+form.period+'（'+(recognition.period_source||'已识别')+'）');
@@ -2644,7 +2672,7 @@ function renderS5(s){
   const task=form.task||{};
   if(task.message&&!['queued','running'].includes(task.task_state))messages.push(task.message);
   const configStatus=document.getElementById('s5-config-status');
-  configStatus.textContent=messages.join('；')||'请选择源数据目录和模板目录，再手动点击“识别模板”；配置检查也需要手动点击。';
+  configStatus.textContent=messages.join('；')||'请选择本期源数据目录和模板目录，可选上期文件目录；再手动点击“识别模板”，核对选中文件后开始审核。';
   if(task.result_path){
     const openResult=document.createElement('button');openResult.className='btn tiny';openResult.textContent='打开审核结果';
     openResult.onclick=()=>openPath(task.result_path);configStatus.append(document.createElement('br'),openResult);
@@ -2966,6 +2994,25 @@ function renderAdvanced(){
       +'<option value="COM_DISPLAY"'+(s.conditionalFormatEvaluator==='COM_DISPLAY'?' selected':'')+'>Office 公式渲染（兼容）</option>'
       +'</select>'),
   ].join('');
+  const adv=s.advancedSettings||{};
+  const rustCalcValue=String(adv.calcEngine||'auto');
+  const rustEditValue=String(adv.editEngine||'umya');
+  const rustCalcOptions=(adv.calcEngineOptions||[]).map(function(item){
+    return '<option value="'+esc(item.value)+'"'+(rustCalcValue===String(item.value)?' selected':'')+'>'+esc(item.label||item.value)+'</option>';
+  }).join('');
+  const oepy=adv.openpyxlEvidence||{};
+  const rustEditOptions=(adv.editEngineOptions||[]).map(function(item){
+    const disabled=(item.value==='openpyxl'&&oepy.available===false);
+    const note=disabled?(' title="'+esc(oepy.detail||'能力证据不可用')+'"'):'';
+    return '<option value="'+esc(item.value)+'"'+(rustEditValue===String(item.value)?' selected':'')+(disabled?' disabled':'')+note+'>'
+      +esc(item.label||item.value)+(disabled?'（不可用）':'')+'</option>';
+  }).join('');
+  const rowsRustEngines=[
+    row('S1-F01 公式重算引擎（Rust）','作用于 Rust 版“汇总核查表校验”的真实公式重算：自动按平台选择（Windows 优先 Excel COM，无 Excel 时尝试 WPS 表格；Linux 用 LibreOffice 无头）；强制某引擎后不可用即报错，不再自动切换。',
+      '<select class="gen-select" id="setRustCalcEngine" onchange="setRustCalcEngine(this.value)">'+rustCalcOptions+'</select>'),
+    row('Excel-Core 修改引擎（Rust）','作用于 S1-F01 公式复制、S3-F03 说明写回与 S3-F05 金融表单的编辑批次。openpyxl 为高级兼容路径：能力证据声明可用前置灰；Umya 失败不会自动切换引擎。',
+      '<select class="gen-select" id="setRustEditEngine" onchange="setRustEditEngine(this.value)">'+rustEditOptions+'</select>'),
+  ].join('');
   const rowsCentralForm=[
     row('生成文件方式','直接填充使用 zipfile、ElementTree 和 XML 文本处理修改金融表单模板，准备阶段可能配合 openpyxl；工作簿生成通过 openpyxl 对象填充数据、设置格式并保存。两种方式都不计算公式。适用于比较文件生成金融表单。',
       '<select class="gen-select" id="setXlsxRenderMode" onchange="setXlsxRenderMode(this.value)">'
@@ -2995,11 +3042,13 @@ function renderAdvanced(){
     advCard('文件选择',rowsPicker),
     ...(isSystemVisible('S1')||isSystemVisible('S2')||isSystemVisible('S3')?[advCard('Excel 文件处理',(isSystemVisible('S3')?rowsCentralForm+rowsCentralExcel:'')+(isSystemVisible('S2')?rowsPeriodExcel:'')+(isSystemVisible('S1')?rowsAuditExcel:''))]:[]),
     ...(isSystemVisible('S1')?[advCard('计算与条件格式',rowsAuditCalc)]:[]),
+    ...(isSystemVisible('S1')||isSystemVisible('S3')?[advCard('Rust 引擎（高级）',rowsRustEngines)]:[]),
     ...(isSystemVisible('S3')?[advCard('大集中表达式求值',rowsCentralExpr)]:[]),
   ]:[
     envZoneCard,
     advCard('通用设置',rowsPicker),
     ...(isSystemVisible('S1')?[advCard('逐笔统计系统',rowsAuditExcel+rowsAuditCalc)]:[]),
+    ...(isSystemVisible('S1')||isSystemVisible('S3')?[advCard('Rust 引擎（高级）',rowsRustEngines)]:[]),
     ...(isSystemVisible('S2')?[advCard('报表采集系统',rowsPeriodExcel)]:[]),
     ...(isSystemVisible('S3')?[advCard('大集中统计系统',rowsCentralForm+rowsCentralExcel+rowsCentralExpr)]:[]),
   ];
@@ -3261,6 +3310,18 @@ async function setSummaryResultWriter(value){
   if(state&&state.busy)return;
   try{const next=await bridge.api.update({summaryResultWriter:value});if(next&&typeof next==='object')state=next;}
   catch(e){await refresh();return;}
+  if(CFG.tab==='advanced')renderAdvanced();
+}
+async function setRustCalcEngine(value){
+  if(state&&state.busy)return;
+  try{const next=await bridge.api.update({advancedSettings:{calcEngine:value}});if(next&&typeof next==='object')state=next;}
+  catch(e){await refresh();showToast(e&&e.message?e.message:String(e));return;}
+  if(CFG.tab==='advanced')renderAdvanced();
+}
+async function setRustEditEngine(value){
+  if(state&&state.busy)return;
+  try{const next=await bridge.api.update({advancedSettings:{editEngine:value}});if(next&&typeof next==='object')state=next;}
+  catch(e){await refresh();showToast(e&&e.message?e.message:String(e));return;}
   if(CFG.tab==='advanced')renderAdvanced();
 }
 async function setAuditResultWriter(value){
@@ -3822,6 +3883,8 @@ function renderCentral(s){
   [['centralOutputPin','centralOutputAuto'],['centralFormOutputPin','centralFormOutputAuto']].forEach(([id,key])=>{const el=document.getElementById(id);if(el){const fixed=!s[key];el.classList.toggle('on',fixed);el.title=fixed?'取消固定输出目录':'固定输出目录';el.setAttribute('aria-label',el.title);el.disabled=!!s.busy;}});
   const issue=document.getElementById('centralConfigIssue');
   if(issue){const text=(s.configIssues&&s.configIssues.central)||'';issue.textContent=text?'⚠ 配置需检查':'';issue.title=text;}
+  const formsOutput=document.getElementById('centralFormOutputResult');
+  if(formsOutput){const v=s.centralFormOutputLastResult||'';formsOutput.textContent=v?'最近输出目录：'+v:'';formsOutput.title=v;}
 }
 function openCentralPath(key){
   const v=state?state[key]:"";
@@ -3836,7 +3899,7 @@ async function pickCentral(key){
     await refresh();
     return;
   }
-  const fileKinds={centralCur:'central_data',centralPre:'central_data',centralCrossCur:'central_data',centralCompareFile:'excel_ooxml',centralExplainFile:'excel_ooxml',centralCommonConfig:'excel_ooxml',centralComparisonConfig:'excel_ooxml',centralCrossConfig:'excel_ooxml',centralFormsConfig:'excel_ooxml'};
+  const fileKinds={centralCur:'central_data',centralPre:'central_data',centralCrossCur:'central_data',centralCompareFile:'excel_ooxml',centralExplainFile:'excel_ooxml',centralCommonConfig:'config',centralComparisonConfig:'config',centralCrossConfig:'config',centralFormsConfig:'config'};
   const isFile=key in fileKinds;
   const titles={centralCur:'选择本期大集中导数文件（CSV/XLSX）',centralPre:'选择上期导数文件（CSV/XLSX）',centralCrossCur:'选择本期数值核对文件（CSV/XLSX/XLS）',
     centralOutput:'选择比较结果输出目录',centralCompareFile:'选择比较结果.xlsx',centralExplainFile:'选择说明文件.xlsx',
@@ -3878,7 +3941,17 @@ function runCentralCrossPeriod(){
   });
 }
 function runCentralForms(){
-  alert("当前 Rust 迁移版尚未接通 S3 指标比较拆分。");
+  const missing=[];
+  if(!(state&&state.centralCompareFile))missing.push("比较结果.xlsx");
+  if(!(state&&state.centralCommonConfig))missing.push("3.0 大集中通用配置.xlsx");
+  if(!(state&&state.centralFormsConfig))missing.push("3.3 指标比较拆分配置.xlsx");
+  if(!(state&&state.centralFormOutput))missing.push("金融表单输出目录");
+  if(missing.length){alert("请先选择："+missing.join("、"));return}
+  maybeConfirmRun("大集中指标比较拆分", async function(){
+    try{ await bridge.api.start_central_indicator_split(); }
+    catch(e){ alert("生成金融表单失败："+((e&&e.message)?e.message:String(e))); }
+    await refresh();
+  });
 }
 async function checkCentralConfig(kind){
   try{
@@ -3994,9 +4067,14 @@ function maybeConfirmRun(label,run){
   const names=paths.map(function(p){return p.split(/[\/]/).pop()});
   const problems=[];
   if(!state.input)problems.push('未选择源数据目录');
-  if(label==='汇总核查表校验'&&!state.template)problems.push('未选择或未识别匹配模板');
+  if(label==='汇总核查表校验'&&!state.templateDir)problems.push('未选择模板目录');
   if(!names.length)problems.push('未勾选待处理文件');
-  const summary='执行前检测：'+(problems.length?'需核实：'+problems.join('；'):'通过，待处理文件与模板已就绪')+'\n待处理文件：'+names.length+' 个\n输出：执行结果目录（未固定时自动跟随源数据目录）';
+  const s1Inputs=label==='汇总核查表校验'
+    ?'\n配置：'+(state.historyConfig?shortName(state.historyConfig):'使用内置映射')+'\n外部数据：'+(state.external?shortName(state.external):'未选择')
+    :'';
+  const outputPath=String(state.output||'').trim()||(state.input?String(state.input).replace(/[\\/]+$/,'')+'\\执行结果':'未选择');
+  const outputMode=state.outputPinned?'固定':'自动跟随源数据目录';
+  const summary='执行前检测：'+(problems.length?'需核实：'+problems.join('；'):'通过，待处理文件与模板目录已就绪')+'\n待处理文件：'+names.length+' 个'+s1Inputs+'\n输出目录（'+outputMode+'）：'+outputPath;
   showRunConfirm(label,invoke,summary,[]);
 }
 function selectCustomFlow(i){
@@ -4587,6 +4665,50 @@ function startAuditPrimary(){
 function startAuditSummary(){
   return startDagFlow('dag:汇总校验结果说明');
 }
+function renderS1F3RecoveryEntry(s){
+  const button=document.getElementById('s1F3RecoveryButton'),panel=document.getElementById('s1F3RecoveryPanel'),select=document.getElementById('s1F3TaskSelect');
+  if(!button||!panel||!select)return;
+  const warning=document.getElementById('s1F3RecoveryWarning'),recoveryError=String(s&&s.s1F3RecoveryError||'');
+  const lostCopies=Array.isArray(s&&s.s1F3LostCopyTasks)?s.s1F3LostCopyTasks:[];
+  const warningMessages=[];
+  if(recoveryError)warningMessages.push('S1-F3 待恢复任务读取失败，系统暂时无法刷新恢复入口：'+recoveryError);
+  if(lostCopies.length){
+    const details=lostCopies.map(task=>{
+      const path=String(task.source_file||task.sourceFile||'');
+      const reason=String(task.reason||'审核副本已丢失或路径无效');
+      return (path.split(/[\\/]/).pop()||path)+'：'+reason;
+    });
+    warningMessages.push('有 '+lostCopies.length+' 个 S1-F3 审核副本已丢失，无法恢复；请重新运行 S1-F1。\n'+details.join('\n'));
+  }
+  if(warning){warning.hidden=warningMessages.length===0;warning.textContent=warningMessages.join('\n')}
+  const tasks=Array.isArray(s&&s.s1F3RecoveryTasks)?s.s1F3RecoveryTasks:[];
+  button.hidden=tasks.length===0;
+  button.disabled=!!(s&&s.busy);
+  button.textContent='S1-F3 从审核副本汇总校验核查表（待处理：'+tasks.length+'）';
+  const previous=select.value;
+  select.innerHTML=tasks.map((task,index)=>{
+    const path=String(task.source_file||task.sourceFile||'');
+    const status=String(task.status||'WAITING_MANUAL_RECALC');
+    const label=(index+1)+'. '+(path.split(/[\\/]/).pop()||path)+' · '+status;
+    return '<option value="'+esc(String(task.run_id||task.runId)+'|'+String(task.file_id||task.fileId))+'">'+esc(label)+'</option>';
+  }).join('');
+  if(tasks.some(task=>String(task.run_id||task.runId)+'|'+String(task.file_id||task.fileId)===previous))select.value=previous;
+  if(tasks.length===0)panel.hidden=true;
+  const start=document.getElementById('s1F3StartButton');if(start)start.disabled=!!(s&&s.busy);
+}
+function toggleS1F3RecoveryPanel(){
+  const panel=document.getElementById('s1F3RecoveryPanel');if(panel)panel.hidden=!panel.hidden;
+}
+async function startS1F3Recovery(){
+  const select=document.getElementById('s1F3TaskSelect'),value=select&&select.value;
+  if(!value){alert('没有可恢复的审核副本');return}
+  const [runId,fileId]=value.split('|');
+  const instructions='请确认所选审核副本已完成强制重新计算并保存，且已关闭工作簿。\n\nS1-F3 会验证公式文本、公式结果缓存、非公式输入数据、条件格式和命名区域未被改动，并核对审核配置；通过后复用 S1-F1 的异常提取和核查表输出。它不会重新处理源报表或再次调用 Excel/LibreOffice。\n\n现在开始恢复？';
+  if(!confirm(instructions))return;
+  try{await bridge.api.start_s1_f3_workflow(runId,fileId)}
+  catch(e){alert('S1-F3 启动失败：'+((e&&e.message)?e.message:String(e)))}
+  await refresh();
+}
 function startDagMerge(){setMergeMode(true,false);startDagFlow('dag:组合联合核查表')}
 async function copyLog(){
   const log=document.getElementById('log');
@@ -4666,14 +4788,14 @@ function renderFiles(s){
     const isSel=selected.has(f.path),matched=f.template!=='未识别',isExtra=extraSet.has(f.path);
     const summary=f.summaryMatch,hasExtra=!!(summary&&summary.extra.length);
     const summaryText=summary?'F2：'+summary.matched.length+'/'+summary.sourceCount+' 张源表同名'+(hasExtra?'；新增 '+summary.extra.length+' 张':''):'';
-    const summaryTip=summary?'F1 模板识别：'+f.template+'；F2 对照当前模板：'+summary.template+'；同名表：'+(summary.matched.join('、')||'无')+'；表头和汇总区域仍按执行时检查。'+(hasExtra?'新增工作表：'+summary.extra.join('、')+'；'+(summary.fallbackAvailable?'模板含“兜底模板”，执行时会尝试按兜底区域汇总。':'模板未配置“兜底模板”，这些新增工作表不会参与汇总。'):'')+(summary.missing.length?'模板中其他工作表（源文件未包含，不影响匹配）：'+summary.missing.join('、'):''):'';
+    const summaryTip=(f.templateReason?'F1 模板识别说明：'+f.templateReason+'；':'')+(summary?'F1 模板识别：'+f.template+'；F2 对照当前模板：'+summary.template+'；同名表：'+(summary.matched.join('、')||'无')+'；表头和汇总区域仍按执行时检查。'+(hasExtra?'新增工作表：'+summary.extra.join('、')+'；'+(summary.fallbackAvailable?'模板含“兜底模板”，执行时会尝试按兜底区域汇总。':'模板未配置“兜底模板”，这些新增工作表不会参与汇总。'):'')+(summary.missing.length?'模板中其他工作表（源文件未包含，不影响匹配）：'+summary.missing.join('、'):''):'');
     const tag=hasExtra?(summary.fallbackAvailable?'可尝试兜底':'有新增工作表'):(matched?'已匹配':(summary&&summary.matched.length?'F2表名匹配':(summary&&summary.fallbackAvailable?'可尝试兜底':(summary?'无同名工作表':'未识别'))));
     const warning=!matched&&(!summary||(!summary.matched.length&&!summary.fallbackAvailable));
     return '<label class="file-row'+(isSel?' checked':'')+'"'+(s1FileMatchesFilters(f)?'':' hidden')+' title="'+esc(f.path+(summaryTip?'\n'+summaryTip:''))+'">'
       +'<input class="file-check" type="checkbox" value="'+esc(f.path)+'"'+(isSel?' checked':'')+' onchange="sendSelection()">'
       +'<span class="file-doc">'+ICON.file+'</span>'
       +'<span class="file-main"><span class="file-name">'+esc(f.name)+(isExtra?' <span class="file-extra-tag">追加</span>':'')+'</span>'
-      +'<span class="file-meta">'+(summaryText?esc(summaryText)+'；F1：':'')+(matched?esc(f.template):'未匹配到模板')+'</span></span>'
+      +'<span class="file-meta">'+(summaryText?esc(summaryText)+'；F1：':'')+(matched?esc(f.template):'未匹配到模板'+(f.templateReason?'；'+esc(f.templateReason):''))+'</span></span>'
       +(isExtra?'<span class="file-remove" title="移除该追加文件" onclick="event.preventDefault();removeExtraFile(this.dataset.path)" data-path="'+esc(f.path)+'">✕</span>':'')
       +'<span class="file-tag'+(warning?' warn':'')+'">'+esc(tag)+'</span>'
       +'</label>';
@@ -4722,6 +4844,7 @@ async function refresh(){
   }
   setConnectionLost(false);
   state=s;
+  renderS1F3RecoveryEntry(s);
   applyDistributionProfile();
   if(s.appInfo){document.title=s.appInfo.title;document.getElementById('appVersion').textContent=s.appInfo.title}
   // 背景颜色以后端保存的设置为准（localStorage 仅用于启动前预应用，避免闪白）。
