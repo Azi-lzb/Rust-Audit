@@ -1,0 +1,268 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-10-30T12:19:45.926234+00:00",
+  "git_revision": "7517a9c",
+  "feature": "S1-F2",
+  "measurement": "process-tree peak working set only; elapsed-time comparison intentionally omitted",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python_version": "3.12.10",
+  "python_source": "C:\\Users\\AZI\\Desktop\\VibeCode\\3.open-data-audit",
+  "rust_binary": "F:\\RustBuild\\audit\\release\\open-data-audit.exe",
+  "rust_binary_sha256": "a2ac5bc3fd16223a3c18976f9ed6042e941af6df17fc2fbd84ad5fe54b82f370",
+  "fixture": {
+    "kind": "same fixture generator used by compare_s1_region_summary.py",
+    "source_workbooks": 2,
+    "source_sheets": 3,
+    "source_data_rows": 5,
+    "output_sheets": 2,
+    "output_data_rows": 9,
+    "template_bytes": 5672,
+    "source_bytes": {
+      "!Alpha_20260731.xlsx": 5429,
+      "Beta_20260731.xlsx": 4938
+    },
+    "sha256_before": {
+      "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\audit-core\\tests\\fixtures\\s1_region_summary_template.xlsx": "19996ace605ffe3abb0e683291c9ed5fe29d348fd8923100e3462e94fb6aeb21",
+      "C:\\Users\\AZI\\AppData\\Local\\Temp\\audit-s1f2-peak-memory-voolzlse\\input\\!Alpha_20260731.xlsx": "ff07478b8a0a29e5565d2fcf8e6f2eb38ef53d0bdc5d4139870a2227a00a53a5",
+      "C:\\Users\\AZI\\AppData\\Local\\Temp\\audit-s1f2-peak-memory-voolzlse\\input\\Beta_20260731.xlsx": "cc5019736614bb272189cd06327d9f2ee9a4f538da6b19bd6ec2803ce6a81470"
+    },
+    "sha256_after": {
+      "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\audit-core\\tests\\fixtures\\s1_region_summary_template.xlsx": "19996ace605ffe3abb0e683291c9ed5fe29d348fd8923100e3462e94fb6aeb21",
+      "C:\\Users\\AZI\\AppData\\Local\\Temp\\audit-s1f2-peak-memory-voolzlse\\input\\!Alpha_20260731.xlsx": "ff07478b8a0a29e5565d2fcf8e6f2eb38ef53d0bdc5d4139870a2227a00a53a5",
+      "C:\\Users\\AZI\\AppData\\Local\\Temp\\audit-s1f2-peak-memory-voolzlse\\input\\Beta_20260731.xlsx": "cc5019736614bb272189cd06327d9f2ee9a4f538da6b19bd6ec2803ce6a81470"
+    }
+  },
+  "method": {
+    "rounds": 3,
+    "round_order": "alternates Python-first and Rust-first",
+    "sample_interval_ms": 5,
+    "python_engine": "Microsoft Excel COM; existing baseline uses ExcelSession DispatchEx and quits its owned instance",
+    "rust_engine": "Calamine + Rust writer; fresh Release CLI process",
+    "peak_metric": "maximum sampled RSS sum for worker process tree plus newly launched EXCEL.EXE processes; preexisting Excel process IDs excluded",
+    "measurement_limit": "sampling can miss sub-interval peaks; includes process startup and Excel activation; excludes fixture creation and output comparison",
+    "preexisting_excel_process_ids_excluded_from_sampling": true
+  },
+  "summary": {
+    "python_peak_working_set_median_mb": 300.078,
+    "python_peak_working_set_max_mb": 301.574,
+    "rust_peak_working_set_median_mb": 10.719,
+    "rust_peak_working_set_max_mb": 10.727,
+    "python_to_rust_peak_median_ratio": 27.996,
+    "all_round_output_comparisons_passed": true,
+    "all_input_hashes_unchanged": true,
+    "all_new_excel_processes_exited": true
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "order": "Python-first",
+      "python_engine": "Microsoft Excel",
+      "python_process_tree": {
+        "return_code": 0,
+        "peak_sampled_process_tree_working_set_bytes": 310407168,
+        "peak_sampled_process_tree_working_set_mb": 296.027,
+        "peak_live_process_count": 2,
+        "new_excel_process_ids": [
+          23508
+        ],
+        "sample_interval_ms": 5.0,
+        "memory_samples": 502,
+        "new_excel_process_ids_remaining_after_worker": []
+      },
+      "rust_process_tree": {
+        "return_code": 0,
+        "peak_sampled_process_tree_working_set_bytes": 11182080,
+        "peak_sampled_process_tree_working_set_mb": 10.664,
+        "peak_live_process_count": 1,
+        "new_excel_process_ids": [],
+        "sample_interval_ms": 5.0,
+        "memory_samples": 3
+      },
+      "output_comparison": {
+        "status": "passed",
+        "sheet_name_mismatches": 0,
+        "python_sheet_names": [
+          "Data_2",
+          "Data"
+        ],
+        "rust_sheet_names": [
+          "Data_2",
+          "Data"
+        ],
+        "dimension_mismatches": 0,
+        "value_mismatches": 0,
+        "number_format_mismatches": 0,
+        "font_mismatches": 0,
+        "alignment_mismatches": 0,
+        "alignment_header_mismatches": 0,
+        "alignment_body_mismatches": 0,
+        "alignment_property_mismatches": {
+          "horizontal": 0,
+          "vertical": 0,
+          "textRotation": 0,
+          "wrapText": 0,
+          "shrinkToFit": 0,
+          "indent": 0,
+          "relativeIndent": 0,
+          "justifyLastLine": 0,
+          "readingOrder": 0
+        },
+        "alignment_type_pairs": {},
+        "alignment_horizontal_pairs": {},
+        "header_style_mismatches": 0,
+        "filter_mismatches": 0,
+        "freeze_mismatches": 0,
+        "column_width_max_delta": 0.53515625,
+        "column_widths_exact": false,
+        "data_rows_by_sheet": {
+          "Data_2": 4,
+          "Data": 5
+        }
+      }
+    },
+    {
+      "round": 2,
+      "order": "Rust-first",
+      "python_engine": "Microsoft Excel",
+      "python_process_tree": {
+        "return_code": 0,
+        "peak_sampled_process_tree_working_set_bytes": 314654720,
+        "peak_sampled_process_tree_working_set_mb": 300.078,
+        "peak_live_process_count": 2,
+        "new_excel_process_ids": [
+          33584
+        ],
+        "sample_interval_ms": 5.0,
+        "memory_samples": 437,
+        "new_excel_process_ids_remaining_after_worker": []
+      },
+      "rust_process_tree": {
+        "return_code": 0,
+        "peak_sampled_process_tree_working_set_bytes": 11239424,
+        "peak_sampled_process_tree_working_set_mb": 10.719,
+        "peak_live_process_count": 1,
+        "new_excel_process_ids": [],
+        "sample_interval_ms": 5.0,
+        "memory_samples": 3
+      },
+      "output_comparison": {
+        "status": "passed",
+        "sheet_name_mismatches": 0,
+        "python_sheet_names": [
+          "Data_2",
+          "Data"
+        ],
+        "rust_sheet_names": [
+          "Data_2",
+          "Data"
+        ],
+        "dimension_mismatches": 0,
+        "value_mismatches": 0,
+        "number_format_mismatches": 0,
+        "font_mismatches": 0,
+        "alignment_mismatches": 0,
+        "alignment_header_mismatches": 0,
+        "alignment_body_mismatches": 0,
+        "alignment_property_mismatches": {
+          "horizontal": 0,
+          "vertical": 0,
+          "textRotation": 0,
+          "wrapText": 0,
+          "shrinkToFit": 0,
+          "indent": 0,
+          "relativeIndent": 0,
+          "justifyLastLine": 0,
+          "readingOrder": 0
+        },
+        "alignment_type_pairs": {},
+        "alignment_horizontal_pairs": {},
+        "header_style_mismatches": 0,
+        "filter_mismatches": 0,
+        "freeze_mismatches": 0,
+        "column_width_max_delta": 0.53515625,
+        "column_widths_exact": false,
+        "data_rows_by_sheet": {
+          "Data_2": 4,
+          "Data": 5
+        }
+      }
+    },
+    {
+      "round": 3,
+      "order": "Python-first",
+      "python_engine": "Microsoft Excel",
+      "python_process_tree": {
+        "return_code": 0,
+        "peak_sampled_process_tree_working_set_bytes": 316223488,
+        "peak_sampled_process_tree_working_set_mb": 301.574,
+        "peak_live_process_count": 2,
+        "new_excel_process_ids": [
+          12596
+        ],
+        "sample_interval_ms": 5.0,
+        "memory_samples": 354,
+        "new_excel_process_ids_remaining_after_worker": []
+      },
+      "rust_process_tree": {
+        "return_code": 0,
+        "peak_sampled_process_tree_working_set_bytes": 11247616,
+        "peak_sampled_process_tree_working_set_mb": 10.727,
+        "peak_live_process_count": 1,
+        "new_excel_process_ids": [],
+        "sample_interval_ms": 5.0,
+        "memory_samples": 3
+      },
+      "output_comparison": {
+        "status": "passed",
+        "sheet_name_mismatches": 0,
+        "python_sheet_names": [
+          "Data_2",
+          "Data"
+        ],
+        "rust_sheet_names": [
+          "Data_2",
+          "Data"
+        ],
+        "dimension_mismatches": 0,
+        "value_mismatches": 0,
+        "number_format_mismatches": 0,
+        "font_mismatches": 0,
+        "alignment_mismatches": 0,
+        "alignment_header_mismatches": 0,
+        "alignment_body_mismatches": 0,
+        "alignment_property_mismatches": {
+          "horizontal": 0,
+          "vertical": 0,
+          "textRotation": 0,
+          "wrapText": 0,
+          "shrinkToFit": 0,
+          "indent": 0,
+          "relativeIndent": 0,
+          "justifyLastLine": 0,
+          "readingOrder": 0
+        },
+        "alignment_type_pairs": {},
+        "alignment_horizontal_pairs": {},
+        "header_style_mismatches": 0,
+        "filter_mismatches": 0,
+        "freeze_mismatches": 0,
+        "column_width_max_delta": 0.53515625,
+        "column_widths_exact": false,
+        "data_rows_by_sheet": {
+          "Data_2": 4,
+          "Data": 5
+        }
+      }
+    }
+  ],
+  "cleanup_postcheck": {
+    "checked_at_utc": "2026-10-30T12:21:16.247474+00:00",
+    "new_excel_process_ids_seen": [
+      12596,
+      23508,
+      33584
+    ],
+    "remaining_process_ids": [],
+    "preexisting_excel_processes_were_not_targeted": true
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "record_type": "reconstructed_historical_summary_not_raw_round_data",
+  "source_document": "s1f1_full_chain_20261030.md",
+  "source_release_sha256": "D4F9E4D9069F253D1A058437CE5D82DEDB44847B9A9A216CD3CC22170151B790",
+  "note": "Reconstructed only from the saved Markdown report after the original raw JSON was replaced by a later concurrent-load probe. This file preserves recorded aggregate and per-round total timings; it does not reproduce the original raw logs, hashes, or per-round memory samples.",
+  "fixture": {
+    "source_workbooks": 3,
+    "template_workbooks": 1,
+    "external_workbooks": 1,
+    "configuration_workbooks": 1,
+    "input_workbook_count": 6,
+    "total_input_bytes": 37755,
+    "accepted_sources": 2,
+    "rejected_sources": 1,
+    "formula_issues": 2,
+    "conditional_format_issues": 1,
+    "result_rows": 3
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "order": "Python-first",
+      "python_business_elapsed_ms": 7536.37,
+      "rust_business_elapsed_ms": 8522,
+      "python_to_rust_ratio": 0.884,
+      "python_worker_wall_ms": 34469.29,
+      "rust_worker_wall_ms": 8598.14
+    },
+    {
+      "round": 2,
+      "order": "Rust-first",
+      "python_business_elapsed_ms": 7226.75,
+      "rust_business_elapsed_ms": 6884,
+      "python_to_rust_ratio": 1.050,
+      "python_worker_wall_ms": 32747.97,
+      "rust_worker_wall_ms": 6953.66
+    },
+    {
+      "round": 3,
+      "order": "Python-first",
+      "python_business_elapsed_ms": 7132.25,
+      "rust_business_elapsed_ms": 6890,
+      "python_to_rust_ratio": 1.035,
+      "python_worker_wall_ms": 10983.02,
+      "rust_worker_wall_ms": 6965.34
+    }
+  ],
+  "summary": {
+    "python_business_elapsed_median_ms": 7226.75,
+    "rust_business_elapsed_median_ms": 6890,
+    "python_to_rust_business_elapsed_ratio": 1.049,
+    "python_worker_wall_median_ms": 32747.97,
+    "rust_worker_wall_median_ms": 6965.34,
+    "python_peak_working_set_median_mb": 502.141,
+    "rust_peak_working_set_median_mb": 297.863,
+    "python_peak_working_set_max_mb": 510.746,
+    "rust_peak_working_set_max_mb": 298.676,
+    "full_output_formula_cache_comment_and_excel_open_checks_passed": true,
+    "all_inputs_unchanged": true,
+    "all_new_excel_processes_exited": true
+  }
+}

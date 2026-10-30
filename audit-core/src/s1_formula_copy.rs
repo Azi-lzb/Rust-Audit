@@ -258,6 +258,30 @@ where
         mapping_config,
         external_workbook,
     )?;
+    let template_rule_comments_imported = prepared.edit_plan.operations.iter().any(|operation| {
+        match operation {
+            EditOperation::ImportRange {
+                source_workbook,
+                source_sheet,
+                target_sheet,
+                copy_comments: true,
+                ..
+            }
+            | EditOperation::ImportRangeWithFormulaTranslation {
+                source_workbook,
+                source_sheet,
+                target_sheet,
+                copy_comments: true,
+                ..
+            } => {
+                source_sheet.eq_ignore_ascii_case("审核规则")
+                    && target_sheet.eq_ignore_ascii_case("审核规则")
+                    && fs::canonicalize(source_workbook)
+                        .is_ok_and(|source| same_path(&source, &template_canonical))
+            }
+            _ => false,
+        }
+    });
     let external_sheets_imported = prepared
         .external_plan
         .as_ref()
@@ -293,16 +317,44 @@ where
             external_sheets_imported,
         );
     }
-    match recalculate(&cacheless_formula_copy, output_workbook) {
-        Ok(recalculation) => Ok(S1FormulaCopyOutcome::Recalculated(
-            S1FormulaCopyExecutionReport {
-                edit,
-                recalculation,
-                formula_cells_prepared,
-                cached_values_cleared,
-                external_sheets_imported,
-            },
-        )),
+    let recalculated_candidate = staging.path().join("formula-copy-recalculated.xlsx");
+    match recalculate(&cacheless_formula_copy, &recalculated_candidate) {
+        Ok(mut recalculation) => {
+            let final_candidate = if template_rule_comments_imported {
+                let comments_restored_candidate =
+                    staging.path().join("formula-copy-comments-restored.xlsx");
+                let report = ooxml_patch::restore_legacy_comments_for_sheet(
+                    template_workbook,
+                    &recalculated_candidate,
+                    &comments_restored_candidate,
+                    "审核规则",
+                )
+                .context("在真实公式重算后恢复模板审核规则表批注")?;
+                if report.restored_sheets.is_empty() {
+                    recalculated_candidate.clone()
+                } else {
+                    comments_restored_candidate
+                }
+            } else {
+                recalculated_candidate.clone()
+            };
+            fs::hard_link(&final_candidate, output_workbook).with_context(|| {
+                format!(
+                    "安全发布 S1 重算审核副本失败（输出不得覆盖）：{}",
+                    output_workbook.display()
+                )
+            })?;
+            recalculation.output = output_workbook.to_path_buf();
+            Ok(S1FormulaCopyOutcome::Recalculated(
+                S1FormulaCopyExecutionReport {
+                    edit,
+                    recalculation,
+                    formula_cells_prepared,
+                    cached_values_cleared,
+                    external_sheets_imported,
+                },
+            ))
+        }
         Err(error) => preserve_s1_manual_copy(
             &cacheless_formula_copy,
             output_workbook,
@@ -433,6 +485,7 @@ pub fn build_s1_formula_copy_edit_plan(
     let target_profile = inspect_xlsx_profile(target_workbook).context("检查 S1 目标工作簿结构")?;
     let target_sheet_names = excel_reader::read_xlsx_sheet_names_ooxml(target_workbook)
         .context("读取 S1 目标工作簿工作表名")?;
+    let rule_sheet_copy_range = template.rule_sheet_copy_range.clone();
     for range in &template.definition.copy_ranges {
         ensure!(
             target_sheet_names
@@ -503,12 +556,33 @@ pub fn build_s1_formula_copy_edit_plan(
         (None, None)
     };
 
+    if let (Some(rule_sheet), Some(external_plan)) =
+        (rule_sheet_copy_range.as_ref(), external_plan.as_ref())
+    {
+        ensure!(
+            external_plan.sheets.iter().all(|sheet| !sheet
+                .sheet_name
+                .eq_ignore_ascii_case(&rule_sheet.sheet_name)),
+            "S1 外部数据工作表与模板审核规则表重名：{}",
+            rule_sheet.sheet_name
+        );
+    }
+
     let external_operation_count = external_plan
         .as_ref()
         .map(|plan| plan.sheets.len() * 2)
         .unwrap_or_default();
-    let mut operations =
-        Vec::with_capacity(external_operation_count + template.definition.copy_ranges.len() + 1);
+    let rule_sheet_operation_count = if rule_sheet_copy_range.is_some() {
+        3
+    } else {
+        0
+    };
+    let mut operations = Vec::with_capacity(
+        external_operation_count
+            + template.definition.copy_ranges.len()
+            + rule_sheet_operation_count
+            + 1,
+    );
     if let Some(external_plan) = external_plan.as_ref() {
         // External lookup sheets must exist before template formulas are
         // imported and recalculated, matching the Python workflow ordering.
@@ -577,6 +651,41 @@ pub fn build_s1_formula_copy_edit_plan(
             hide_zero: false,
         });
     }
+    if let Some(rule_sheet) = rule_sheet_copy_range.as_ref() {
+        if let Some(existing_name) = target_sheet_names
+            .iter()
+            .find(|name| name.eq_ignore_ascii_case(&rule_sheet.sheet_name))
+        {
+            operations.push(EditOperation::DeleteSheet {
+                name: existing_name.clone(),
+            });
+        }
+        operations.push(EditOperation::CreateSheet {
+            name: rule_sheet.sheet_name.clone(),
+        });
+        operations.push(EditOperation::ImportRange {
+            source_workbook: template_canonical.clone(),
+            source_sheet: rule_sheet.sheet_name.clone(),
+            source_range: rule_sheet.address.clone(),
+            target_sheet: rule_sheet.sheet_name.clone(),
+            target_start: range_target_start(&rule_sheet.address)
+                .context("解析模板审核规则表复制坐标")?,
+            copy_values: true,
+            copy_formulas: true,
+            style_mode: RangeStyleMode::None,
+            copy_comments: true,
+            copy_merges: false,
+            copy_row_heights: false,
+            copy_column_widths: false,
+            copy_row_hidden: false,
+            copy_column_hidden: false,
+            copy_outline_levels: false,
+            copy_all_row_dimensions: false,
+            copy_all_column_dimensions: false,
+            materialize_blank_cells: true,
+            hide_zero: false,
+        });
+    }
     operations.push(EditOperation::SetWorkbookCalculationProperties {
         full_calc_on_load: Some(true),
         force_full_calc: Some(true),
@@ -585,7 +694,29 @@ pub fn build_s1_formula_copy_edit_plan(
     // Existing values in merged non-anchor cells are still workbook data.
     // Do not inherit the legacy Python save behavior that drops them. A
     // backend that cannot preserve these values must reject this plan.
-    let drop_allowed: BTreeMap<String, BTreeSet<PreservationRequirement>> = BTreeMap::new();
+    let mut drop_allowed = BTreeMap::<String, BTreeSet<PreservationRequirement>>::new();
+    if let Some(existing_name) = rule_sheet_copy_range.as_ref().and_then(|rule_sheet| {
+        target_sheet_names
+            .iter()
+            .find(|name| name.eq_ignore_ascii_case(&rule_sheet.sheet_name))
+    }) {
+        drop_allowed.insert(
+            existing_name.clone(),
+            [
+                PreservationRequirement::CellValuesAndTypes,
+                PreservationRequirement::FormulaText,
+                PreservationRequirement::CommentsAndPositions,
+                PreservationRequirement::MergedRanges,
+                PreservationRequirement::ConditionalFormatting,
+                PreservationRequirement::DataValidations,
+                PreservationRequirement::DefinedNames,
+                PreservationRequirement::Relationships,
+                PreservationRequirement::SheetIdentityAndOrder,
+            ]
+            .into_iter()
+            .collect(),
+        );
+    }
 
     let edit_plan = ExcelEditPlan {
         request_id: "audit-s1-formula-copy".to_owned(),
@@ -649,6 +780,15 @@ fn validate_s1_formula_copy_candidate(
     let mut source_workbooks = BTreeMap::<PathBuf, WorkbookDump>::new();
     for operation in &prepared.edit_plan.operations {
         match operation {
+            EditOperation::DeleteSheet { name } => {
+                let index = expected_sheet_order
+                    .iter()
+                    .position(|existing| existing.eq_ignore_ascii_case(name))
+                    .with_context(|| format!("S1 复制计划要删除的工作表不存在：{name:?}"))?;
+                let removed_name = expected_sheet_order.remove(index);
+                expected_formulas.remove(&removed_name);
+                expected_values.remove(&removed_name);
+            }
             EditOperation::CreateSheet { name } => {
                 ensure!(
                     !expected_sheet_order
@@ -1251,10 +1391,40 @@ mod tests {
         workbook
             .save(path)
             .expect("save duplicate-range structured template");
+        let mut workbook = umya_spreadsheet::reader::xlsx::read(path)
+            .expect("reopen structured template to add rule-sheet comment");
+        let rules = workbook
+            .get_sheet_by_name_mut("审核规则")
+            .expect("reopen structured rule sheet");
+        let mut comment = umya_spreadsheet::Comment::default();
+        comment.new_comment("A1");
+        comment.set_author("测试");
+        comment.set_text_string("规则表说明");
+        rules.add_comments(comment);
+        umya_spreadsheet::writer::xlsx::write(&workbook, path)
+            .expect("save structured template with rule-sheet comment");
     }
 
     fn write_target(path: &Path) {
         write_target_with_sheet(path, "检查表");
+    }
+
+    fn write_target_with_rule_sheet(path: &Path) {
+        let mut workbook = Workbook::new();
+        let data = workbook.add_worksheet();
+        data.set_name("检查表").expect("name target data sheet");
+        data.write_string(0, 0, "target value")
+            .expect("write target data value");
+        let rules = workbook.add_worksheet();
+        rules
+            .set_name("审核规则")
+            .expect("name existing target rule sheet");
+        rules
+            .write_string(0, 0, "obsolete target rule")
+            .expect("write existing target rule value");
+        workbook
+            .save(path)
+            .expect("save target workbook with rule sheet");
     }
 
     fn write_formula_target(path: &Path) {
@@ -1858,8 +2028,118 @@ mod tests {
             .count();
 
         assert_eq!(prepared.template_summary.copy_ranges, 2);
-        assert_eq!(import_range_count, 1);
-        assert_eq!(prepared.edit_plan.operations.len(), 2);
+        assert_eq!(import_range_count, 2);
+        assert_eq!(prepared.edit_plan.operations.len(), 4);
+        assert!(matches!(
+            &prepared.edit_plan.operations[1],
+            EditOperation::CreateSheet { name } if name == "审核规则"
+        ));
+        assert!(matches!(
+            &prepared.edit_plan.operations[2],
+            EditOperation::ImportRange {
+                source_sheet,
+                source_range,
+                target_sheet,
+                copy_values: true,
+                copy_formulas: true,
+                copy_comments: true,
+                ..
+            } if source_sheet == "审核规则"
+                && source_range == "A1:H3"
+                && target_sheet == "审核规则"
+        ));
+        assert!(!output.exists(), "plan construction must not write output");
+        fs::remove_dir_all(directory).expect("remove formula-copy test directory");
+    }
+
+    #[test]
+    fn umya_copies_structured_rule_sheet_comments_into_the_audit_copy() {
+        let directory = temporary_directory();
+        let target = directory.join("target.xlsx");
+        let template = directory.join("template.xlsx");
+        let output = directory.join("candidate.xlsx");
+        write_target(&target);
+        write_structured_template_with_duplicate_ranges(&template);
+        let target_before = fs::read(&target).expect("read original source workbook");
+        let prepared = build_s1_formula_copy_edit_plan(&target, &template, &output, None, None)
+            .expect("build structured rule sheet copy plan");
+        let capability = BackendCapability {
+            engine: EngineId::UmyaSpreadsheet,
+            status: CapabilityStatus::Unverified,
+            format: prepared.edit_plan.format,
+            operations: prepared
+                .edit_plan
+                .operations
+                .iter()
+                .map(EditOperation::kind)
+                .collect(),
+            supported_features: prepared.edit_plan.workbook.features_present.clone(),
+            preserved: prepared.edit_plan.preserve.clone(),
+            platform: std::env::consts::OS.to_owned(),
+            evidence: None,
+        };
+        UmyaXlsxBackend::new(capability)
+            .expect("construct Umya candidate backend")
+            .apply(&prepared.edit_plan)
+            .unwrap_or_else(|error| panic!("structured rule sheet copy failed: {}", error.message));
+        validate_s1_formula_copy_candidate(&prepared, &output)
+            .expect("validate structured rule sheet values and formulas");
+
+        let candidate = read_workbook(&output).expect("read structured rule sheet candidate");
+        let rule_sheet = candidate
+            .sheets
+            .iter()
+            .find(|sheet| sheet.name == "审核规则")
+            .expect("copied structured rule sheet");
+        assert_eq!(rule_sheet.comments["A1"], "规则表说明");
+        let candidate_umya = umya_spreadsheet::reader::xlsx::read(&output)
+            .expect("read copied rule sheet comment author");
+        let rule_sheet_umya = candidate_umya
+            .get_sheet_by_name("审核规则")
+            .expect("copied structured rule sheet in Umya");
+        let comment = rule_sheet_umya
+            .comments()
+            .iter()
+            .find(|comment| comment.coordinate().to_string() == "A1")
+            .expect("copied rule sheet comment");
+        assert_eq!(comment.author(), "测试");
+        assert_eq!(
+            fs::read(&target).expect("reread original source"),
+            target_before
+        );
+        fs::remove_dir_all(directory).expect("remove structured rule sheet test directory");
+    }
+
+    #[test]
+    fn replaces_an_existing_audit_rule_sheet_with_the_structured_template_sheet() {
+        let directory = temporary_directory();
+        let target = directory.join("target.xlsx");
+        let template = directory.join("template.xlsx");
+        let output = directory.join("output.xlsx");
+        write_target_with_rule_sheet(&target);
+        write_structured_template_with_duplicate_ranges(&template);
+
+        let prepared = build_s1_formula_copy_edit_plan(&target, &template, &output, None, None)
+            .expect("build plan replacing existing rule sheet");
+
+        assert!(matches!(
+            &prepared.edit_plan.operations[1],
+            EditOperation::DeleteSheet { name } if name == "审核规则"
+        ));
+        assert!(matches!(
+            &prepared.edit_plan.operations[2],
+            EditOperation::CreateSheet { name } if name == "审核规则"
+        ));
+        assert!(prepared.edit_plan.drop_allowed.contains_key("审核规则"));
+        assert_eq!(
+            prepared
+                .edit_plan
+                .operations
+                .iter()
+                .filter(|operation| operation.kind() == EditOperationKind::DeleteSheet)
+                .count(),
+            1
+        );
         assert!(!output.exists(), "plan construction must not write output");
         fs::remove_dir_all(directory).expect("remove formula-copy test directory");
     }

@@ -1,0 +1,624 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-10-30T14:12:41.551121+00:00",
+  "git_revision": "7517a9c",
+  "feature": "S1-F1",
+  "measurement": "full end-to-end workflow; COM lifecycle is included in total; Rust stage timers use microsecond resolution from the same GUI worker path; nested substage fields are labeled explicitly",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python_version": "3.12.10",
+  "python_source": "C:\\Users\\AZI\\Desktop\\VibeCode\\3.open-data-audit",
+  "rust_binary": "F:\\RustBuild\\audit\\release\\open-data-audit.exe",
+  "rust_binary_sha256": "d9823be57071493acb04834f4144a3f91631ef3fdc4f576344e130af59c7b1b8",
+  "fixture": {
+    "kind": "shared synthetic fixture from the read-only Python golden audit flow",
+    "period": "2026-06",
+    "source_workbooks": 3,
+    "template_workbooks": 1,
+    "external_workbooks": 1,
+    "configuration_workbooks": 1,
+    "expected_accepted_sources": 2,
+    "expected_rejected_sources": 1,
+    "expected_formula_issues": 2,
+    "expected_conditional_format_issues": 1,
+    "expected_rule_sheet_comments_per_audit_copy": 1,
+    "workbook_stats": {
+      "丙银行.xlsx": {
+        "bytes": 5010,
+        "sheets": [
+          {
+            "name": "20202资产负债表",
+            "rows": 4,
+            "columns": 3,
+            "nonempty_cells": 7
+          }
+        ],
+        "nonempty_cells": 7
+      },
+      "乙银行.xlsx": {
+        "bytes": 6629,
+        "sheets": [
+          {
+            "name": "20202资产负债表",
+            "rows": 6,
+            "columns": 3,
+            "nonempty_cells": 13
+          }
+        ],
+        "nonempty_cells": 13
+      },
+      "甲银行.xlsx": {
+        "bytes": 5232,
+        "sheets": [
+          {
+            "name": "20202资产负债表",
+            "rows": 6,
+            "columns": 3,
+            "nonempty_cells": 13
+          }
+        ],
+        "nonempty_cells": 13
+      },
+      "模板.xlsx": {
+        "bytes": 7489,
+        "sheets": [
+          {
+            "name": "20202资产负债表",
+            "rows": 6,
+            "columns": 4,
+            "nonempty_cells": 12
+          },
+          {
+            "name": "审核规则",
+            "rows": 3,
+            "columns": 8,
+            "nonempty_cells": 24
+          }
+        ],
+        "nonempty_cells": 36
+      },
+      "外部参照.xlsx": {
+        "bytes": 5469,
+        "sheets": [
+          {
+            "name": "参照表",
+            "rows": 2,
+            "columns": 2,
+            "nonempty_cells": 3
+          },
+          {
+            "name": "未引用表",
+            "rows": 1,
+            "columns": 1,
+            "nonempty_cells": 1
+          }
+        ],
+        "nonempty_cells": 4
+      },
+      "逐笔统计系统_历史审核配置.xlsx": {
+        "bytes": 9294,
+        "sheets": [
+          {
+            "name": "使用说明",
+            "rows": 11,
+            "columns": 2,
+            "nonempty_cells": 20
+          },
+          {
+            "name": "核查表校验结果",
+            "rows": 2,
+            "columns": 13,
+            "nonempty_cells": 21
+          },
+          {
+            "name": "本地校验结果",
+            "rows": 1,
+            "columns": 1,
+            "nonempty_cells": 0
+          },
+          {
+            "name": "业务说明",
+            "rows": 1,
+            "columns": 11,
+            "nonempty_cells": 11
+          },
+          {
+            "name": "任务说明",
+            "rows": 1,
+            "columns": 12,
+            "nonempty_cells": 12
+          }
+        ],
+        "nonempty_cells": 64
+      }
+    },
+    "input_sha256_before": {
+      "2026-06\\源数据\\丙银行.xlsx": "5da19cd40c266e5a914b4bd5a7b248f1702178f6947b99b009b411b51a15684c",
+      "2026-06\\源数据\\乙银行.xlsx": "5542f168ccd6190d56cf9fcc84d53e1883bd97b690e036d6b129b55c4c1dcfa3",
+      "2026-06\\源数据\\甲银行.xlsx": "c4f732e25558e81ff73cd32f7788166fa19351569f62bfa66d7e76d8c010aaf6",
+      "模板\\模板.xlsx": "0dc99b37a6a4ec38fc83c0c646fd7a4bed7cdbe64bb09f61791601ca735bbc70",
+      "外部参照.xlsx": "30fdbdb7a35953e5ac70db39c86bfc75fcc79a74802a0d2e7a165a1f5083d2d6",
+      "逐笔统计系统_历史审核配置.xlsx": "c986cd5c7379b79b7c19818de56c4a873da461e15174f8c0fb7d55040aa93ced"
+    },
+    "input_sha256_after": {
+      "2026-06\\源数据\\丙银行.xlsx": "5da19cd40c266e5a914b4bd5a7b248f1702178f6947b99b009b411b51a15684c",
+      "2026-06\\源数据\\乙银行.xlsx": "5542f168ccd6190d56cf9fcc84d53e1883bd97b690e036d6b129b55c4c1dcfa3",
+      "2026-06\\源数据\\甲银行.xlsx": "c4f732e25558e81ff73cd32f7788166fa19351569f62bfa66d7e76d8c010aaf6",
+      "模板\\模板.xlsx": "0dc99b37a6a4ec38fc83c0c646fd7a4bed7cdbe64bb09f61791601ca735bbc70",
+      "外部参照.xlsx": "30fdbdb7a35953e5ac70db39c86bfc75fcc79a74802a0d2e7a165a1f5083d2d6",
+      "逐笔统计系统_历史审核配置.xlsx": "c986cd5c7379b79b7c19818de56c4a873da461e15174f8c0fb7d55040aa93ced"
+    }
+  },
+  "method": {
+    "rounds": 1,
+    "round_order": "alternates Python-first and Rust-first",
+    "elapsed_metric": "Python run_dag_flow internal elapsed; Rust acceptance-run S1-F01 step elapsed (includes the acceptance adapter's 100ms state polling granularity)",
+    "wall_metric": "fresh Python worker / Rust CLI launch until the worker and all newly created Excel processes exit; includes runtime startup and process shutdown",
+    "memory_metric": "5ms sampled RSS sum over worker process tree plus only newly created EXCEL.EXE; pre-existing Excel PIDs excluded",
+    "python_entry": "AuditService + workflow.runner.run_dag_flow(dag:汇总核查表校验), Windows COM pipeline",
+    "rust_entry": "open-data-audit acceptance-run -> web_bridge::run_s1_f1_for_acceptance -> GUI S1-F1 worker",
+    "output_comparison": "full final result workbook cell values and dimensions; formula text and calculated caches checked in accepted audit copies",
+    "limitations": "synthetic golden fixture is small; process sampling can miss peaks shorter than 5ms; no style-by-style comparison"
+  },
+  "summary": {
+    "python_business_elapsed_median_ms": 8622.57,
+    "rust_business_elapsed_median_ms": 6681,
+    "python_to_rust_business_elapsed_ratio": 1.291,
+    "python_worker_wall_median_ms": 12278.25,
+    "rust_worker_wall_median_ms": 7588.91,
+    "python_peak_working_set_median_mb": 507.16,
+    "python_peak_working_set_max_mb": 507.16,
+    "rust_peak_working_set_median_mb": 307.027,
+    "rust_peak_working_set_max_mb": 307.027,
+    "rust_request_stage_median_ms": {
+      "source_directory_scan": 0.127,
+      "request_preparation_other": 0.553,
+      "request_preparation_total": 0.68
+    },
+    "rust_acceptance_unclassified_median_ms": 6.078,
+    "rust_preflight_stage_median_ms": {
+      "template_profile_load": 0.97,
+      "template_matching": 0.686,
+      "template_preflight": 10.084,
+      "source_structure_compare": 1.312,
+      "unclassified_preflight": 0.427,
+      "total": 13.479
+    },
+    "rust_workflow_stage_median_ms": {
+      "period_detection": 0.025,
+      "workflow_setup_and_initial_manifest": 9.948,
+      "copy_and_recalculation_preparation": 3632.188,
+      "excel_core_edit_and_output_validation": 156.0,
+      "copy_preparation_and_validation_other": 95.188,
+      "external_excel_recalculation": 3381.0,
+      "issue_extraction_total": 12.494,
+      "formula_and_validation_issue_extraction": 8.794,
+      "conditional_format_issue_extraction": 3.111,
+      "issue_extraction_other": 0.589,
+      "result_merge_history_and_workbook_write": 42.119,
+      "other_workflow_and_recovery_persistence": 34.399,
+      "workflow_total": 3731.173,
+      "recalculation_session_initialization": 0.149,
+      "recalculation_session_shutdown": 2929.371,
+      "workflow_adapter_total": 6660.763
+    },
+    "full_output_and_formula_cache_checks_passed": true,
+    "all_master_inputs_unchanged": true,
+    "all_new_excel_processes_exited": true
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "order": "Python-first",
+      "python_business_elapsed_ms": 8622.57,
+      "rust_business_elapsed_ms": 6681,
+      "python_worker_plus_excel": {
+        "return_code": 0,
+        "timed_out": false,
+        "peak_sampled_worker_plus_new_excel_working_set_bytes": 531795968,
+        "peak_sampled_worker_plus_new_excel_working_set_mb": 507.16,
+        "peak_live_process_count": 3,
+        "sample_interval_ms": 5.0,
+        "memory_samples": 359,
+        "new_excel_process_ids": [
+          19880,
+          33364
+        ],
+        "terminated_owned_excel_process_ids": [],
+        "remaining_new_excel_process_ids": [],
+        "elapsed_wall_ms": 12278.25
+      },
+      "rust_worker_plus_excel": {
+        "return_code": 0,
+        "timed_out": false,
+        "peak_sampled_worker_plus_new_excel_working_set_bytes": 321941504,
+        "peak_sampled_worker_plus_new_excel_working_set_mb": 307.027,
+        "peak_live_process_count": 4,
+        "sample_interval_ms": 5.0,
+        "memory_samples": 152,
+        "new_excel_process_ids": [
+          16032
+        ],
+        "terminated_owned_excel_process_ids": [],
+        "remaining_new_excel_process_ids": [],
+        "elapsed_wall_ms": 7588.91
+      },
+      "python_engine_performance_lines": [
+        "计算引擎 Microsoft Excel",
+        "报送文件来源 0.00 秒",
+        "模板装载与体检 0.01 秒",
+        "检查表结构区域 0.00 秒",
+        "检查校验区域 0.00 秒",
+        "表结构比对 0.02 秒",
+        "条件格式结果提取 0.05 秒",
+        "复制审核副本 0.01 秒",
+        "外部文件添加 0.04 秒",
+        "  └ Direct OOXML 外部表准备 0.00 秒；写入 0.05 秒",
+        "公式校验复制 0.64 秒",
+        "  └ 公式写入 0.11 秒；逐副本重算与保存 0.11 秒",
+        "校验结果提取 0.01 秒",
+        "审核结果汇聚 0.00 秒",
+        "历史说明富化 0.00 秒",
+        "运行日志输出 0.00 秒",
+        "审核结果输出 0.07 秒",
+        "引擎生命周期：engine_detect_time 0.00 秒；excel_process_start_time 2.64 秒；com_connect_time 0.00 秒；excel_ready_time 0.11 秒；template_com_open_time 0.00 秒；idle_wait_time 0.22 秒；workbook_cleanup_time 0.02 秒；excel_quit_time 0.00 秒；com_release_time 0.00 秒；final_gc_time 0.02 秒",
+        "非节点收尾：历史读取 0.03 秒；运行日志写入 0.06 秒；临时文件清理 0.00 秒",
+        "引擎启动与流程收尾 7.75 秒",
+        "总计 8.61 秒"
+      ],
+      "rust_step_status": "completed",
+      "rust_step_key_counts": {
+        "conditionalIssues": 1,
+        "filesTotal": 3,
+        "formulaIssues": 2,
+        "matched": true,
+        "skipped": 1,
+        "structurePassed": 2,
+        "totalIssues": 3
+      },
+      "rust_performance_timings": {
+        "preflight": {
+          "skipped": 1,
+          "sourceFiles": 3,
+          "sourceStructureCompareUs": 1312,
+          "structurePassed": 2,
+          "templateMatchingUs": 686,
+          "templatePreflightUs": 10084,
+          "templateProfileLoadUs": 970,
+          "totalUs": 13479,
+          "unclassifiedPreflightUs": 427,
+          "unit": "microseconds"
+        },
+        "request": {
+          "requestPreparationOtherUs": 553,
+          "requestPreparationTotalUs": 680,
+          "sourceDirectoryScanUs": 127,
+          "unit": "microseconds"
+        },
+        "workflow": {
+          "conditionalFormatIssueExtractionUs": 3111,
+          "copyAndRecalculationPreparationTotalUs": 3632188,
+          "copyPreparationAndValidationOtherUs": 95188,
+          "excelCoreEditAndOutputValidationUs": 156000,
+          "externalExcelRecalculationUs": 3381000,
+          "formulaAndValidationIssueExtractionUs": 8794,
+          "issueExtractionOtherUs": 589,
+          "issueExtractionTotalUs": 12494,
+          "otherWorkflowAndRecoveryPersistenceUs": 34399,
+          "perFile": [
+            {
+              "conditionalFormatExtractionUs": 1818,
+              "copyAndRecalculationPreparationUs": 3334589,
+              "copyPreparationAndValidationOtherUs": 49589,
+              "excelCoreEditAndValidationUs": 86000,
+              "externalRecalculationUs": 3199000,
+              "formulaIssueExtractionUs": 4978,
+              "issueExtractionOtherUs": 387,
+              "issueExtractionTotalUs": 7183,
+              "sourceFile": "\\\\?\\C:\\Users\\AZI\\AppData\\Local\\Temp\\audit-s1f1-full-chain-91nvc1e6\\2026-06\\源数据\\乙银行.xlsx"
+            },
+            {
+              "conditionalFormatExtractionUs": 1293,
+              "copyAndRecalculationPreparationUs": 297599,
+              "copyPreparationAndValidationOtherUs": 45599,
+              "excelCoreEditAndValidationUs": 70000,
+              "externalRecalculationUs": 182000,
+              "formulaIssueExtractionUs": 3816,
+              "issueExtractionOtherUs": 202,
+              "issueExtractionTotalUs": 5311,
+              "sourceFile": "\\\\?\\C:\\Users\\AZI\\AppData\\Local\\Temp\\audit-s1f1-full-chain-91nvc1e6\\2026-06\\源数据\\甲银行.xlsx"
+            }
+          ],
+          "periodDetectionUs": 25,
+          "recalculationSessionInitializationUs": 149,
+          "recalculationSessionShutdownUs": 2929371,
+          "resultMergeHistoryAndWorkbookWriteUs": 42119,
+          "unit": "microseconds",
+          "workflowAdapterTotalUs": 6660763,
+          "workflowSetupAndInitialManifestUs": 9948,
+          "workflowTotalUs": 3731173
+        }
+      },
+      "rust_acceptance_unclassified_us": 6078,
+      "summary_workbook_comparison": {
+        "passed": true,
+        "python_sheet_names": [
+          "本期审核结果"
+        ],
+        "rust_sheet_names": [
+          "本期审核结果"
+        ],
+        "dimensions_equal": true,
+        "compared_cells": 52,
+        "cell_differences": 0,
+        "difference_samples": [],
+        "python_result_rows": 3,
+        "rust_result_rows": 3
+      },
+      "formula_copy_and_cache_comparison": {
+        "formula_text_equal": true,
+        "formula_cache_equal": true,
+        "formula_cache_matches_independent_expected_values": true,
+        "referenced_external_sheet_copied_and_unreferenced_sheet_omitted": true,
+        "structured_rule_sheet_content_equal": true,
+        "structured_rule_sheet_comments_equal": true,
+        "worksheet_names_and_order_equal": true,
+        "workbooks": {
+          "python": {
+            "甲银行": {
+              "formulas": {
+                "D4": "=IF(AND(C5>C4,参照表!$B$2>0),\"软性|贷款大于存款|贷款高于存款\",\"\")",
+                "D5": "=IF(C6<C4*0.01,\"错误|拨备核对|拨备不足|拨备低于存款百分之一|||\",\"\")"
+              },
+              "values": {
+                "D4": "软性|贷款大于存款|贷款高于存款",
+                "D5": null
+              },
+              "sheets": [
+                "20202资产负债表",
+                "参照表",
+                "审核规则"
+              ],
+              "rule_sheet_cells": {
+                "A1": "规则编号",
+                "B1": "启用",
+                "C1": "报表代码",
+                "D1": "工作表",
+                "E1": "公式单元格",
+                "F1": "定位单元格",
+                "G1": "级别",
+                "H1": "问题说明",
+                "A2": "R001",
+                "B2": "是",
+                "C2": "20202",
+                "D2": "20202资产负债表",
+                "E2": "D4",
+                "F2": "C5",
+                "G2": "核实",
+                "H2": "贷款大于存款",
+                "A3": "R002",
+                "B3": "是",
+                "C3": "20202",
+                "D3": "20202资产负债表",
+                "E3": "D5",
+                "F3": "C6",
+                "G3": "错误",
+                "H3": "拨备不足"
+              },
+              "rule_sheet_comments": {
+                "A1": {
+                  "text": "规则表说明",
+                  "author": "测试"
+                }
+              },
+              "unused_external_sheet_absent": true
+            },
+            "乙银行": {
+              "formulas": {
+                "D4": "=IF(AND(C5>C4,参照表!$B$2>0),\"软性|贷款大于存款|贷款高于存款\",\"\")",
+                "D5": "=IF(C6<C4*0.01,\"错误|拨备核对|拨备不足|拨备低于存款百分之一|||\",\"\")"
+              },
+              "values": {
+                "D4": null,
+                "D5": "错误|拨备核对|拨备不足|拨备低于存款百分之一|||"
+              },
+              "sheets": [
+                "20202资产负债表",
+                "参照表",
+                "审核规则"
+              ],
+              "rule_sheet_cells": {
+                "A1": "规则编号",
+                "B1": "启用",
+                "C1": "报表代码",
+                "D1": "工作表",
+                "E1": "公式单元格",
+                "F1": "定位单元格",
+                "G1": "级别",
+                "H1": "问题说明",
+                "A2": "R001",
+                "B2": "是",
+                "C2": "20202",
+                "D2": "20202资产负债表",
+                "E2": "D4",
+                "F2": "C5",
+                "G2": "核实",
+                "H2": "贷款大于存款",
+                "A3": "R002",
+                "B3": "是",
+                "C3": "20202",
+                "D3": "20202资产负债表",
+                "E3": "D5",
+                "F3": "C6",
+                "G3": "错误",
+                "H3": "拨备不足"
+              },
+              "rule_sheet_comments": {
+                "A1": {
+                  "text": "规则表说明",
+                  "author": "测试"
+                }
+              },
+              "unused_external_sheet_absent": true
+            }
+          },
+          "rust": {
+            "甲银行": {
+              "formulas": {
+                "D4": "=IF(AND(C5>C4,参照表!$B$2>0),\"软性|贷款大于存款|贷款高于存款\",\"\")",
+                "D5": "=IF(C6<C4*0.01,\"错误|拨备核对|拨备不足|拨备低于存款百分之一|||\",\"\")"
+              },
+              "values": {
+                "D4": "软性|贷款大于存款|贷款高于存款",
+                "D5": null
+              },
+              "sheets": [
+                "20202资产负债表",
+                "参照表",
+                "审核规则"
+              ],
+              "rule_sheet_cells": {
+                "A1": "规则编号",
+                "B1": "启用",
+                "C1": "报表代码",
+                "D1": "工作表",
+                "E1": "公式单元格",
+                "F1": "定位单元格",
+                "G1": "级别",
+                "H1": "问题说明",
+                "A2": "R001",
+                "B2": "是",
+                "C2": "20202",
+                "D2": "20202资产负债表",
+                "E2": "D4",
+                "F2": "C5",
+                "G2": "核实",
+                "H2": "贷款大于存款",
+                "A3": "R002",
+                "B3": "是",
+                "C3": "20202",
+                "D3": "20202资产负债表",
+                "E3": "D5",
+                "F3": "C6",
+                "G3": "错误",
+                "H3": "拨备不足"
+              },
+              "rule_sheet_comments": {
+                "A1": {
+                  "text": "规则表说明",
+                  "author": "测试"
+                }
+              },
+              "unused_external_sheet_absent": true
+            },
+            "乙银行": {
+              "formulas": {
+                "D4": "=IF(AND(C5>C4,参照表!$B$2>0),\"软性|贷款大于存款|贷款高于存款\",\"\")",
+                "D5": "=IF(C6<C4*0.01,\"错误|拨备核对|拨备不足|拨备低于存款百分之一|||\",\"\")"
+              },
+              "values": {
+                "D4": null,
+                "D5": "错误|拨备核对|拨备不足|拨备低于存款百分之一|||"
+              },
+              "sheets": [
+                "20202资产负债表",
+                "参照表",
+                "审核规则"
+              ],
+              "rule_sheet_cells": {
+                "A1": "规则编号",
+                "B1": "启用",
+                "C1": "报表代码",
+                "D1": "工作表",
+                "E1": "公式单元格",
+                "F1": "定位单元格",
+                "G1": "级别",
+                "H1": "问题说明",
+                "A2": "R001",
+                "B2": "是",
+                "C2": "20202",
+                "D2": "20202资产负债表",
+                "E2": "D4",
+                "F2": "C5",
+                "G2": "核实",
+                "H2": "贷款大于存款",
+                "A3": "R002",
+                "B3": "是",
+                "C3": "20202",
+                "D3": "20202资产负债表",
+                "E3": "D5",
+                "F3": "C6",
+                "G3": "错误",
+                "H3": "拨备不足"
+              },
+              "rule_sheet_comments": {
+                "A1": {
+                  "text": "规则表说明",
+                  "author": "测试"
+                }
+              },
+              "unused_external_sheet_absent": true
+            }
+          }
+        }
+      },
+      "excel_com_open_check": {
+        "python": {
+          "opened_all": true,
+          "owned_excel_pid": 17516,
+          "owned_excel_process_exited": true,
+          "workbooks": [
+            {
+              "path": "甲银行_审核版.xlsx",
+              "worksheet_count": 3,
+              "formula_texts": {
+                "D4": "=IF(AND(C5>C4,参照表!$B$2>0),\"软性|贷款大于存款|贷款高于存款\",\"\")",
+                "D5": "=IF(C6<C4*0.01,\"错误|拨备核对|拨备不足|拨备低于存款百分之一|||\",\"\")"
+              }
+            },
+            {
+              "path": "乙银行_审核版.xlsx",
+              "worksheet_count": 3,
+              "formula_texts": {
+                "D4": "=IF(AND(C5>C4,参照表!$B$2>0),\"软性|贷款大于存款|贷款高于存款\",\"\")",
+                "D5": "=IF(C6<C4*0.01,\"错误|拨备核对|拨备不足|拨备低于存款百分之一|||\",\"\")"
+              }
+            }
+          ]
+        },
+        "rust": {
+          "opened_all": true,
+          "owned_excel_pid": 25716,
+          "owned_excel_process_exited": true,
+          "workbooks": [
+            {
+              "path": "0002-甲银行-recalculated.xlsx",
+              "worksheet_count": 3,
+              "formula_texts": {
+                "D4": "=IF(AND(C5>C4,参照表!$B$2>0),\"软性|贷款大于存款|贷款高于存款\",\"\")",
+                "D5": "=IF(C6<C4*0.01,\"错误|拨备核对|拨备不足|拨备低于存款百分之一|||\",\"\")"
+              }
+            },
+            {
+              "path": "0001-乙银行-recalculated.xlsx",
+              "worksheet_count": 3,
+              "formula_texts": {
+                "D4": "=IF(AND(C5>C4,参照表!$B$2>0),\"软性|贷款大于存款|贷款高于存款\",\"\")",
+                "D5": "=IF(C6<C4*0.01,\"错误|拨备核对|拨备不足|拨备低于存款百分之一|||\",\"\")"
+              }
+            }
+          ]
+        }
+      },
+      "source_template_external_inputs_unchanged": true,
+      "python_history_config_changed": false,
+      "rust_history_config_changed": false,
+      "python_summary_path": "round-1\\python-output\\汇总核查表校验_20261030221202.xlsx",
+      "rust_summary_path": "round-1\\rust-output\\steps\\S1-F01\\S1-F1_审核结果_20261030_221214_633\\汇总核查表校验.xlsx"
+    }
+  ],
+  "measurement_environment": {
+    "performance_eligible_for_baseline": false,
+    "reason": "A concurrent Rust-Tools XLS-to-XLSX COM benchmark (Cargo runner plus Python output validator) and multiple Excel COM processes were active during the measurement; use this run for stage identification and correctness only.",
+    "observed_background_workload": "Rust-Tools benchmarks/xls-to-xlsx-com runner and Python validate_outputs.py; the task was left untouched."
+  }
+}

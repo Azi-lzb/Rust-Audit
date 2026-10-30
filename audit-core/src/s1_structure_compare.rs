@@ -2,7 +2,10 @@
 
 use crate::models::CopyRange;
 use anyhow::{bail, Context, Result};
-use excel_reader::{read_workbook, CellValue, SheetDump};
+use excel_reader::{
+    read_workbook_structure_projection, CellProjectionRegion, CellValue, SheetDump,
+    WorkbookCellProjection, WorkbookDump,
+};
 use serde::Serialize;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -67,12 +70,33 @@ pub fn read_s1_structure_template_with_required_sheets(
     if ranges.is_empty() {
         bail!("模板没有可用的“表结构区域”命名区域，请先维护模板");
     }
-    let workbook = read_workbook(template_path.as_ref())
-        .with_context(|| format!("读取 S1 表结构模板 {}", template_path.as_ref().display()))?;
+    let parsed_ranges = ranges
+        .iter()
+        .map(|range| {
+            parse_range(&range.address).with_context(|| {
+                format!("无效的表结构区域：{}!{}", range.sheet_name, range.address)
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let projection_regions = ranges
+        .iter()
+        .zip(&parsed_ranges)
+        .map(|(range, bounds)| CellProjectionRegion {
+            sheet_name: range.sheet_name.clone(),
+            start_row: bounds.1,
+            start_column: bounds.0,
+            end_row: bounds.3,
+            end_column: bounds.2,
+        })
+        .collect::<Vec<_>>();
+    let projection =
+        read_workbook_structure_projection(template_path.as_ref(), &projection_regions, false)
+            .with_context(|| format!("读取 S1 表结构模板 {}", template_path.as_ref().display()))?;
+    let workbook = projection_to_workbook_dump(projection)?;
     let mut required_sheets = required_sheets.iter().cloned().collect::<BTreeSet<_>>();
     let mut expected_cells = Vec::new();
 
-    for range in ranges {
+    for (range, bounds) in ranges.iter().zip(parsed_ranges) {
         let sheet = workbook
             .sheets
             .iter()
@@ -80,8 +104,6 @@ pub fn read_s1_structure_template_with_required_sheets(
             .with_context(|| {
                 format!("表结构区域引用了模板中不存在的工作表：{}", range.sheet_name)
             })?;
-        let bounds = parse_range(&range.address)
-            .with_context(|| format!("无效的表结构区域：{}!{}", range.sheet_name, range.address))?;
         required_sheets.insert(range.sheet_name.clone());
         let mut area_cells = BTreeMap::new();
         collect_expected_cells(sheet, bounds, &mut area_cells)?;
@@ -116,7 +138,19 @@ pub fn compare_s1_source_structure(
     source_path: impl AsRef<Path>,
     template: &S1StructureTemplate,
 ) -> Result<S1StructureMatch> {
-    compare_s1_source_structure_impl(source_path.as_ref(), template, false)
+    let source_path = source_path.as_ref();
+    let workbook = read_s1_source_structure_projection(source_path, template)
+        .with_context(|| format!("读取 S1 表结构报送文件 {}", source_path.display()))?;
+    compare_s1_source_structure_dump(&workbook, template)
+}
+
+/// Match source structure against a workbook projection already read by a
+/// preceding stage, avoiding a second parse of the same source workbook.
+pub fn compare_s1_source_structure_dump(
+    workbook: &WorkbookDump,
+    template: &S1StructureTemplate,
+) -> Result<S1StructureMatch> {
+    compare_s1_source_structure_dump_impl(workbook, template, false)
 }
 
 /// Match the structure ranges that are present in a summary source workbook.
@@ -129,17 +163,95 @@ pub fn compare_s1_summary_source_structure(
     source_path: impl AsRef<Path>,
     template: &S1StructureTemplate,
 ) -> Result<S1StructureMatch> {
-    compare_s1_source_structure_impl(source_path.as_ref(), template, true)
+    let source_path = source_path.as_ref();
+    let workbook = read_s1_source_structure_projection(source_path, template)
+        .with_context(|| format!("读取 S1 表结构报送文件 {}", source_path.display()))?;
+    compare_s1_source_structure_dump_impl(&workbook, template, true)
 }
 
-fn compare_s1_source_structure_impl(
+fn read_s1_source_structure_projection(
     source_path: &Path,
+    template: &S1StructureTemplate,
+) -> Result<WorkbookDump> {
+    let regions = template
+        .expected_cells
+        .iter()
+        .map(|cell| CellProjectionRegion {
+            sheet_name: cell.sheet_name.clone(),
+            start_row: cell.row,
+            start_column: cell.column,
+            end_row: cell.row,
+            end_column: cell.column,
+        })
+        .collect::<Vec<_>>();
+    let projection = read_workbook_structure_projection(source_path, &regions, true)?;
+    projection_to_workbook_dump(projection)
+}
+
+fn projection_to_workbook_dump(projection: WorkbookCellProjection) -> Result<WorkbookDump> {
+    let projected_sheets = projection
+        .sheets
+        .into_iter()
+        .map(|sheet| (sheet.name.clone(), sheet))
+        .collect::<BTreeMap<_, _>>();
+    let sheets = projection
+        .sheet_names
+        .into_iter()
+        .map(|name| {
+            let projected = projected_sheets.get(&name);
+            let values = projected
+                .map(|sheet| projected_values_to_json(&sheet.values))
+                .transpose()?
+                .unwrap_or_default();
+            let formulas = projected
+                .map(|sheet| sheet.formulas.clone())
+                .unwrap_or_default();
+            let merges = projected
+                .map(|sheet| sheet.merges.clone())
+                .unwrap_or_default();
+            Ok(SheetDump {
+                name,
+                values,
+                formulas,
+                formula_status: "read_by_calamine_projection".to_owned(),
+                merges,
+                merge_status: "read_by_calamine_projection".to_owned(),
+                comments: BTreeMap::new(),
+                comments_status: "not_requested_by_structure_projection".to_owned(),
+                conditional_formatting: Vec::new(),
+                conditional_formatting_status: "not_requested_by_structure_projection".to_owned(),
+                data_validations: Vec::new(),
+                data_validations_status: "not_requested_by_structure_projection".to_owned(),
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(WorkbookDump {
+        schema_version: 3,
+        reader: "calamine_structure_projection",
+        elapsed_ms: projection.elapsed_ms,
+        sheets,
+    })
+}
+
+fn projected_values_to_json(
+    values: &BTreeMap<String, CellValue>,
+) -> Result<BTreeMap<String, serde_json::Value>> {
+    values
+        .iter()
+        .map(|(address, value)| {
+            serde_json::to_value(value)
+                .map(|value| (address.clone(), value))
+                .with_context(|| format!("编码结构投影单元格 {address}"))
+        })
+        .collect()
+}
+
+fn compare_s1_source_structure_dump_impl(
+    workbook: &WorkbookDump,
     template: &S1StructureTemplate,
     allow_missing_sheets: bool,
 ) -> Result<S1StructureMatch> {
     let started = Instant::now();
-    let workbook = read_workbook(source_path)
-        .with_context(|| format!("读取 S1 表结构报送文件 {}", source_path.display()))?;
     let sheet_names = workbook
         .sheets
         .iter()
@@ -558,6 +670,13 @@ mod tests {
         assert_eq!(result.matched_labels, 9);
         assert_eq!(result.checked_labels, 10);
         assert_eq!(result.score, 0.9);
+        let source_dump = excel_reader::read_workbook(&source_path).expect("read source once");
+        let reused_result = compare_s1_source_structure_dump(&source_dump, &template)
+            .expect("compare loaded source");
+        assert_eq!(reused_result.matched, result.matched);
+        assert_eq!(reused_result.matched_labels, result.matched_labels);
+        assert_eq!(reused_result.checked_labels, result.checked_labels);
+        assert_eq!(reused_result.missing_sheets, result.missing_sheets);
         fs::remove_dir_all(directory).expect("remove structure test directory");
     }
 

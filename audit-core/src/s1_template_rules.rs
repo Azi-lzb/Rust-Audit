@@ -53,6 +53,9 @@ pub struct S1TemplateRuleSummary {
 pub struct S1TemplateRulePlan {
     pub definition: TemplateDefinition,
     pub summary: S1TemplateRuleSummary,
+    /// Structured templates carry their rule table in a workbook sheet that
+    /// the legacy workflow copied into each audit workbook for traceability.
+    pub rule_sheet_copy_range: Option<CopyRange>,
     formula_reference_errors: Vec<String>,
 }
 
@@ -276,41 +279,60 @@ fn build_s1_template_rule_plan(
     let extraction_ranges =
         resolve_named_ranges_for_mappings(&extraction_mappings, &areas, &workbook_sheets);
 
-    let (rules, copy_ranges, template_mode, formula_cells, rule_comments, explicit_comment_ids) =
-        if let Some(rule_sheet) = workbook
-            .sheets
+    let (
+        rules,
+        copy_ranges,
+        template_mode,
+        formula_cells,
+        rule_comments,
+        explicit_comment_ids,
+        rule_sheet_copy_range,
+    ) = if let Some(rule_sheet) = workbook
+        .sheets
+        .iter()
+        .find(|sheet| sheet.name == "审核规则")
+    {
+        let rules = read_structured_rules(rule_sheet, workbook)?;
+        let formula_cells = rules.iter().filter(|rule| rule.enabled).count();
+        let copy_ranges = rules
             .iter()
-            .find(|sheet| sheet.name == "审核规则")
-        {
-            let rules = read_structured_rules(rule_sheet, workbook)?;
-            let formula_cells = rules.iter().filter(|rule| rule.enabled).count();
-            let copy_ranges = rules
-                .iter()
-                .filter(|rule| rule.enabled)
-                .map(|rule| CopyRange {
-                    sheet_name: rule.sheet_name.clone(),
-                    address: rule.copy_range.clone(),
-                })
-                .collect();
-            (rules, copy_ranges, "structured", formula_cells, 0, 0)
-        } else {
-            if !formula_mappings.is_empty() && formula_named_ranges.is_empty() {
-                bail!("公式校验功能对应的命名区域中没有可用区域");
-            }
-            let (rules, formula_cells, rule_comments, explicit_comment_ids) =
-                discover_named_formula_rules(workbook, &formula_named_ranges, template_path)?;
-            if !formula_mappings.is_empty() && rules.is_empty() {
-                bail!("公式校验功能对应的命名区域中没有公式");
-            }
-            (
-                rules,
-                formula_named_ranges.clone(),
-                "named_formula_ranges",
-                formula_cells,
-                rule_comments,
-                explicit_comment_ids,
-            )
-        };
+            .filter(|rule| rule.enabled)
+            .map(|rule| CopyRange {
+                sheet_name: rule.sheet_name.clone(),
+                address: rule.copy_range.clone(),
+            })
+            .collect();
+        (
+            rules,
+            copy_ranges,
+            "structured",
+            formula_cells,
+            0,
+            0,
+            Some(CopyRange {
+                sheet_name: rule_sheet.name.clone(),
+                address: sheet_content_range(rule_sheet)?,
+            }),
+        )
+    } else {
+        if !formula_mappings.is_empty() && formula_named_ranges.is_empty() {
+            bail!("公式校验功能对应的命名区域中没有可用区域");
+        }
+        let (rules, formula_cells, rule_comments, explicit_comment_ids) =
+            discover_named_formula_rules(workbook, &formula_named_ranges, template_path)?;
+        if !formula_mappings.is_empty() && rules.is_empty() {
+            bail!("公式校验功能对应的命名区域中没有公式");
+        }
+        (
+            rules,
+            formula_named_ranges.clone(),
+            "named_formula_ranges",
+            formula_cells,
+            rule_comments,
+            explicit_comment_ids,
+            None,
+        )
+    };
 
     let rules_enabled = rules.iter().filter(|rule| rule.enabled).count();
     let keyword_rules = rules
@@ -354,8 +376,43 @@ fn build_s1_template_rule_plan(
     Ok(S1TemplateRulePlan {
         definition,
         summary,
+        rule_sheet_copy_range,
         formula_reference_errors,
     })
+}
+
+fn sheet_content_range(sheet: &SheetDump) -> Result<String> {
+    let mut bounds: Option<(usize, usize, usize, usize)> = None;
+    for address in sheet
+        .values
+        .keys()
+        .chain(sheet.formulas.keys())
+        .chain(sheet.comments.keys())
+    {
+        let (row, column) = parse_cell_address(address).with_context(|| {
+            format!("审核规则工作表 {} 的单元格地址无效：{address}", sheet.name)
+        })?;
+        bounds = Some(match bounds {
+            Some((min_row, min_column, max_row, max_column)) => (
+                min_row.min(row),
+                min_column.min(column),
+                max_row.max(row),
+                max_column.max(column),
+            ),
+            None => (row, column, row, column),
+        });
+    }
+    let Some((min_row, min_column, max_row, max_column)) = bounds else {
+        return Ok("A1".to_owned());
+    };
+    if min_row == max_row && min_column == max_column {
+        return Ok(format_cell_address(min_row, min_column));
+    }
+    Ok(format!(
+        "{}:{}",
+        format_cell_address(min_row, min_column),
+        format_cell_address(max_row, max_column)
+    ))
 }
 
 fn enabled_formula_reference_errors(

@@ -6,19 +6,19 @@
 
 use crate::{
     conditional_format::{
-        evaluate_xlsx_workbook_with_dump, ConditionalDiagnostic, ConditionalEvaluationReport,
-        ConditionalTrigger, EvaluationStatus,
+        evaluate_workbook_dump, evaluate_xlsx_workbook_with_dump, ConditionalDiagnostic,
+        ConditionalEvaluationReport, ConditionalTrigger, EvaluationStatus,
     },
     models::{CopyRange, Issue},
     template::normalize_template_name,
 };
 use anyhow::{bail, Result};
-use excel_reader::{CellValue, SheetDump};
+use excel_reader::{CellValue, SheetDump, WorkbookDump, WorkbookReadDiagnostics};
 use rayon::prelude::*;
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     path::{Path, PathBuf},
     time::Instant,
 };
@@ -68,6 +68,7 @@ pub struct S1ConditionalBatchFileSummary {
     pub unresolved_indicator_count: usize,
     pub comments_unverified_sheet_count: usize,
     pub read_time_ms: u128,
+    pub source_read_reused: bool,
     pub evaluation_time_ms: u128,
     pub issue_build_time_ms: u128,
     pub total_time_ms: u128,
@@ -126,7 +127,64 @@ pub fn extract_conditional_issues(
 ) -> Result<S1ConditionalAuditResult> {
     let workbook_path = workbook_path.as_ref();
     let source_file = source_file.as_ref();
-    let (mut evaluation, workbook) = evaluate_xlsx_workbook_with_dump(workbook_path, scan_areas)?;
+    let (evaluation, workbook) = evaluate_xlsx_workbook_with_dump(workbook_path, scan_areas)?;
+    build_conditional_issues(
+        workbook_path,
+        source_file,
+        &workbook,
+        evaluation,
+        structure_ranges,
+        metadata,
+    )
+}
+
+/// Evaluate and build S1 findings from a workbook that has already been read
+/// for structure preflight. This keeps the source projection scoped to one
+/// workbook and avoids reparsing it between the two independent checks.
+pub fn extract_conditional_issues_from_dump(
+    workbook_path: impl AsRef<Path>,
+    source_file: impl AsRef<Path>,
+    workbook: &WorkbookDump,
+    read_diagnostics: &WorkbookReadDiagnostics,
+    read_time_ms: u128,
+    scan_areas: &[String],
+    structure_ranges: &[CopyRange],
+    metadata: &S1ConditionalMetadata,
+) -> Result<S1ConditionalAuditResult> {
+    let workbook_path = workbook_path.as_ref();
+    let source_file = source_file.as_ref();
+    if !workbook_path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| matches!(extension.to_ascii_lowercase().as_str(), "xlsx" | "xlsm"))
+    {
+        bail!("条件格式规则求值目前只支持 OOXML 工作簿（.xlsx/.xlsm）");
+    }
+    let evaluation = evaluate_workbook_dump(
+        workbook,
+        read_diagnostics,
+        scan_areas,
+        read_time_ms,
+        read_time_ms,
+    )?;
+    build_conditional_issues(
+        workbook_path,
+        source_file,
+        workbook,
+        evaluation,
+        structure_ranges,
+        metadata,
+    )
+}
+
+fn build_conditional_issues(
+    workbook_path: &Path,
+    source_file: &Path,
+    workbook: &WorkbookDump,
+    mut evaluation: ConditionalEvaluationReport,
+    structure_ranges: &[CopyRange],
+    metadata: &S1ConditionalMetadata,
+) -> Result<S1ConditionalAuditResult> {
     let build_started = Instant::now();
     let source_stem = source_file
         .file_stem()
@@ -143,29 +201,45 @@ pub fn extract_conditional_issues(
     let mut issue_build_diagnostics = Vec::new();
     let mut unresolved_indicator_count = 0usize;
     let mut comments_unverified_sheets = BTreeSet::new();
-    for trigger in &evaluation.triggered {
-        let Some(sheet) = workbook
-            .sheets
-            .iter()
-            .find(|sheet| sheet.name == trigger.sheet)
-        else {
+    let sheets_by_name = workbook
+        .sheets
+        .iter()
+        .map(|sheet| (sheet.name.as_str(), sheet))
+        .collect::<HashMap<_, _>>();
+    let mut positions_by_sheet = HashMap::<String, Vec<(usize, i32, i32)>>::new();
+    let mut parsed_positions = vec![None; evaluation.triggered.len()];
+    for (index, trigger) in evaluation.triggered.iter().enumerate() {
+        if let Some((column, row)) = parse_cell_address(&trigger.cell) {
+            parsed_positions[index] = Some((column, row));
+            positions_by_sheet
+                .entry(trigger.sheet.clone())
+                .or_default()
+                .push((index, row, column));
+        }
+    }
+    let mut check_fields = vec![String::new(); evaluation.triggered.len()];
+    for (sheet_name, positions) in positions_by_sheet {
+        if let Some(sheet) = sheets_by_name.get(sheet_name.as_str()) {
+            resolve_indicators(sheet, structure_ranges, &positions, &mut check_fields);
+        }
+    }
+
+    for (index, trigger) in evaluation.triggered.iter().enumerate() {
+        let Some(sheet) = sheets_by_name.get(trigger.sheet.as_str()).copied() else {
             issue_build_diagnostics.push(issue_build_diagnostic(
                 trigger,
                 format!("条件格式结果引用了未知工作表：{}", trigger.sheet),
             ));
             continue;
         };
-        let (column, row) = match parse_cell_address(&trigger.cell) {
-            Some(position) => position,
-            None => {
-                issue_build_diagnostics.push(issue_build_diagnostic(
-                    trigger,
-                    format!("无法解析条件格式触发单元格：{}", trigger.cell),
-                ));
-                continue;
-            }
-        };
-        let check_field = resolve_indicator(sheet, structure_ranges, row, column);
+        if parsed_positions[index].is_none() {
+            issue_build_diagnostics.push(issue_build_diagnostic(
+                trigger,
+                format!("无法解析条件格式触发单元格：{}", trigger.cell),
+            ));
+            continue;
+        }
+        let check_field = std::mem::take(&mut check_fields[index]);
         if check_field.is_empty() {
             unresolved_indicator_count += 1;
         }
@@ -406,6 +480,7 @@ where
                     unresolved_indicator_count: report.context.unresolved_indicator_count,
                     comments_unverified_sheet_count: report.context.comments_unverified_sheet_count,
                     read_time_ms: report.evaluation.read_time_ms,
+                    source_read_reused: false,
                     evaluation_time_ms: report.evaluation.evaluation_time_ms,
                     issue_build_time_ms: report.issue_build_time_ms,
                     total_time_ms,
@@ -432,6 +507,7 @@ where
                     unresolved_indicator_count: 0,
                     comments_unverified_sheet_count: 0,
                     read_time_ms: 0,
+                    source_read_reused: false,
                     evaluation_time_ms: 0,
                     issue_build_time_ms: 0,
                     total_time_ms: 0,
@@ -473,48 +549,86 @@ fn issue_value(raw: Option<&Value>) -> Result<Value> {
     })
 }
 
+#[cfg(test)]
 fn resolve_indicator(
     sheet: &SheetDump,
     structure_ranges: &[CopyRange],
     row: i32,
     column: i32,
 ) -> String {
+    let mut resolved = vec![String::new()];
+    resolve_indicators(sheet, structure_ranges, &[(0, row, column)], &mut resolved);
+    resolved.pop().unwrap_or_default()
+}
+
+/// Resolve indicators for all triggered cells on one sheet while walking each
+/// target column once. The top-label rule is a distinct, ordered prefix of
+/// text values above each target row; recomputing that prefix independently
+/// for every issue makes large sheets quadratic in their row count.
+fn resolve_indicators(
+    sheet: &SheetDump,
+    structure_ranges: &[CopyRange],
+    targets: &[(usize, i32, i32)],
+    resolved: &mut [String],
+) {
     let bounds = structure_ranges
         .iter()
         .filter(|area| area.sheet_name == sheet.name)
         .filter_map(|area| parse_cell_range(&area.address))
         .collect::<Vec<_>>();
     let Some(min_row) = bounds.iter().map(|item| item.1).min() else {
-        return String::new();
+        return;
     };
     let Some(min_column) = bounds.iter().map(|item| item.0).min() else {
-        return String::new();
+        return;
     };
 
-    let mut left = Vec::new();
-    for current_column in min_column..column {
-        if let Some(text) = display_value(sheet, row, current_column) {
-            if !left.contains(&text) {
-                left.push(text);
+    let mut rows_by_column = BTreeMap::<i32, Vec<(usize, i32)>>::new();
+    for &(index, row, column) in targets {
+        if index < resolved.len() {
+            rows_by_column.entry(column).or_default().push((index, row));
+        }
+    }
+
+    for (column, rows) in &mut rows_by_column {
+        rows.sort_by_key(|(_, row)| *row);
+        let mut next_row = min_row;
+        let mut top = Vec::<String>::new();
+        let mut seen_top = HashSet::<String>::new();
+        for &(index, target_row) in rows.iter() {
+            while next_row < target_row {
+                if let Some(text) = display_value(sheet, next_row, *column) {
+                    if seen_top.insert(text.clone()) {
+                        top.push(text);
+                    }
+                }
+                next_row += 1;
+            }
+            resolved[index] = top.join("_");
+        }
+    }
+
+    for &(index, row, column) in targets {
+        if index >= resolved.len() {
+            continue;
+        }
+        let mut left = Vec::new();
+        for current_column in min_column..column {
+            if let Some(text) = display_value(sheet, row, current_column) {
+                if !left.contains(&text) {
+                    left.push(text);
+                }
+            }
+        }
+        if !left.is_empty() {
+            let left = left.join("_");
+            if resolved[index].is_empty() {
+                resolved[index] = left;
+            } else {
+                resolved[index].insert_str(0, &format!("{left}｜"));
             }
         }
     }
-    let mut top = Vec::new();
-    for current_row in min_row..row {
-        if let Some(text) = display_value(sheet, current_row, column) {
-            if !top.contains(&text) {
-                top.push(text);
-            }
-        }
-    }
-    let mut parts = Vec::new();
-    if !left.is_empty() {
-        parts.push(left.join("_"));
-    }
-    if !top.is_empty() {
-        parts.push(top.join("_"));
-    }
-    parts.join("｜")
 }
 
 fn display_value(sheet: &SheetDump, row: i32, column: i32) -> Option<String> {
@@ -624,10 +738,11 @@ fn parse_cell_range(value: &str) -> Option<(i32, i32, i32, i32)> {
 #[cfg(test)]
 mod tests {
     use super::{
-        extract_conditional_issues_batch, resolve_indicator, CopyRange, S1ConditionalBatchInput,
-        S1ConditionalMetadata,
+        display_value, extract_conditional_issues, extract_conditional_issues_batch,
+        extract_conditional_issues_from_dump, parse_cell_range, resolve_indicator,
+        resolve_indicators, CopyRange, S1ConditionalBatchInput, S1ConditionalMetadata,
     };
-    use excel_reader::SheetDump;
+    use excel_reader::{read_workbook_with_diagnostics, SheetDump};
     use serde_json::json;
     use std::{path::PathBuf, sync::Mutex};
 
@@ -669,6 +784,109 @@ mod tests {
             resolve_indicator(&sheet, &structure_ranges, 3, 2),
             "贷款余额｜本期"
         );
+    }
+
+    #[test]
+    fn bulk_indicator_resolution_matches_per_issue_prefix_semantics() {
+        let sheet = SheetDump {
+            name: "Data".to_owned(),
+            values: [
+                ("A1".to_owned(), json!({"type":"string","value":"Region"})),
+                ("B1".to_owned(), json!({"type":"string","value":"Category"})),
+                ("C1".to_owned(), json!({"type":"string","value":"Metric"})),
+                ("A2".to_owned(), json!({"type":"string","value":"North"})),
+                (
+                    "B2".to_owned(),
+                    json!({"type":"string","value":"ignored by merge"}),
+                ),
+                ("C2".to_owned(), json!({"type":"string","value":"Assets"})),
+                ("A3".to_owned(), json!({"type":"string","value":"North"})),
+                ("B3".to_owned(), json!({"type":"string","value":"Loan"})),
+                ("C3".to_owned(), json!({"type":"string","value":"Assets"})),
+                ("A4".to_owned(), json!({"type":"string","value":"South"})),
+                ("B4".to_owned(), json!({"type":"string","value":"Deposit"})),
+                ("C4".to_owned(), json!({"type":"string","value":"Value"})),
+            ]
+            .into_iter()
+            .collect(),
+            formulas: Default::default(),
+            formula_status: "read_by_calamine".to_owned(),
+            merges: vec!["B1:B2".to_owned()],
+            merge_status: "read_by_calamine".to_owned(),
+            comments: Default::default(),
+            comments_status: "read_by_namespace_aware_ooxml_supplement".to_owned(),
+            conditional_formatting: Vec::new(),
+            conditional_formatting_status: "read_by_namespace_aware_ooxml_supplement".to_owned(),
+            data_validations: Vec::new(),
+            data_validations_status: "read_by_namespace_aware_ooxml_supplement".to_owned(),
+        };
+        let structure_ranges = [CopyRange {
+            sheet_name: "Data".to_owned(),
+            address: "A1:C2".to_owned(),
+        }];
+        // Deliberately provide rows out of order and repeat one position. The
+        // production resolver must preserve results at the original indexes.
+        let targets = [(0, 4, 3), (1, 3, 2), (2, 2, 3), (3, 4, 2), (4, 4, 3)];
+        let mut bulk = vec![String::new(); targets.len()];
+
+        resolve_indicators(&sheet, &structure_ranges, &targets, &mut bulk);
+
+        for (index, (_, row, column)) in targets.iter().copied().enumerate() {
+            assert_eq!(
+                bulk[index],
+                resolve_indicator_reference(&sheet, &structure_ranges, row, column),
+                "bulk target index {index} at row {row}, column {column}"
+            );
+        }
+        assert_eq!(bulk[0], "South_Deposit｜Metric_Assets");
+        assert_eq!(bulk[1], "North｜Category");
+        assert_eq!(bulk[2], "North_Category｜Metric");
+        assert_eq!(bulk[3], "South｜Category_Loan");
+        assert_eq!(bulk[4], "South_Deposit｜Metric_Assets");
+    }
+
+    fn resolve_indicator_reference(
+        sheet: &SheetDump,
+        structure_ranges: &[CopyRange],
+        row: i32,
+        column: i32,
+    ) -> String {
+        let bounds = structure_ranges
+            .iter()
+            .filter(|area| area.sheet_name == sheet.name)
+            .filter_map(|area| parse_cell_range(&area.address))
+            .collect::<Vec<_>>();
+        let Some(min_row) = bounds.iter().map(|item| item.1).min() else {
+            return String::new();
+        };
+        let Some(min_column) = bounds.iter().map(|item| item.0).min() else {
+            return String::new();
+        };
+
+        let mut left = Vec::new();
+        for current_column in min_column..column {
+            if let Some(text) = display_value(sheet, row, current_column) {
+                if !left.contains(&text) {
+                    left.push(text);
+                }
+            }
+        }
+        let mut top = Vec::new();
+        for current_row in min_row..row {
+            if let Some(text) = display_value(sheet, current_row, column) {
+                if !top.contains(&text) {
+                    top.push(text);
+                }
+            }
+        }
+        let mut parts = Vec::new();
+        if !left.is_empty() {
+            parts.push(left.join("_"));
+        }
+        if !top.is_empty() {
+            parts.push(top.join("_"));
+        }
+        parts.join("｜")
     }
 
     #[test]
@@ -778,6 +996,50 @@ mod tests {
         assert!(events
             .iter()
             .any(|event| event.file_index == 2 && event.source_file == "乙银行_20260731.xlsx"));
+    }
+
+    #[test]
+    fn reused_preflight_projection_preserves_conditional_audit_results() {
+        let fixture = conditional_fixture();
+        let metadata = S1ConditionalMetadata {
+            period: "2026-07-31".to_owned(),
+            batch_id: "batch-reuse".to_owned(),
+            audit_time: "2026-10-24 12:00:00".to_owned(),
+            org_code: "9144".to_owned(),
+            org_name: "甲银行".to_owned(),
+        };
+        let direct = extract_conditional_issues(&fixture, &fixture, &[], &[], &metadata)
+            .expect("extract findings with normal read");
+        let read_report = read_workbook_with_diagnostics(&fixture).expect("read source projection");
+        let reused = extract_conditional_issues_from_dump(
+            &fixture,
+            &fixture,
+            &read_report.workbook,
+            &read_report.diagnostics,
+            0,
+            &[],
+            &[],
+            &metadata,
+        )
+        .expect("extract findings from preflight projection");
+
+        assert_eq!(direct.issues, reused.issues);
+        assert_eq!(direct.evaluation.triggered, reused.evaluation.triggered);
+        assert_eq!(direct.evaluation.diagnostics, reused.evaluation.diagnostics);
+        assert_eq!(
+            direct.context.unresolved_indicator_count,
+            reused.context.unresolved_indicator_count
+        );
+        assert_eq!(
+            direct.context.comments_unverified_sheet_count,
+            reused.context.comments_unverified_sheet_count
+        );
+        assert_eq!(reused.evaluation.read_time_ms, 0);
+        let mut direct_read_diagnostics = direct.evaluation.read_diagnostics.clone();
+        let mut reused_read_diagnostics = reused.evaluation.read_diagnostics.clone();
+        direct_read_diagnostics.elapsed_ms = 0;
+        reused_read_diagnostics.elapsed_ms = 0;
+        assert_eq!(direct_read_diagnostics, reused_read_diagnostics);
     }
 
     #[test]

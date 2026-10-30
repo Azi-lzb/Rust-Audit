@@ -32,7 +32,7 @@ use crate::{
         compare_s1_source_structure, read_s1_structure_template_with_required_sheets,
         S1StructureTemplate,
     },
-    s1_template::recommend_template_for_workbooks,
+    s1_template::{load_template_profiles, recommend_template_with_profiles},
     s1_template_inspection::{inspect_s1_template, INSPECTION_ENGINE},
     s1_template_rules::{
         assess_s1_template_health, load_s1_template_rule_plan, S1TemplateRulePlan,
@@ -1533,12 +1533,24 @@ fn recognize_s1_sources(state: &AppState) -> std::result::Result<Value, ApiError
         .map_err(|error| ApiError::internal(format!("扫描 S1 源数据目录失败：{error:#}")))?;
     let template_dir = PathBuf::from(template_dir);
     let can_match_templates = template_dir.is_dir();
+    let template_profiles = if can_match_templates {
+        Some(
+            load_template_profiles(&template_dir)
+                .map_err(|error| ApiError::internal(format!("识别 S1 模板失败：{error:#}")))?,
+        )
+    } else {
+        None
+    };
     let mut source_rows = Vec::with_capacity(files.len());
     let mut matched_templates = std::collections::BTreeSet::new();
     for path in &files {
         let suggestion = if can_match_templates {
-            recommend_template_for_workbooks(&template_dir, std::slice::from_ref(path))
-                .map_err(|error| ApiError::internal(format!("识别 S1 模板失败：{error:#}")))?
+            recommend_template_with_profiles(
+                template_profiles
+                    .as_deref()
+                    .expect("matching requires loaded template profiles"),
+                std::slice::from_ref(path),
+            )
         } else {
             crate::s1_template::TemplateSuggestion {
                 template_path: None,
@@ -1714,6 +1726,8 @@ struct S1F1PreflightRequest {
     sidecar_path: Option<PathBuf>,
     calc_engine: String,
     edit_engine: String,
+    request_preparation_us: u128,
+    source_directory_scan_us: u128,
 }
 
 struct S1F1TemplatePreflight {
@@ -1730,7 +1744,7 @@ struct S1F1TemplatePreflight {
 struct S1F1AcceptedSource {
     source: PathBuf,
     template: PathBuf,
-    preflight: S1F1TemplatePreflight,
+    preflight: Arc<S1F1TemplatePreflight>,
 }
 
 struct S1F1OutputDirectoryGuard {
@@ -1800,6 +1814,7 @@ pub fn run_s1_f1_for_acceptance(
 }
 
 fn start_s1_f1_workflow(state: &AppState, args: &[Value]) -> std::result::Result<Value, ApiError> {
+    let request_preparation_started = Instant::now();
     let values = args.get(1).and_then(Value::as_object).ok_or_else(|| {
         ApiError::new(StatusCode::BAD_REQUEST, "启动 S1-F01 需要当前 GUI 路径设置")
     })?;
@@ -1821,8 +1836,10 @@ fn start_s1_f1_workflow(state: &AppState, args: &[Value]) -> std::result::Result
             format!("解析 S1-F01 源目录失败：{error}"),
         )
     })?;
+    let source_directory_scan_started = Instant::now();
     let source_files = s1_region_summary_source_workbooks(&input_dir, true)
         .map_err(|error| ApiError::internal(format!("扫描 S1-F01 源文件失败：{error:#}")))?;
+    let source_directory_scan_us = source_directory_scan_started.elapsed().as_micros();
     if source_files.is_empty() {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
@@ -1995,6 +2012,7 @@ fn start_s1_f1_workflow(state: &AppState, args: &[Value]) -> std::result::Result
             ),
         );
     }
+    let request_preparation_us = request_preparation_started.elapsed().as_micros();
     let request = S1F1PreflightRequest {
         source_files: selected_files.clone(),
         source_directory: input_dir,
@@ -2009,6 +2027,8 @@ fn start_s1_f1_workflow(state: &AppState, args: &[Value]) -> std::result::Result
         sidecar_path,
         calc_engine: settings.calc_engine.sidecar_engine().to_owned(),
         edit_engine: settings.edit_engine.as_str().to_owned(),
+        request_preparation_us,
+        source_directory_scan_us,
     };
 
     {
@@ -2286,7 +2306,7 @@ fn run_s1_f3_worker_with_store(
         let item = S1F1AcceptedSource {
             source: manifest.files[file_index].source_file.clone(),
             template: template.clone(),
-            preflight,
+            preflight: Arc::new(preflight),
         };
         let org = organisation_from_name(&item.source);
         let metadata = S1FormulaMetadata {
@@ -2408,11 +2428,28 @@ fn run_s1_f3_worker_with_store(
 }
 
 fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest) {
+    let preflight_started = Instant::now();
     let mut files = Vec::with_capacity(request.source_files.len());
     let mut accepted = Vec::new();
+    let template_profile_started = Instant::now();
+    let template_profiles = if request.manual_template.is_none() && !request.source_files.is_empty()
+    {
+        Some(load_template_profiles(&request.template_dir))
+    } else {
+        None
+    };
+    let template_profile_load_us = template_profile_started.elapsed().as_micros();
+    let mut template_matching_us = 0u128;
+    let mut template_preflight_us = 0u128;
+    let mut source_structure_compare_us = 0u128;
+    let mut template_preflight_cache = std::collections::HashMap::<
+        PathBuf,
+        std::result::Result<Arc<S1F1TemplatePreflight>, String>,
+    >::new();
     let mut structure_passed = 0usize;
     let mut skipped = 0usize;
     for source in &request.source_files {
+        let template_match_started = Instant::now();
         let source_name = source
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
@@ -2420,15 +2457,23 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest) {
         let template_result = if let Some(template) = request.manual_template.as_ref() {
             Ok((template.clone(), "使用手动选择模板".to_owned()))
         } else {
-            recommend_template_for_workbooks(&request.template_dir, std::slice::from_ref(source))
-                .and_then(|suggestion| {
+            match template_profiles
+                .as_ref()
+                .expect("automatic matching loads profiles for non-empty source lists")
+            {
+                Ok(profiles) => {
+                    let suggestion =
+                        recommend_template_with_profiles(profiles, std::slice::from_ref(source));
                     let details = suggestion.details;
                     match suggestion.template_path.filter(|_| suggestion.matched) {
                         Some(path) => Ok((path, details)),
                         None => Err(anyhow::anyhow!(details)),
                     }
-                })
+                }
+                Err(error) => Err(anyhow::anyhow!("{error:#}")),
+            }
         };
+        template_matching_us += template_match_started.elapsed().as_micros();
         let file_report = match template_result {
             Err(error) => {
                 skipped += 1;
@@ -2453,7 +2498,14 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest) {
                         continue;
                     }
                 };
-                match s1_f1_template_preflight(&template_path, request.mapping_config.as_deref()) {
+                let template_preflight_started = Instant::now();
+                let preflight_result = cached_s1_f1_template_preflight(
+                    &mut template_preflight_cache,
+                    &template_path,
+                    request.mapping_config.as_deref(),
+                );
+                template_preflight_us += template_preflight_started.elapsed().as_micros();
+                match preflight_result {
                     Err(error) => {
                         skipped += 1;
                         json!({
@@ -2477,7 +2529,11 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest) {
                         })
                     }
                     Ok(preflight) => {
-                        match compare_s1_source_structure(source, &preflight.structure) {
+                        let structure_compare_started = Instant::now();
+                        let comparison = compare_s1_source_structure(source, &preflight.structure);
+                        source_structure_compare_us +=
+                            structure_compare_started.elapsed().as_micros();
+                        match comparison {
                             Ok(comparison) if comparison.matched => {
                                 structure_passed += 1;
                                 let scan_area_count = preflight.scan_area_count;
@@ -2541,6 +2597,30 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest) {
         };
         files.push(file_report);
     }
+    let preflight_timings = json!({
+        "unit": "microseconds",
+        "templateProfileLoadUs": template_profile_load_us,
+        "templateMatchingUs": template_matching_us,
+        "templatePreflightUs": template_preflight_us,
+        "sourceStructureCompareUs": source_structure_compare_us,
+        "unclassifiedPreflightUs": preflight_started.elapsed().as_micros()
+            .saturating_sub(template_profile_load_us)
+            .saturating_sub(template_matching_us)
+            .saturating_sub(template_preflight_us)
+            .saturating_sub(source_structure_compare_us),
+        "totalUs": preflight_started.elapsed().as_micros(),
+        "sourceFiles": request.source_files.len(),
+        "structurePassed": structure_passed,
+        "skipped": skipped
+    });
+    let request_timings = json!({
+        "unit": "microseconds",
+        "sourceDirectoryScanUs": request.source_directory_scan_us,
+        "requestPreparationOtherUs": request
+            .request_preparation_us
+            .saturating_sub(request.source_directory_scan_us),
+        "requestPreparationTotalUs": request.request_preparation_us
+    });
 
     if structure_passed == 0 {
         let mut ui = state.lock();
@@ -2557,7 +2637,8 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest) {
             "resultPath": Value::Null,
             "externalData": request.external_data,
             "recalculationSidecarFound": request.sidecar_path.is_some(),
-            "recalculationSidecar": request.sidecar_path
+            "recalculationSidecar": request.sidecar_path,
+            "performanceTimings": {"request": request_timings, "preflight": preflight_timings}
         });
         ui.value["status"] = json!(format!(
             "S1-F01 预检结束：结构通过 0 个、跳过 {} 个；未生成审核结果",
@@ -2592,6 +2673,11 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest) {
 
     match execute_s1_f1_workflow(&request, &accepted) {
         Ok(output) => {
+            let performance_timings = json!({
+                "request": request_timings,
+                "preflight": preflight_timings,
+                "workflow": output.performance_timings
+            });
             for file in &mut files {
                 if file["status"] == "structure_passed" {
                     let source_path = file["sourcePath"].as_str().unwrap_or_default();
@@ -2639,7 +2725,8 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest) {
                 "manualRecalcInstructions": "自动公式重算不可用或失败，已保留待计算的审核副本。请使用 Microsoft Excel 打开审核副本：1. 按 Ctrl+Alt+F9 强制重新计算；2. 等待 Excel 完成计算；3. 按 Ctrl+S 保存；4. 关闭工作簿；5. 返回 Rust-Audit，使用 S1-F3『从审核副本汇总校验核查表』继续审核。如果使用 WPS 或 LibreOffice，请采用对应软件支持的重新计算方式并保存。请勿修改原始报表文件。",
                 "externalData": request.external_data,
                 "recalculationSidecarFound": request.sidecar_path.is_some(),
-                "recalculationSidecar": request.sidecar_path
+                "recalculationSidecar": request.sidecar_path,
+                "performanceTimings": performance_timings
             });
             for file in &files {
                 let name = file["sourceFile"].as_str().unwrap_or("未知文件");
@@ -2742,6 +2829,10 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest) {
                 "externalData": request.external_data,
                 "recalculationSidecarFound": request.sidecar_path.is_some(),
                 "recalculationSidecar": request.sidecar_path,
+                "performanceTimings": {
+                    "request": request_timings,
+                    "preflight": preflight_timings
+                },
                 "error": reason
             });
             for file in &files {
@@ -2792,6 +2883,7 @@ struct S1F1WorkflowOutput {
     partial_files: usize,
     failed_files: usize,
     result_error: Option<String>,
+    performance_timings: Value,
 }
 
 struct S1ExtractedAuditCopy {
@@ -2800,6 +2892,8 @@ struct S1ExtractedAuditCopy {
     diagnostics: Vec<Value>,
     partial: bool,
     reason: Option<String>,
+    formula_extraction_elapsed_us: u128,
+    conditional_format_extraction_elapsed_us: u128,
 }
 
 fn extract_s1_audit_copy(
@@ -2841,6 +2935,7 @@ where
         &S1ConditionalMetadata,
     ) -> Result<S1ConditionalAuditResult>,
 {
+    let formula_extraction_started = Instant::now();
     let formula_result = extract_s1_formula_issues(
         &item.preflight.rule_plan.definition,
         audit_copy,
@@ -2855,6 +2950,7 @@ where
     let validation_report = validation_plan
         .scan(audit_copy)
         .with_context(|| format!("扫描校验区域结果失败：{}", source_file.display()))?;
+    let formula_extraction_elapsed_us = formula_extraction_started.elapsed().as_micros();
     let mut formula_issues = formula_result.issues;
     let validation_issues =
         issues_from_validation_formula_scan(&validation_report, source_file, audit_copy, metadata);
@@ -2868,6 +2964,7 @@ where
         }
     }
 
+    let conditional_extraction_started = Instant::now();
     let conditional_result = conditional_extractor(
         audit_copy,
         source_file,
@@ -2881,6 +2978,8 @@ where
             org_name: metadata.org_name.clone(),
         },
     );
+    let conditional_format_extraction_elapsed_us =
+        conditional_extraction_started.elapsed().as_micros();
 
     let (
         conditional_issues,
@@ -2979,6 +3078,8 @@ where
         diagnostics,
         partial,
         reason,
+        formula_extraction_elapsed_us,
+        conditional_format_extraction_elapsed_us,
     })
 }
 
@@ -3186,12 +3287,15 @@ fn execute_s1_f1_workflow(
     request: &S1F1PreflightRequest,
     accepted: &[S1F1AcceptedSource],
 ) -> Result<S1F1WorkflowOutput> {
+    let adapter_started = Instant::now();
+    let session_initialization_started = Instant::now();
     let mut recalculation_session = if cfg!(windows) {
         Some(S1RecalculationSession::new_native(&request.calc_engine)?)
     } else {
         None
     };
-    execute_s1_f1_workflow_with_dependencies(
+    let session_initialization_us = session_initialization_started.elapsed().as_micros();
+    let mut output = execute_s1_f1_workflow_with_dependencies(
         request,
         accepted,
         None,
@@ -3220,7 +3324,17 @@ fn execute_s1_f1_workflow(
                 )
             }
         },
-    )
+    )?;
+    let session_shutdown_started = Instant::now();
+    drop(recalculation_session);
+    let session_shutdown_us = session_shutdown_started.elapsed().as_micros();
+    output.performance_timings["recalculationSessionInitializationUs"] =
+        json!(session_initialization_us);
+    output.performance_timings["recalculationSessionShutdownUs"] =
+        json!(session_shutdown_us);
+    output.performance_timings["workflowAdapterTotalUs"] =
+        json!(adapter_started.elapsed().as_micros());
+    Ok(output)
 }
 
 fn execute_s1_f1_workflow_with_dependencies<F>(
@@ -3237,6 +3351,7 @@ where
         &ExcelModifier,
     ) -> Result<S1FormulaCopyOutcome>,
 {
+    let workflow_started = Instant::now();
     anyhow::ensure!(
         !accepted.is_empty(),
         "S1-F01 没有通过模板及表结构预检的源文件"
@@ -3245,6 +3360,7 @@ where
         .iter()
         .map(|item| item.source.clone())
         .collect::<Vec<_>>();
+    let period_detection_started = Instant::now();
     let detection = detect_period_from_workbooks(&request.source_directory, &sources);
     anyhow::ensure!(
         !detection.conflict && !detection.period.trim().is_empty(),
@@ -3252,6 +3368,8 @@ where
         detection.details
     );
     let period = detection.period;
+    let period_detection_us = period_detection_started.elapsed().as_micros();
+    let workflow_setup_started = Instant::now();
     fs::create_dir_all(&request.output_directory).with_context(|| {
         format!(
             "创建 S1-F01 输出目录 {}",
@@ -3268,11 +3386,9 @@ where
     // The production route registers the qualified backend for the GUI's
     // 高级设置 edit-engine selection (Umya by default); on unverified
     // platforms it stays empty and the router fails closed before any edit.
-    let (modifier, capability) = crate::excel_route::production_modifier_with_edit_engine(
-        "S1-F01",
-        &request.edit_engine,
-    )
-    .context("初始化 S1-F01 Excel-Core 路由")?;
+    let (modifier, capability) =
+        crate::excel_route::production_modifier_with_edit_engine("S1-F01", &request.edit_engine)
+            .context("初始化 S1-F01 Excel-Core 路由")?;
     anyhow::ensure!(
         capability.is_some(),
         "S1-F01 当前平台没有已登记的 Excel-Core Passed 后端，编辑批次保持失败关闭"
@@ -3338,6 +3454,16 @@ where
     let mut audit_copies = Vec::with_capacity(accepted.len());
     let mut recalculation_engines = Vec::new();
     let mut file_results = Vec::with_capacity(accepted.len());
+    let workflow_setup_us = workflow_setup_started.elapsed().as_micros();
+    let mut copy_executor_us = 0u128;
+    let mut excel_core_edit_us = 0u128;
+    let mut copy_preparation_other_us = 0u128;
+    let mut external_recalculation_us = 0u128;
+    let mut issue_extraction_us = 0u128;
+    let mut formula_issue_extraction_us = 0u128;
+    let mut conditional_format_extraction_us = 0u128;
+    let mut issue_extraction_other_us = 0u128;
+    let mut file_timings = Vec::with_capacity(accepted.len());
 
     for item in accepted {
         let file_id = stable_file_id(&item.source);
@@ -3350,7 +3476,10 @@ where
             .audit_copy
             .clone()
             .context("恢复清单缺少审核副本路径")?;
+        let copy_started = Instant::now();
         let outcome = copy_executor(item, request, &audit_copy, &modifier);
+        let file_copy_executor_us = copy_started.elapsed().as_micros();
+        copy_executor_us += file_copy_executor_us;
         let org = organisation_from_name(&item.source);
         let metadata = S1FormulaMetadata {
             period: period.clone(),
@@ -3361,6 +3490,19 @@ where
         };
         match outcome {
             Ok(S1FormulaCopyOutcome::WaitingManualRecalc(copy)) => {
+                let editor_elapsed_us = copy.edit.elapsed_ms.saturating_mul(1_000);
+                excel_core_edit_us += editor_elapsed_us;
+                let copy_other_us = file_copy_executor_us.saturating_sub(editor_elapsed_us);
+                copy_preparation_other_us += copy_other_us;
+                file_timings.push(json!({
+                    "sourceFile": item.source,
+                    "copyAndRecalculationPreparationUs": file_copy_executor_us,
+                    "excelCoreEditAndValidationUs": editor_elapsed_us,
+                    "copyPreparationAndValidationOtherUs": copy_other_us,
+                    "externalRecalculationUs": Value::Null,
+                    "formulaIssueExtractionUs": Value::Null,
+                    "conditionalFormatExtractionUs": Value::Null
+                }));
                 let (fingerprint, normalized_fingerprint, semantic_fingerprint, formula_count) =
                     match workbook_recovery_fingerprints(&copy.audit_copy) {
                         Ok(value) if value.3 > 0 => value,
@@ -3421,6 +3563,15 @@ where
                 store.save(&mut manifest)?;
             }
             Ok(S1FormulaCopyOutcome::Recalculated(execution)) => {
+                let editor_elapsed_us = execution.edit.elapsed_ms.saturating_mul(1_000);
+                let recalculation_elapsed_us =
+                    execution.recalculation.elapsed_ms.saturating_mul(1_000);
+                excel_core_edit_us += editor_elapsed_us;
+                external_recalculation_us += recalculation_elapsed_us;
+                let copy_other_us = file_copy_executor_us
+                    .saturating_sub(editor_elapsed_us)
+                    .saturating_sub(recalculation_elapsed_us);
+                copy_preparation_other_us += copy_other_us;
                 let audit_workbook = execution.recalculation.output.clone();
                 let (fingerprint, normalized_fingerprint, semantic_fingerprint, formula_count) =
                     match workbook_recovery_fingerprints(&audit_workbook) {
@@ -3464,8 +3615,36 @@ where
                     Some(semantic_fingerprint);
                 manifest.files[file_index].recalculation_engine =
                     Some(execution.recalculation.engine.clone());
+                let extraction_started = Instant::now();
                 let extracted =
                     extract_s1_audit_copy(item, &item.source, &audit_workbook, &metadata);
+                let file_issue_extraction_us = extraction_started.elapsed().as_micros();
+                issue_extraction_us += file_issue_extraction_us;
+                let (file_formula_extraction_us, file_conditional_extraction_us) =
+                    extracted.as_ref().map_or((0, 0), |extracted| {
+                        (
+                            extracted.formula_extraction_elapsed_us,
+                            extracted.conditional_format_extraction_elapsed_us,
+                        )
+                    });
+                formula_issue_extraction_us += file_formula_extraction_us;
+                conditional_format_extraction_us += file_conditional_extraction_us;
+                issue_extraction_other_us += file_issue_extraction_us
+                    .saturating_sub(file_formula_extraction_us)
+                    .saturating_sub(file_conditional_extraction_us);
+                file_timings.push(json!({
+                    "sourceFile": item.source,
+                    "copyAndRecalculationPreparationUs": file_copy_executor_us,
+                    "excelCoreEditAndValidationUs": editor_elapsed_us,
+                    "copyPreparationAndValidationOtherUs": copy_other_us,
+                    "externalRecalculationUs": recalculation_elapsed_us,
+                    "issueExtractionTotalUs": file_issue_extraction_us,
+                    "formulaIssueExtractionUs": file_formula_extraction_us,
+                    "conditionalFormatExtractionUs": file_conditional_extraction_us,
+                    "issueExtractionOtherUs": file_issue_extraction_us
+                        .saturating_sub(file_formula_extraction_us)
+                        .saturating_sub(file_conditional_extraction_us)
+                }));
                 match extracted {
                     Ok(extracted) => {
                         manifest.files[file_index].formula_issues = extracted.formula_issues;
@@ -3509,6 +3688,17 @@ where
                 store.save(&mut manifest)?;
             }
             Err(error) => {
+                copy_preparation_other_us += file_copy_executor_us;
+                file_timings.push(json!({
+                    "sourceFile": item.source,
+                    "copyAndRecalculationPreparationUs": file_copy_executor_us,
+                    "excelCoreEditAndValidationUs": Value::Null,
+                    "copyPreparationAndValidationOtherUs": file_copy_executor_us,
+                    "externalRecalculationUs": Value::Null,
+                    "issueExtractionTotalUs": 0,
+                    "formulaIssueExtractionUs": 0,
+                    "conditionalFormatExtractionUs": 0
+                }));
                 manifest.files[file_index].status = S1RecoveryStatus::Failed;
                 manifest.files[file_index].reason =
                     Some(format!("公式复制或重算准备失败：{error:#}"));
@@ -3546,6 +3736,7 @@ where
                     | S1RecoveryStatus::Partial
             )
     });
+    let result_merge_write_started = Instant::now();
     if has_extractable_files {
         match write_s1_manifest_result(&manifest, &request.planned_result_path) {
             Ok(summary) => {
@@ -3579,6 +3770,7 @@ where
             }
         }
     }
+    let result_merge_history_write_us = result_merge_write_started.elapsed().as_micros();
     let waiting_manual_recalc = manifest
         .files
         .iter()
@@ -3610,6 +3802,30 @@ where
             "partial": file.audit_partial
         }));
     }
+    let workflow_total_us = workflow_started.elapsed().as_micros();
+    let workflow_other_and_recovery_persistence_us = workflow_total_us
+        .saturating_sub(period_detection_us)
+        .saturating_sub(workflow_setup_us)
+        .saturating_sub(copy_executor_us)
+        .saturating_sub(issue_extraction_us)
+        .saturating_sub(result_merge_history_write_us);
+    let performance_timings = json!({
+        "unit": "microseconds",
+        "periodDetectionUs": period_detection_us,
+        "workflowSetupAndInitialManifestUs": workflow_setup_us,
+        "copyAndRecalculationPreparationTotalUs": copy_executor_us,
+        "excelCoreEditAndOutputValidationUs": excel_core_edit_us,
+        "copyPreparationAndValidationOtherUs": copy_preparation_other_us,
+        "externalExcelRecalculationUs": external_recalculation_us,
+        "issueExtractionTotalUs": issue_extraction_us,
+        "formulaAndValidationIssueExtractionUs": formula_issue_extraction_us,
+        "conditionalFormatIssueExtractionUs": conditional_format_extraction_us,
+        "issueExtractionOtherUs": issue_extraction_other_us,
+        "resultMergeHistoryAndWorkbookWriteUs": result_merge_history_write_us,
+        "otherWorkflowAndRecoveryPersistenceUs": workflow_other_and_recovery_persistence_us,
+        "workflowTotalUs": workflow_total_us,
+        "perFile": file_timings
+    });
     Ok(S1F1WorkflowOutput {
         period,
         result_path,
@@ -3625,6 +3841,7 @@ where
         partial_files,
         failed_files,
         result_error,
+        performance_timings,
     })
 }
 
@@ -3682,6 +3899,25 @@ fn s1_f1_template_preflight(
         health_passed: health.passed,
         health_errors,
     })
+}
+
+fn cached_s1_f1_template_preflight(
+    cache: &mut std::collections::HashMap<
+        PathBuf,
+        std::result::Result<Arc<S1F1TemplatePreflight>, String>,
+    >,
+    template_path: &Path,
+    mapping_config: Option<&Path>,
+) -> Result<Arc<S1F1TemplatePreflight>> {
+    let cached = cache.entry(template_path.to_path_buf()).or_insert_with(|| {
+        s1_f1_template_preflight(template_path, mapping_config)
+            .map(Arc::new)
+            .map_err(|error| format!("{error:#}"))
+    });
+    match cached {
+        Ok(preflight) => Ok(Arc::clone(preflight)),
+        Err(message) => Err(anyhow::anyhow!(message.clone())),
+    }
 }
 
 fn s1_f1_scan_area_sheet(specification: &str) -> Option<String> {
@@ -3843,14 +4079,16 @@ fn start_dag_flow(state: &AppState, args: &[Value]) -> std::result::Result<Value
                         "请先选择匹配模板，或选择模板目录后自动识别",
                     )
                 })?;
+            let template_profiles = load_template_profiles(&template_dir).map_err(|error| {
+                ApiError::internal(format!("自动识别 S1-F02 模板失败：{error:#}"))
+            })?;
             let mut matched = std::collections::BTreeSet::new();
             let mut unmatched = Vec::new();
             for source in &selected_files {
-                let suggestion =
-                    recommend_template_for_workbooks(&template_dir, std::slice::from_ref(source))
-                        .map_err(|error| {
-                        ApiError::internal(format!("自动识别 S1-F02 模板失败：{error:#}"))
-                    })?;
+                let suggestion = recommend_template_with_profiles(
+                    &template_profiles,
+                    std::slice::from_ref(source),
+                );
                 if suggestion.matched {
                     if let Some(path) = suggestion.template_path {
                         matched.insert(path);
@@ -6605,9 +6843,10 @@ impl IntoResponse for ApiError {
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_s1_f3_recovery_state, browse_dir, dispatch_api,
+        apply_s1_f3_recovery_state, browse_dir, cached_s1_f1_template_preflight, dispatch_api,
         execute_s1_f1_workflow_with_dependencies, extract_s1_audit_copy_with_conditional_extractor,
         progress_value, render_index, run_s1_f3_worker_with_store, s1_f1_template_preflight,
+        run_s1_f1_for_acceptance,
         write_s1_recovery_manifest_result, AppState, S1F1AcceptedSource, S1F1OutputDirectoryGuard,
         S1F1PreflightRequest,
     };
@@ -6785,6 +7024,76 @@ mod tests {
         workbook.define_name("条件格式区域", "='检查表'!$A$1")?;
         workbook.define_name("表结构区域", "='检查表'!$B$1")?;
         workbook.save(path)?;
+        Ok(())
+    }
+
+    #[test]
+    fn s1_f1_template_preflight_cache_reuses_one_immutable_plan_per_path() -> anyhow::Result<()> {
+        let directory = S1F3RealProbeDirectory::create()?;
+        let template = directory.0.join("template.xlsx");
+        write_s1_f3_recovery_fixture(&template, None)?;
+        let mut cache = std::collections::HashMap::new();
+
+        let first = cached_s1_f1_template_preflight(&mut cache, &template, None)?;
+        let second = cached_s1_f1_template_preflight(&mut cache, &template, None)?;
+
+        assert!(std::sync::Arc::ptr_eq(&first, &second));
+        assert_eq!(cache.len(), 1);
+        assert_eq!(first.scan_area_count, second.scan_area_count);
+        assert_eq!(first.structure_area_count, second.structure_area_count);
+        Ok(())
+    }
+
+    #[test]
+    #[ignore = "requires Windows Excel COM for a complete synthetic S1-F1 GUI batch"]
+    #[cfg(windows)]
+    fn s1_f1_gui_batch_reuses_template_preflight_and_preserves_legal_recalc_state(
+    ) -> anyhow::Result<()> {
+        let directory = S1F3RealProbeDirectory::create()?;
+        let input = directory.0.join("input");
+        let templates = directory.0.join("templates");
+        let output = directory.0.join("output");
+        fs::create_dir_all(&input)?;
+        fs::create_dir_all(&templates)?;
+        let template = templates.join("template.xlsx");
+        write_s1_f3_recovery_fixture(&template, None)?;
+        let mut source_hashes = Vec::new();
+        for index in 1..=3 {
+            let source = input.join(format!("机构甲_2026-07_{index}.xlsx"));
+            write_s1_f3_recovery_fixture(&source, None)?;
+            source_hashes.push((source.clone(), file_sha256(&source)?));
+        }
+        let template_hash = file_sha256(&template)?;
+
+        let started = std::time::Instant::now();
+        let report = run_s1_f1_for_acceptance(&input, &templates, None, None, &output, None)?;
+        eprintln!(
+            "synthetic S1-F1 shared-template GUI batch: files=3 elapsed_ms={}",
+            started.elapsed().as_millis()
+        );
+
+        assert_eq!(report["preflight"]["filesTotal"], 3);
+        assert_eq!(report["preflight"]["structurePassed"], 3);
+        match report["status"].as_str() {
+            Some("completed") => {
+                assert_eq!(report["preflight"]["reviewedFiles"], 3);
+                assert!(PathBuf::from(report["result_path"].as_str().unwrap()).is_file());
+            }
+            Some("partial") => {
+                assert_eq!(report["preflight"]["waitingManualRecalc"], 3);
+                assert_eq!(report["result_path"], "");
+                assert!(report["logs"].as_array().unwrap().iter().any(|entry| {
+                    entry["text"]
+                        .as_str()
+                        .is_some_and(|text| text.contains("自动公式重算不可用或失败"))
+                }));
+            }
+            status => panic!("unexpected S1-F1 acceptance status {status:?}: {report}"),
+        }
+        assert_eq!(file_sha256(&template)?, template_hash);
+        for (source, before) in source_hashes {
+            assert_eq!(file_sha256(&source)?, before);
+        }
         Ok(())
     }
 
@@ -7012,7 +7321,7 @@ mod tests {
         let item = S1F1AcceptedSource {
             source: source.clone(),
             template,
-            preflight,
+            preflight: std::sync::Arc::new(preflight),
         };
         let extracted = extract_s1_audit_copy_with_conditional_extractor(
             &item,
@@ -7068,12 +7377,12 @@ mod tests {
             S1F1AcceptedSource {
                 source: calculated_source.clone(),
                 template: template.clone(),
-                preflight: s1_f1_template_preflight(&template, None)?,
+                preflight: std::sync::Arc::new(s1_f1_template_preflight(&template, None)?),
             },
             S1F1AcceptedSource {
                 source: pending_source.clone(),
                 template: template.clone(),
-                preflight: s1_f1_template_preflight(&template, None)?,
+                preflight: std::sync::Arc::new(s1_f1_template_preflight(&template, None)?),
             },
         ];
         let request = S1F1PreflightRequest {
@@ -7090,6 +7399,8 @@ mod tests {
             sidecar_path: None,
             calc_engine: "auto".to_owned(),
             edit_engine: "umya".to_owned(),
+            request_preparation_us: 0,
+            source_directory_scan_us: 0,
         };
         let store = S1RecoveryStore::new(state_dir);
         let output = execute_s1_f1_workflow_with_dependencies(
@@ -7145,6 +7456,19 @@ mod tests {
         assert_eq!(output.partial_files, 0);
         assert_eq!(output.failed_files, 0);
         assert_eq!(output.formula_issue_count, 1);
+        assert!(output.performance_timings["workflowTotalUs"].is_number());
+        assert!(output.performance_timings["copyAndRecalculationPreparationTotalUs"].is_number());
+        assert!(output.performance_timings["externalExcelRecalculationUs"].is_number());
+        assert_eq!(
+            output.performance_timings["perFile"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        assert!(
+            output.performance_timings["perFile"][0]["excelCoreEditAndValidationUs"].is_number()
+        );
         let result_path = output.result_path.context("混合批次未生成成功文件结果")?;
         assert!(result_path.is_file());
 

@@ -1,0 +1,171 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-10-30T12:26:09.306633+00:00",
+  "git_revision": "7517a9c",
+  "feature": "S3-F1",
+  "measurement": "process-tree peak working set only; no elapsed-time comparison performed",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python_version": "3.12.10",
+  "python_source": "C:\\Users\\AZI\\Desktop\\VibeCode\\3.open-data-audit",
+  "rust_binary": "F:\\RustBuild\\audit\\release\\open-data-audit.exe",
+  "rust_binary_sha256": "a2ac5bc3fd16223a3c18976f9ed6042e941af6df17fc2fbd84ad5fe54b82f370",
+  "fixture": {
+    "kind": "synthetic 10k two-period CSV from perf_compare_20261030.py",
+    "current_rows": 10000,
+    "previous_rows": 10000,
+    "csv_columns": 14,
+    "common_config_sheets": 4,
+    "feature_config_sheets": 5,
+    "input_sizes_bytes": {
+      "current.csv": 1199062,
+      "previous.csv": 1199062,
+      "3.0配置.xlsx": 6678,
+      "3.1配置.xlsx": 8157
+    },
+    "input_sha256_before": {
+      "current.csv": "4aa604da14605da993bf12ff442044f852e1bdc9b63bb267fc3acbc42548dc50",
+      "previous.csv": "4aa604da14605da993bf12ff442044f852e1bdc9b63bb267fc3acbc42548dc50",
+      "3.0配置.xlsx": "b1c7f475893f2b75c4001f695092e224f1acaeee08b1422c7f08e414cfab936a",
+      "3.1配置.xlsx": "b0cedec044a24980f676a44175444aee327354b7f46d46b55d2557d6038c29b7"
+    },
+    "input_sha256_after": {
+      "current.csv": "4aa604da14605da993bf12ff442044f852e1bdc9b63bb267fc3acbc42548dc50",
+      "previous.csv": "4aa604da14605da993bf12ff442044f852e1bdc9b63bb267fc3acbc42548dc50",
+      "3.0配置.xlsx": "b1c7f475893f2b75c4001f695092e224f1acaeee08b1422c7f08e414cfab936a",
+      "3.1配置.xlsx": "b0cedec044a24980f676a44175444aee327354b7f46d46b55d2557d6038c29b7"
+    }
+  },
+  "method": {
+    "rounds": 3,
+    "round_order": "alternates Python-first and Rust-first",
+    "sample_interval_ms": 5,
+    "peak_metric": "maximum sampled sum of RSS across worker process and descendants",
+    "timing_results_not_recorded": true,
+    "measurement_limit": "sampling can miss sub-interval peaks; includes worker/CLI startup but excludes input generation and output comparison"
+  },
+  "summary": {
+    "python_peak_working_set_median_mb": 133.477,
+    "python_peak_working_set_max_mb": 133.672,
+    "rust_peak_working_set_median_mb": 119.035,
+    "rust_peak_working_set_max_mb": 119.098,
+    "python_to_rust_peak_median_ratio": 1.121,
+    "all_round_output_comparisons_passed": true,
+    "all_input_hashes_unchanged": true
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "order": "Python-first",
+      "python_process_tree": {
+        "return_code": 0,
+        "peak_sampled_process_tree_working_set_bytes": 139456512,
+        "peak_sampled_process_tree_working_set_mb": 132.996,
+        "peak_live_process_count": 2,
+        "sample_interval_ms": 5.0,
+        "memory_samples": 138
+      },
+      "rust_process_tree": {
+        "return_code": 0,
+        "peak_sampled_process_tree_working_set_bytes": 124882944,
+        "peak_sampled_process_tree_working_set_mb": 119.098,
+        "peak_live_process_count": 1,
+        "sample_interval_ms": 5.0,
+        "memory_samples": 66
+      },
+      "output_comparison": {
+        "passed": true,
+        "sheet_names_equal": true,
+        "dimensions_equal": true,
+        "python_sheet_names": [
+          "2026年6月对比结果"
+        ],
+        "cell_differences_outside_1e_10_tolerance": 0,
+        "rounded_10_decimal_differences": 0,
+        "max_numeric_delta": 2.117582368135751e-22,
+        "formula_counts": {
+          "python": 0,
+          "rust": 0
+        },
+        "compared_cells": 220022
+      },
+      "python_output_bytes": 653945,
+      "rust_output_bytes": 656648
+    },
+    {
+      "round": 2,
+      "order": "Rust-first",
+      "python_process_tree": {
+        "return_code": 0,
+        "peak_sampled_process_tree_working_set_bytes": 139960320,
+        "peak_sampled_process_tree_working_set_mb": 133.477,
+        "peak_live_process_count": 2,
+        "sample_interval_ms": 5.0,
+        "memory_samples": 141
+      },
+      "rust_process_tree": {
+        "return_code": 0,
+        "peak_sampled_process_tree_working_set_bytes": 124813312,
+        "peak_sampled_process_tree_working_set_mb": 119.031,
+        "peak_live_process_count": 1,
+        "sample_interval_ms": 5.0,
+        "memory_samples": 62
+      },
+      "output_comparison": {
+        "passed": true,
+        "sheet_names_equal": true,
+        "dimensions_equal": true,
+        "python_sheet_names": [
+          "2026年6月对比结果"
+        ],
+        "cell_differences_outside_1e_10_tolerance": 0,
+        "rounded_10_decimal_differences": 0,
+        "max_numeric_delta": 2.117582368135751e-22,
+        "formula_counts": {
+          "python": 0,
+          "rust": 0
+        },
+        "compared_cells": 220022
+      },
+      "python_output_bytes": 653945,
+      "rust_output_bytes": 656647
+    },
+    {
+      "round": 3,
+      "order": "Python-first",
+      "python_process_tree": {
+        "return_code": 0,
+        "peak_sampled_process_tree_working_set_bytes": 140165120,
+        "peak_sampled_process_tree_working_set_mb": 133.672,
+        "peak_live_process_count": 2,
+        "sample_interval_ms": 5.0,
+        "memory_samples": 139
+      },
+      "rust_process_tree": {
+        "return_code": 0,
+        "peak_sampled_process_tree_working_set_bytes": 124817408,
+        "peak_sampled_process_tree_working_set_mb": 119.035,
+        "peak_live_process_count": 1,
+        "sample_interval_ms": 5.0,
+        "memory_samples": 68
+      },
+      "output_comparison": {
+        "passed": true,
+        "sheet_names_equal": true,
+        "dimensions_equal": true,
+        "python_sheet_names": [
+          "2026年6月对比结果"
+        ],
+        "cell_differences_outside_1e_10_tolerance": 0,
+        "rounded_10_decimal_differences": 0,
+        "max_numeric_delta": 2.117582368135751e-22,
+        "formula_counts": {
+          "python": 0,
+          "rust": 0
+        },
+        "compared_cells": 220022
+      },
+      "python_output_bytes": 653945,
+      "rust_output_bytes": 656647
+    }
+  ]
+}

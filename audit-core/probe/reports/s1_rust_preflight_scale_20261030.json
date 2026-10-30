@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-30T19:24:43+08:00",
+  "feature": "S1-F1",
+  "scenario": "synthetic-rust-only-preflight-conditional-scale",
+  "scope": "Rust-only; synthetic input generated from the existing S1 structure/conditional profile fixture. Cross-engine parity is not claimed at this scale.",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "rows": 20000,
+  "input_profile": {
+    "sheets": 1,
+    "rows_including_header": 20001,
+    "columns": 8,
+    "nonempty_cells": 160008,
+    "conditional_rules": 4,
+    "scanned_cells_expected": 80000,
+    "source_bytes": 716663,
+    "template_bytes": 716663
+  },
+  "binary": "F:\\RustBuild\\audit\\release\\open-data-audit.exe",
+  "binary_sha256": "6fdff754c20b2da32946a9b957772c0fcbb4a356f4a2e451be745876140768ff",
+  "input_sha256_before": {
+    "source": "6e1ff7752e5b0439832a2dc764954cc0e60ff2922f234ccd1fa26126b42279b6",
+    "template": "6e1ff7752e5b0439832a2dc764954cc0e60ff2922f234ccd1fa26126b42279b6"
+  },
+  "input_sha256_after": {
+    "source": "6e1ff7752e5b0439832a2dc764954cc0e60ff2922f234ccd1fa26126b42279b6",
+    "template": "6e1ff7752e5b0439832a2dc764954cc0e60ff2922f234ccd1fa26126b42279b6"
+  },
+  "inputs_unchanged": true,
+  "warmup": 1,
+  "rounds": [
+    {
+      "round": 1,
+      "preflight": {
+        "matched": true,
+        "matched_labels": 8,
+        "checked_labels": 8,
+        "source_read_ms": 544,
+        "elapsed_ms": 544,
+        "summary_elapsed_ms": 1227,
+        "template_read_ms": 528
+      },
+      "conditional": {
+        "elapsed_ms": 869,
+        "command_elapsed_ms": 2219,
+        "combined_command_elapsed_ms": 2219,
+        "source_read_ms": 0,
+        "shared_source_read_ms": 544,
+        "evaluation_ms": 523,
+        "issue_build_ms": 346,
+        "issues": 43051
+      },
+      "cli_wall_ms": 3254.905,
+      "peak_working_set_mb": 385.652,
+      "issue_count": 43051,
+      "issue_digest_sha256": "2b129516b7319d1b91c48310931ab1acdc966102daa642c7095b78d6b8b73180"
+    },
+    {
+      "round": 2,
+      "preflight": {
+        "matched": true,
+        "matched_labels": 8,
+        "checked_labels": 8,
+        "source_read_ms": 479,
+        "elapsed_ms": 479,
+        "summary_elapsed_ms": 1087,
+        "template_read_ms": 487
+      },
+      "conditional": {
+        "elapsed_ms": 808,
+        "command_elapsed_ms": 2021,
+        "combined_command_elapsed_ms": 2021,
+        "source_read_ms": 0,
+        "shared_source_read_ms": 479,
+        "evaluation_ms": 495,
+        "issue_build_ms": 313,
+        "issues": 43051
+      },
+      "cli_wall_ms": 3040.885,
+      "peak_working_set_mb": 385.855,
+      "issue_count": 43051,
+      "issue_digest_sha256": "2b129516b7319d1b91c48310931ab1acdc966102daa642c7095b78d6b8b73180"
+    },
+    {
+      "round": 3,
+      "preflight": {
+        "matched": true,
+        "matched_labels": 8,
+        "checked_labels": 8,
+        "source_read_ms": 490,
+        "elapsed_ms": 490,
+        "summary_elapsed_ms": 1165,
+        "template_read_ms": 542
+      },
+      "conditional": {
+        "elapsed_ms": 871,
+        "command_elapsed_ms": 2165,
+        "combined_command_elapsed_ms": 2165,
+        "source_read_ms": 0,
+        "shared_source_read_ms": 490,
+        "evaluation_ms": 557,
+        "issue_build_ms": 314,
+        "issues": 43051
+      },
+      "cli_wall_ms": 3263.016,
+      "peak_working_set_mb": 385.672,
+      "issue_count": 43051,
+      "issue_digest_sha256": "2b129516b7319d1b91c48310931ab1acdc966102daa642c7095b78d6b8b73180"
+    }
+  ],
+  "medians": {
+    "source_read_ms": 490.0,
+    "template_preflight_read_ms": 528.0,
+    "preflight_elapsed_ms": 490.0,
+    "conditional_evaluation_ms": 523.0,
+    "conditional_issue_build_ms": 314.0,
+    "conditional_command_ms": 2165.0,
+    "cli_wall_ms": 3254.905,
+    "peak_working_set_mb": 385.672,
+    "issue_count": 43051.0
+  },
+  "repeatability": {
+    "issue_digest_sha256_matches_all_rounds": true,
+    "structure_match_all_rounds": true
+  }
+}

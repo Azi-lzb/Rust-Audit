@@ -1,0 +1,1030 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-30T16:10:26+08:00",
+  "feature": "S3-F5",
+  "scenario": "30-institutions-40-indicators-4-forms",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python_version": "3.12.10",
+  "python_source": "C:\\Users\\AZI\\Desktop\\VibeCode\\3.open-data-audit",
+  "rust_binary": "F:\\RustBuild\\audit\\release\\open-data-audit.exe",
+  "rust_binary_sha256": "9112415fb15454136905aefdd694236006178c177e6f542b0cb83e0215ac7ba4",
+  "timing_scope": {
+    "python": "render_financial_forms service wall time; includes its worker-process pool startup and output generation",
+    "rust_wall": "CLI subprocess wall time including process startup",
+    "rust_internal": "S3-F05 CLI elapsed_ms measured inside command execution",
+    "warmup_runs_excluded": 1,
+    "round_order": "alternating Python-first and Rust-first"
+  },
+  "fixture": {
+    "institutions": 30,
+    "indicators_per_institution": 40,
+    "forms": 4,
+    "comparison_rows": 1200,
+    "output_workbooks": 30,
+    "matched_form_rows": 4800,
+    "inputs": {
+      "comparison": {
+        "bytes": 76926,
+        "sheets": [
+          {
+            "name": "2026年8月对比结果",
+            "rows": 1201,
+            "columns": 21
+          }
+        ]
+      },
+      "common_config": {
+        "bytes": 5069,
+        "sheets": [
+          {
+            "name": "环比警戒",
+            "rows": 2,
+            "columns": 8
+          }
+        ]
+      },
+      "forms_config": {
+        "bytes": 9337,
+        "sheets": [
+          {
+            "name": "报表清单",
+            "rows": 5,
+            "columns": 5
+          },
+          {
+            "name": "转表设置",
+            "rows": 3,
+            "columns": 3
+          },
+          {
+            "name": "性能表A1-001",
+            "rows": 41,
+            "columns": 7
+          },
+          {
+            "name": "性能表A1-002",
+            "rows": 41,
+            "columns": 7
+          },
+          {
+            "name": "性能表A1-003",
+            "rows": 41,
+            "columns": 7
+          },
+          {
+            "name": "性能表A1-004",
+            "rows": 41,
+            "columns": 7
+          }
+        ]
+      }
+    },
+    "input_sha256_before": {
+      "comparison": "12c52b30018b30d85d34b3f4fa9cec01e220ff811bbeab28a31c41163c56f683",
+      "common_config": "dd53e8051b0f05c179273122c1e0cb5de265ca0e7634a9fd5dc97d6ebbce220c",
+      "forms_config": "013e98a67556c96d55a0fa94f34db9193e1cf961b643f1b0402a7892cd26c52f"
+    },
+    "input_sha256_after": {
+      "comparison": "12c52b30018b30d85d34b3f4fa9cec01e220ff811bbeab28a31c41163c56f683",
+      "common_config": "dd53e8051b0f05c179273122c1e0cb5de265ca0e7634a9fd5dc97d6ebbce220c",
+      "forms_config": "013e98a67556c96d55a0fa94f34db9193e1cf961b643f1b0402a7892cd26c52f"
+    }
+  },
+  "rounds": {
+    "python_service_ms": [
+      3430.61,
+      3552.49,
+      3509.17
+    ],
+    "python_median_ms": 3509.17,
+    "rust_cli_wall_ms": [
+      1532.36,
+      1538.36,
+      1641.02
+    ],
+    "rust_cli_wall_median_ms": 1538.36,
+    "rust_internal_ms": [
+      1495.0,
+      1510.0,
+      1600.0
+    ],
+    "rust_internal_median_ms": 1510.0,
+    "rust_stage_median_ms": {
+      "editing_time_ms": 1449.0,
+      "elapsed_ms": 1510.0,
+      "planning_time_ms": 51.0,
+      "read_time_ms": 36.0
+    },
+    "python_over_rust_cli_wall": 2.281,
+    "python_over_rust_internal": 2.324
+  },
+  "correctness": {
+    "warmup_python_outputs": 30,
+    "warmup_rust_outputs": 30,
+    "rounds": [
+      {
+        "round": 1,
+        "python_output_count": 30,
+        "rust_output_count": 30,
+        "matched_names": 30,
+        "workbooks_value_formula_structure_checked": 30,
+        "difference_count": 0,
+        "per_workbook_stats": [
+          {
+            "file": "2026.8 机构0001 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0002 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0003 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0004 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0005 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0006 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0007 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0008 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0009 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0010 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0011 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0012 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0013 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0014 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0015 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0016 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0017 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0018 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0019 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0020 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0021 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0022 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0023 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0024 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0025 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0026 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0027 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0028 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0029 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0030 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          }
+        ],
+        "rust_report": {
+          "comparison_rows": 1200,
+          "institution_count": 30,
+          "matched_indicators": 4800,
+          "warnings": [],
+          "read_time_ms": 36,
+          "planning_time_ms": 52,
+          "editing_time_ms": 1431,
+          "elapsed_ms": 1495
+        },
+        "per_workbook_edit_ms": {
+          "count": 30,
+          "median": 45.0,
+          "minimum": 42.0,
+          "maximum": 55.0
+        },
+        "numeric_cells_checked": 19200
+      },
+      {
+        "round": 2,
+        "python_output_count": 30,
+        "rust_output_count": 30,
+        "matched_names": 30,
+        "workbooks_value_formula_structure_checked": 30,
+        "difference_count": 0,
+        "per_workbook_stats": [
+          {
+            "file": "2026.8 机构0001 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0002 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0003 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0004 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0005 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0006 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0007 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0008 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0009 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0010 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0011 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0012 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0013 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0014 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0015 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0016 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0017 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0018 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0019 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0020 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0021 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0022 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0023 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0024 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0025 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0026 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0027 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0028 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0029 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0030 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          }
+        ],
+        "rust_report": {
+          "comparison_rows": 1200,
+          "institution_count": 30,
+          "matched_indicators": 4800,
+          "warnings": [],
+          "read_time_ms": 33,
+          "planning_time_ms": 48,
+          "editing_time_ms": 1449,
+          "elapsed_ms": 1510
+        },
+        "per_workbook_edit_ms": {
+          "count": 30,
+          "median": 45.0,
+          "minimum": 42.0,
+          "maximum": 54.0
+        },
+        "numeric_cells_checked": 19200
+      },
+      {
+        "round": 3,
+        "python_output_count": 30,
+        "rust_output_count": 30,
+        "matched_names": 30,
+        "workbooks_value_formula_structure_checked": 30,
+        "difference_count": 0,
+        "per_workbook_stats": [
+          {
+            "file": "2026.8 机构0001 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0002 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0003 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0004 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0005 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0006 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0007 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0008 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0009 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0010 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0011 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0012 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0013 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0014 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0015 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0016 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0017 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0018 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0019 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0020 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0021 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0022 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0023 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0024 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0025 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0026 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0027 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0028 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0029 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          },
+          {
+            "file": "2026.8 机构0030 地区.xlsx",
+            "sheets": 6,
+            "cells_checked": 1182,
+            "formula_cells": 0,
+            "numeric_cells": 640,
+            "hidden_rows_checked": 172,
+            "merged_regions_checked": 0
+          }
+        ],
+        "rust_report": {
+          "comparison_rows": 1200,
+          "institution_count": 30,
+          "matched_indicators": 4800,
+          "warnings": [],
+          "read_time_ms": 37,
+          "planning_time_ms": 51,
+          "editing_time_ms": 1537,
+          "elapsed_ms": 1600
+        },
+        "per_workbook_edit_ms": {
+          "count": 30,
+          "median": 48.0,
+          "minimum": 45.0,
+          "maximum": 65.0
+        },
+        "numeric_cells_checked": 19200
+      }
+    ],
+    "all_output_names_match": true,
+    "all_output_cell_values_formulas_and_key_structure_match": true,
+    "input_sha256_unchanged": true
+  },
+  "process_tree_peak_memory": {
+    "measurement": "sampled aggregate working set of parent and live child processes in a separate run; process startup included",
+    "interval_ms": 5,
+    "python_working_set_bytes": 475336704,
+    "python_peak_live_process_count": 13,
+    "rust_cli_working_set_bytes": 24252416,
+    "rust_peak_live_process_count": 1
+  },
+  "status": "passed"
+}

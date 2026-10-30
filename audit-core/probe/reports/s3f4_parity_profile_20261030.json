@@ -1,0 +1,268 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-30T16:15:13+08:00",
+  "feature": "S3-F4",
+  "scenario": "current-only-10000-rows-two-cross-rules",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python_version": "3.12.10",
+  "python_source": "C:\\Users\\AZI\\Desktop\\VibeCode\\3.open-data-audit",
+  "python_source_sha256_before": {
+    "core/src/base_audit/systems/s3_central_statistics/service.py": "57d493e19eb7e9a9fbfcf491de12e113b4ea0ccf3853248b65cb1b0d8ea9462c",
+    "core/src/base_audit/systems/s3_central_statistics/cross_period_engine.py": "3527e361eb3b3b396ce5e7aa41434a847be71ce14a4f391e12e82676030284ae",
+    "core/src/base_audit/systems/s3_central_statistics/csv_importer.py": "1b4eb2e0c7990d25361082bc581ffa929bb4c68fd9d345a1a81f205fd6d28d10"
+  },
+  "python_source_sha256_after": {
+    "core/src/base_audit/systems/s3_central_statistics/service.py": "57d493e19eb7e9a9fbfcf491de12e113b4ea0ccf3853248b65cb1b0d8ea9462c",
+    "core/src/base_audit/systems/s3_central_statistics/cross_period_engine.py": "3527e361eb3b3b396ce5e7aa41434a847be71ce14a4f391e12e82676030284ae",
+    "core/src/base_audit/systems/s3_central_statistics/csv_importer.py": "1b4eb2e0c7990d25361082bc581ffa929bb4c68fd9d345a1a81f205fd6d28d10"
+  },
+  "rust_binary": "F:\\RustBuild\\audit\\release\\open-data-audit.exe",
+  "rust_binary_sha256": "9112415fb15454136905aefdd694236006178c177e6f542b0cb83e0215ac7ba4",
+  "inputs": {
+    "current_csv": {
+      "bytes": 1199062,
+      "header_columns": 14,
+      "data_rows": 10000,
+      "sha256": "4aa604da14605da993bf12ff442044f852e1bdc9b63bb267fc3acbc42548dc50"
+    },
+    "common_config": {
+      "bytes": 6678,
+      "sheets": [
+        {
+          "name": "Sheet",
+          "rows": 1,
+          "columns": 1
+        },
+        {
+          "name": "运行参数",
+          "rows": 3,
+          "columns": 3
+        },
+        {
+          "name": "单位换算例外",
+          "rows": 1,
+          "columns": 6
+        },
+        {
+          "name": "环比警戒",
+          "rows": 2,
+          "columns": 8
+        }
+      ]
+    },
+    "cross_config": {
+      "bytes": 5688,
+      "sheets": [
+        {
+          "name": "Sheet",
+          "rows": 1,
+          "columns": 1
+        },
+        {
+          "name": "跨期数值核对",
+          "rows": 3,
+          "columns": 14
+        }
+      ]
+    }
+  },
+  "input_sha256_before": {
+    "current_csv": "4aa604da14605da993bf12ff442044f852e1bdc9b63bb267fc3acbc42548dc50",
+    "common_config": "d32daff6002776ef95fc87eb863dba7b66cba0b554c39facf37a7aa4a9de5ea1",
+    "cross_config": "61b47bc6d685e480cdd4d0f50a2930d873c06138ba1caefa6c1d43c1e1de2112"
+  },
+  "input_sha256_after": {
+    "current_csv": "4aa604da14605da993bf12ff442044f852e1bdc9b63bb267fc3acbc42548dc50",
+    "common_config": "d32daff6002776ef95fc87eb863dba7b66cba0b554c39facf37a7aa4a9de5ea1",
+    "cross_config": "61b47bc6d685e480cdd4d0f50a2930d873c06138ba1caefa6c1d43c1e1de2112"
+  },
+  "timing_scope": {
+    "python": "run_cross_period_check service wall time, flow-log output disabled in both engines",
+    "rust_wall": "CLI subprocess wall time including process startup",
+    "rust_internal": "S3-F04 report total_time_ms",
+    "warmup_runs_excluded": 1,
+    "round_order": "alternating Python-first and Rust-first"
+  },
+  "timings": {
+    "python_service_ms": [
+      7059.66,
+      7071.61,
+      8465.89
+    ],
+    "python_median_ms": 7071.61,
+    "rust_cli_wall_ms": [
+      980.9,
+      989.3,
+      1031.67
+    ],
+    "rust_cli_wall_median_ms": 989.3,
+    "rust_internal_ms": [
+      936.0,
+      945.0,
+      980.0
+    ],
+    "rust_internal_median_ms": 945.0,
+    "rust_stage_median_ms": {
+      "calculation_time_ms": 157.0,
+      "config_read_time_ms": 1.0,
+      "elapsed_ms": 957.0,
+      "input_read_time_ms": 84.0,
+      "workbook_write_time_ms": 702.0
+    },
+    "python_over_rust_cli_wall": 7.148,
+    "python_over_rust_internal": 7.483
+  },
+  "warmup": {
+    "python_rows": 20000,
+    "rust_rows": 20000,
+    "difference_count": 0
+  },
+  "correctness": {
+    "rounds": [
+      {
+        "round": 1,
+        "python_result_rows": 20000,
+        "rust_result_rows": 20000,
+        "comparison": {
+          "stats": {
+            "sheets": 1,
+            "cells_checked": 340017,
+            "formula_cells": 0,
+            "numeric_cells": 100000,
+            "hidden_rows_checked": 20001,
+            "merged_regions_checked": 0
+          },
+          "differences": [],
+          "difference_count": 0
+        },
+        "python_output": {
+          "bytes": 1391479,
+          "sheets": [
+            {
+              "name": "对比结果",
+              "rows": 20001,
+              "columns": 17
+            }
+          ]
+        },
+        "rust_output": {
+          "bytes": 1009094,
+          "sheets": [
+            {
+              "name": "对比结果",
+              "rows": 20001,
+              "columns": 17
+            }
+          ]
+        },
+        "rust_stages_ms": {
+          "config_read_time_ms": 1,
+          "input_read_time_ms": 82,
+          "calculation_time_ms": 159,
+          "workbook_write_time_ms": 692,
+          "elapsed_ms": 946
+        }
+      },
+      {
+        "round": 2,
+        "python_result_rows": 20000,
+        "rust_result_rows": 20000,
+        "comparison": {
+          "stats": {
+            "sheets": 1,
+            "cells_checked": 340017,
+            "formula_cells": 0,
+            "numeric_cells": 100000,
+            "hidden_rows_checked": 20001,
+            "merged_regions_checked": 0
+          },
+          "differences": [],
+          "difference_count": 0
+        },
+        "python_output": {
+          "bytes": 1391479,
+          "sheets": [
+            {
+              "name": "对比结果",
+              "rows": 20001,
+              "columns": 17
+            }
+          ]
+        },
+        "rust_output": {
+          "bytes": 1009094,
+          "sheets": [
+            {
+              "name": "对比结果",
+              "rows": 20001,
+              "columns": 17
+            }
+          ]
+        },
+        "rust_stages_ms": {
+          "config_read_time_ms": 1,
+          "input_read_time_ms": 84,
+          "calculation_time_ms": 157,
+          "workbook_write_time_ms": 702,
+          "elapsed_ms": 957
+        }
+      },
+      {
+        "round": 3,
+        "python_result_rows": 20000,
+        "rust_result_rows": 20000,
+        "comparison": {
+          "stats": {
+            "sheets": 1,
+            "cells_checked": 340017,
+            "formula_cells": 0,
+            "numeric_cells": 100000,
+            "hidden_rows_checked": 20001,
+            "merged_regions_checked": 0
+          },
+          "differences": [],
+          "difference_count": 0
+        },
+        "python_output": {
+          "bytes": 1391480,
+          "sheets": [
+            {
+              "name": "对比结果",
+              "rows": 20001,
+              "columns": 17
+            }
+          ]
+        },
+        "rust_output": {
+          "bytes": 1009093,
+          "sheets": [
+            {
+              "name": "对比结果",
+              "rows": 20001,
+              "columns": 17
+            }
+          ]
+        },
+        "rust_stages_ms": {
+          "config_read_time_ms": 1,
+          "input_read_time_ms": 85,
+          "calculation_time_ms": 153,
+          "workbook_write_time_ms": 740,
+          "elapsed_ms": 996
+        }
+      }
+    ],
+    "all_output_workbooks_value_formula_and_key_structure_match": true,
+    "input_hashes_unchanged": true,
+    "python_source_hashes_unchanged": true
+  },
+  "process_tree_peak_memory": {
+    "measurement": "sampled aggregate working set of parent and live child processes in a separate run; process startup included",
+    "sampling_interval_ms": 5,
+    "python_working_set_bytes": 181415936,
+    "python_peak_live_process_count": 1,
+    "rust_cli_working_set_bytes": 94486528,
+    "rust_peak_live_process_count": 1
+  },
+  "status": "passed"
+}

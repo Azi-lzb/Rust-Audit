@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-30T19:41:45+08:00",
+  "feature": "S1-F1/S1-F2",
+  "scenario": "template-profile-reuse-substep",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "source_commit": "7517a9c",
+  "source_worktree_dirty": true,
+  "release_binary_sha256": "7be5fdece2ae26e931feb796daa7075395ab3fa44591cc242ba0813beba96792",
+  "scope": "Release-profile function-level benchmark; measures sheet-directory recommendation only, not full GUI audit or S1-F2 export.",
+  "timer_scope": "Five paired in-process medians after one warmup. Legacy path reloads template directory and all template sheet names once per source. Reuse path loads the same profiles once per batch; both paths read every source sheet directory once.",
+  "measurement": {
+    "all_21_recommendations_identical": true,
+    "legacy_reloaded_templates_per_source": true,
+    "median_legacy_ms": 30.2814,
+    "median_profiles_reused_ms": 5.9081,
+    "nonempty_cells": 0,
+    "rounds": 5,
+    "source_bytes_total": 183519,
+    "source_files": 21,
+    "source_sheets": 8,
+    "speedup": 5.125404106227045,
+    "template_bytes_total": 46312,
+    "template_files": 5,
+    "template_sheets_per_workbook": 9,
+    "warmups": 1
+  },
+  "correctness": {
+    "recommendations_identical_for_every_source": true,
+    "inputs_written_once_then_reused_for_both_paths": true,
+    "output_workbooks_created": false,
+    "peak_memory_measured": false
+  },
+  "test_command": "cargo test --locked --release -p audit-core --test s1_template_profile_reuse -- --nocapture",
+  "notes": [
+    "The synthetic XLSX files contain sheet directories only and no cell values; this isolates repeated template metadata loading.",
+    "Reported speedup is limited to this matching substep and workload. The absolute saving is small relative to Excel recalculation and does not represent a full-feature speedup."
+  ]
+}

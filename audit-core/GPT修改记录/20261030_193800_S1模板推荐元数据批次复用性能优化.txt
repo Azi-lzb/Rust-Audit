@@ -1,0 +1,32 @@
+时间：2026-10-30 19:38（Asia/Shanghai）
+执行者：Codex
+修改前 commit：7517a9c
+修改后 commit：7517a9c（未提交）
+工作区状态：修改前已有多个未提交文件及未跟踪性能证据；保留原 WIP，仅追加本次定点修改。本轮未 push。
+
+修改目的：减少 S1-F1、S1 源文件识别界面和 S1-F2 多文件自动模板识别中重复扫描模板目录、重复读取模板工作表目录的开销；保持现有模板匹配结果。
+
+修改/新增文件：
+- 修改 `audit-core/src/s1_template.rs`：新增一次加载模板档案及基于预加载档案匹配的 API，保留原单文件/多文件公开推荐 API。
+- 修改 `audit-core/src/web_bridge.rs`：S1-F1 worker、S1 源识别、S1-F2 多文件模板选择改为每次操作加载一次模板档案；源簿仍逐本读取和匹配。
+- 新增 `audit-core/tests/s1_template_profile_reuse.rs`：21 源簿/5 模板簿同输入匹配等价及五轮性能测试。
+- 新增 `audit-core/tests/compare/perf_s1_template_profile_reuse_20261030.py`：Release-profile 复跑入口及 JSON 报告生成。
+- 新增 `audit-core/probe/reports/s1_template_profile_reuse_optimization_20261030.md` 和 `s1_template_profile_reuse_20261030.json`。
+- 更新 `audit-core/PERFORMANCE_BASELINE.md`、`PERFORMANCE_HISTORY.md`、`benchmarks/README.md`、`DEVELOPMENT_GOAL.md`、`MIGRATION_INVENTORY.md`。
+
+逻辑及兼容影响：模板目录与候选模板的工作表名称在一次多文件操作内形成只读快照；每个源簿仍独立匹配，已有分数、阈值、置信度、候选和说明不变；下一次操作重新加载模板，未引入跨运行缓存。业务字段、配置、输出文件结构和 VBA 均不变。
+
+实测结果：Windows 11，Release-profile，同一组合成输入预热 1 轮、5 轮中位数。21 个源簿（8 Sheet/本，183,519 bytes）和 5 个模板簿（9 Sheet/本，46,312 bytes），无数据格。重复加载 30.2814 ms，共享档案 5.9081 ms，减少 24.3733 ms，5.13×；21/21 完整 TemplateSuggestion 相同。结果仅覆盖模板 Sheet 目录推荐子步骤，不代表 S1-F1/S1-F2 完整功能提速，未测峰值内存。
+
+验证结果：
+- Debug 定向测试：1 passed。
+- Release-profile 定向测试：1 passed，21/21 匹配建议相同。
+- Release 忽略标记 S1-F1 三文件 GUI 合成路径：1 passed，3/3 通过模板/结构预检且输入哈希不变；本机自动 COM worker 未正常完成且无 LibreOffice，系统安全地保留人工重算副本。该项不证明公式重算成功。
+- `cargo build --locked --release -p audit-core --bin open-data-audit`：成功；SHA-256 `7be5fdece2ae26e931feb796daa7075395ab3fa44591cc242ba0813beba96792`。
+- 性能脚本 `py_compile`、本次直接编辑的 `s1_template.rs` 与新测试 `rustfmt --check`：通过。
+- `cargo fmt --all --check`：未通过，输出仓库中大量既有格式差异；未运行格式化整个仓库，未改变无关格式。
+- 未运行全 workspace 回归、真实业务工作簿、Linux/Kylin/UOS 测试。
+
+删除清单：无。
+回滚提示：若后续同等规模真实 S1 批次没有可见收益，可定点恢复 `s1_template.rs` / `web_bridge.rs` 的调用逻辑并移除本次测试、驱动和专项报告；不要重置整个工作区或覆盖此前未提交内容。
+【组件版本】：不升级（性能优化，不改变业务组件协议）。

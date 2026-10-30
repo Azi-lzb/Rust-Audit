@@ -1,0 +1,307 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-30T16:34:25+08:00",
+  "feature": "S3-F3",
+  "scenario": "1000-unique-feedback-rows-no-conflicts",
+  "platform": "Windows-11-AMD64",
+  "python_version": "3.12.10",
+  "python_source": "C:\\Users\\AZI\\Desktop\\VibeCode\\3.open-data-audit",
+  "python_module_sha256_before": "e4946cdcbb8eb60267d63b6bb03c15d6a91446dde836b97a19c01992358d5e77",
+  "python_module_sha256_after": "e4946cdcbb8eb60267d63b6bb03c15d6a91446dde836b97a19c01992358d5e77",
+  "rust_binary": "F:\\RustBuild\\audit\\release\\open-data-audit.exe",
+  "rust_binary_sha256": "d21e355a8ec05129e81ccdda008f257a98702b64537010c24b773433b416db66",
+  "timing_scope": {
+    "python": "in-process import_explanation_feedback service call; excludes interpreter/module startup and fixture/output verification",
+    "rust_wall": "Release CLI process wall time; includes process startup and excludes output verification",
+    "rust_internal": "S3-F3 total_time_ms reported inside Rust execution",
+    "warmup_runs_excluded": 1,
+    "round_order": "alternates Python-first and Rust-first"
+  },
+  "fixture": {
+    "feedback_rows": 1000,
+    "target_workbooks_per_round": 2,
+    "feedback_workbooks_per_round": 1,
+    "matching_keys": 1000,
+    "unmatched_rows": 0,
+    "conflicts": 0,
+    "inputs": {
+      "target": {
+        "bytes": 47165,
+        "sheets": [
+          {
+            "name": "说明文件",
+            "rows": 1002,
+            "columns": 8
+          }
+        ],
+        "sha256": "56623195daeb93ea6107b801f4ef4ff9dd46ba936056cafada24e9a3bee481f4"
+      },
+      "feedback": {
+        "bytes": 50080,
+        "sheets": [
+          {
+            "name": "机构反馈",
+            "rows": 1001,
+            "columns": 8
+          }
+        ],
+        "sha256": "2b514d3c237c92921a48c5dfc2927cf161b78791a8832503422a913ca785e203"
+      }
+    }
+  },
+  "python_service_ms": [
+    912.6209,
+    932.687,
+    877.697
+  ],
+  "rust_cli_wall_ms": [
+    235.5409,
+    224.9834,
+    249.7435
+  ],
+  "rust_internal_total_ms": [
+    203,
+    195,
+    220
+  ],
+  "python_service_median_ms": 912.6209,
+  "rust_cli_wall_median_ms": 235.5409,
+  "rust_internal_total_median_ms": 203,
+  "python_over_rust_cli_speedup": 3.875,
+  "python_over_rust_internal_speedup": 4.496,
+  "rounds": [
+    {
+      "round": 1,
+      "order": "python-first",
+      "python_service_ms": 912.6209,
+      "rust_cli_wall_ms": 235.5409,
+      "rust_internal_total_ms": 203,
+      "rust_stages_ms": {
+        "target_read": 11,
+        "feedback_read": 16,
+        "writeback": 125,
+        "total": 203
+      },
+      "summary": {
+        "imported": 1000,
+        "unmatched": 0,
+        "conflicts": 0
+      },
+      "backup_checks": {
+        "python": {
+          "backup_path": "C:\\Users\\AZI\\AppData\\Local\\Temp\\audit-s3f3-parity-6x_sgidk\\round-1-python\\target_导入前备份_20261030_163415.xlsx",
+          "backup_sha256_matches_original": true
+        },
+        "rust": {
+          "backup_path": "C:\\Users\\AZI\\AppData\\Local\\Temp\\audit-s3f3-parity-6x_sgidk\\round-1-rust\\target_导入前备份_20261030_163415_448_0.xlsx",
+          "backup_sha256_matches_original": true
+        }
+      },
+      "updated_target_mutations": {
+        "python": 1000,
+        "rust": 1000
+      },
+      "output_comparison": {
+        "compared_nonempty_cells": 8009,
+        "difference_count": 0,
+        "difference_examples": [],
+        "cached_value_sheet_difference_count": 0,
+        "python_structure": {
+          "sheet_names": [
+            "说明文件"
+          ],
+          "dimensions": [
+            [
+              1002,
+              8
+            ]
+          ]
+        },
+        "rust_structure": {
+          "sheet_names": [
+            "说明文件"
+          ],
+          "dimensions": [
+            [
+              1002,
+              8
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "round": 2,
+      "order": "rust-first",
+      "python_service_ms": 932.687,
+      "rust_cli_wall_ms": 224.9834,
+      "rust_internal_total_ms": 195,
+      "rust_stages_ms": {
+        "target_read": 11,
+        "feedback_read": 16,
+        "writeback": 122,
+        "total": 195
+      },
+      "summary": {
+        "imported": 1000,
+        "unmatched": 0,
+        "conflicts": 0
+      },
+      "backup_checks": {
+        "python": {
+          "backup_path": "C:\\Users\\AZI\\AppData\\Local\\Temp\\audit-s3f3-parity-6x_sgidk\\round-2-python\\target_导入前备份_20261030_163417.xlsx",
+          "backup_sha256_matches_original": true
+        },
+        "rust": {
+          "backup_path": "C:\\Users\\AZI\\AppData\\Local\\Temp\\audit-s3f3-parity-6x_sgidk\\round-2-rust\\target_导入前备份_20261030_163416_977_0.xlsx",
+          "backup_sha256_matches_original": true
+        }
+      },
+      "updated_target_mutations": {
+        "python": 1000,
+        "rust": 1000
+      },
+      "output_comparison": {
+        "compared_nonempty_cells": 8009,
+        "difference_count": 0,
+        "difference_examples": [],
+        "cached_value_sheet_difference_count": 0,
+        "python_structure": {
+          "sheet_names": [
+            "说明文件"
+          ],
+          "dimensions": [
+            [
+              1002,
+              8
+            ]
+          ]
+        },
+        "rust_structure": {
+          "sheet_names": [
+            "说明文件"
+          ],
+          "dimensions": [
+            [
+              1002,
+              8
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "round": 3,
+      "order": "python-first",
+      "python_service_ms": 877.697,
+      "rust_cli_wall_ms": 249.7435,
+      "rust_internal_total_ms": 220,
+      "rust_stages_ms": {
+        "target_read": 11,
+        "feedback_read": 17,
+        "writeback": 139,
+        "total": 220
+      },
+      "summary": {
+        "imported": 1000,
+        "unmatched": 0,
+        "conflicts": 0
+      },
+      "backup_checks": {
+        "python": {
+          "backup_path": "C:\\Users\\AZI\\AppData\\Local\\Temp\\audit-s3f3-parity-6x_sgidk\\round-3-python\\target_导入前备份_20261030_163420.xlsx",
+          "backup_sha256_matches_original": true
+        },
+        "rust": {
+          "backup_path": "C:\\Users\\AZI\\AppData\\Local\\Temp\\audit-s3f3-parity-6x_sgidk\\round-3-rust\\target_导入前备份_20261030_163420_465_0.xlsx",
+          "backup_sha256_matches_original": true
+        }
+      },
+      "updated_target_mutations": {
+        "python": 1000,
+        "rust": 1000
+      },
+      "output_comparison": {
+        "compared_nonempty_cells": 8009,
+        "difference_count": 0,
+        "difference_examples": [],
+        "cached_value_sheet_difference_count": 0,
+        "python_structure": {
+          "sheet_names": [
+            "说明文件"
+          ],
+          "dimensions": [
+            [
+              1002,
+              8
+            ]
+          ]
+        },
+        "rust_structure": {
+          "sheet_names": [
+            "说明文件"
+          ],
+          "dimensions": [
+            [
+              1002,
+              8
+            ]
+          ]
+        }
+      }
+    }
+  ],
+  "plan_only_probe": {
+    "scope": "separate plan-only CLI invocation on identical fixture before timed in-place A/B rounds",
+    "cli_wall_ms": 1173.5356,
+    "internal_total_ms": 326,
+    "target_read_ms": 11,
+    "feedback_read_ms": 16,
+    "conflict_report_write_ms": 0,
+    "plan_file_write_ms": 265,
+    "matches_expected": true,
+    "inputs_unchanged": true
+  },
+  "rust_orchestration_residual_ms": [
+    51,
+    46,
+    53
+  ],
+  "rust_orchestration_residual_median_ms": 51,
+  "process_tree_peak_memory": {
+    "measurement": "sampled aggregate working set of parent and live child processes in a separate run; process startup/import included; 5 ms sampling interval",
+    "python_working_set_bytes": 40751104,
+    "python_peak_live_process_count": 1,
+    "rust_cli_working_set_bytes": 22786048,
+    "rust_peak_live_process_count": 1,
+    "memory_probe_service_ms": 976.3512
+  },
+  "correctness": {
+    "all_round_summaries_match": true,
+    "all_1000_feedback_rows_applied": true,
+    "only_expected_reason_cells_changed": true,
+    "backups_are_byte_identical_to_original_targets": true,
+    "python_rust_output_value_formula_and_key_structure_differences": 0,
+    "feedback_input_unchanged": true,
+    "python_source_unchanged": true,
+    "fixture_scope": "unique keys with no conflicts; conflict behavior remains covered by existing business tests, not this performance sample"
+  },
+  "status": "passed",
+  "rust_stage_medians_ms": {
+    "target_read": 11,
+    "feedback_read": 16,
+    "writeback": 125,
+    "total": 203
+  },
+  "baseline_comparison": {
+    "baseline_report": "s3f3_parity_profile_20261030.json",
+    "baseline_rust_binary_sha256": "9112415fb15454136905aefdd694236006178c177e6f542b0cb83e0215ac7ba4",
+    "baseline_python_service_median_ms": 977.0264,
+    "baseline_rust_cli_wall_median_ms": 975.254,
+    "baseline_rust_internal_total_median_ms": 946,
+    "rust_cli_wall_ms_saved": 739.7131,
+    "rust_internal_ms_saved": 743,
+    "rust_cli_wall_reduction_percent": 75.85,
+    "rust_internal_reduction_percent": 78.54
+  }
+}

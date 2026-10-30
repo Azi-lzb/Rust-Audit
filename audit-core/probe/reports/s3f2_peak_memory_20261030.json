@@ -1,0 +1,143 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-10-30T12:16:19.951534+00:00",
+  "git_revision": "7517a9c",
+  "feature": "S3-F2",
+  "measurement": "process-tree peak working set only; elapsed-time comparison intentionally omitted",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python_version": "3.12.10",
+  "python_source": "C:\\Users\\AZI\\Desktop\\VibeCode\\3.open-data-audit",
+  "rust_binary": "F:\\RustBuild\\audit\\release\\open-data-audit.exe",
+  "rust_binary_sha256": "a2ac5bc3fd16223a3c18976f9ed6042e941af6df17fc2fbd84ad5fe54b82f370",
+  "fixture": {
+    "kind": "synthetic_scaled_from_perf_s3f2_scale_20261030.py",
+    "comparison_workbooks": 1,
+    "comparison_sheets": 1,
+    "data_rows": 7830,
+    "selected_rows": 2610,
+    "comparison_columns": 12,
+    "mapping_workbooks": 1,
+    "mapping_sheets": 1,
+    "mapping_rows_including_header": 401,
+    "comparison_bytes": 426815,
+    "mapping_bytes": 12157,
+    "input_sha256_before": {
+      "C:\\Users\\AZI\\AppData\\Local\\Temp\\audit-s3f2-peak-memory-kaz2_p9_\\comparison.xlsx": "42cae7bb8bf434f16ced4f6a687d8e942ef5542d9a82d96c76ef47a974361e5f",
+      "C:\\Users\\AZI\\AppData\\Local\\Temp\\audit-s3f2-peak-memory-kaz2_p9_\\mapping.xlsx": "dcf8bdb8282adf7fe12584228d1b1eee21be567da1f584433d65fe39e32122a4"
+    },
+    "input_sha256_after": {
+      "C:\\Users\\AZI\\AppData\\Local\\Temp\\audit-s3f2-peak-memory-kaz2_p9_\\comparison.xlsx": "42cae7bb8bf434f16ced4f6a687d8e942ef5542d9a82d96c76ef47a974361e5f",
+      "C:\\Users\\AZI\\AppData\\Local\\Temp\\audit-s3f2-peak-memory-kaz2_p9_\\mapping.xlsx": "dcf8bdb8282adf7fe12584228d1b1eee21be567da1f584433d65fe39e32122a4"
+    }
+  },
+  "method": {
+    "rounds": 3,
+    "round_order": "alternates Python-first and Rust-first",
+    "sample_interval_ms": 5,
+    "python_process": "fresh interpreter; process tree RSS sampled with psutil",
+    "rust_process": "fresh Release CLI; process tree RSS sampled with psutil",
+    "peak_metric": "maximum sampled sum of resident working sets across live process tree",
+    "measurement_limit": "sampling may miss sub-interval peaks; includes process startup; excludes fixture generation and output comparison"
+  },
+  "summary": {
+    "python_peak_working_set_median_mb": 43.688,
+    "python_peak_working_set_max_mb": 43.945,
+    "rust_peak_working_set_median_mb": 44.34,
+    "rust_peak_working_set_max_mb": 44.383,
+    "python_to_rust_peak_median_ratio": 0.985,
+    "every_round_output_equal": true,
+    "inputs_unchanged": true
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "order": "Python-first",
+      "output_rows_compared": 2610,
+      "cell_differences": 0,
+      "python_output_bytes": 116384,
+      "rust_output_bytes": 103465,
+      "python_process_tree": {
+        "return_code": 0,
+        "stdout": "{\"status\": \"completed\", \"selected_rows\": 2610}\r\n",
+        "stderr": "",
+        "peak_sampled_process_tree_working_set_bytes": 45793280,
+        "peak_sampled_process_tree_working_set_mb": 43.672,
+        "sum_per_process_peak_working_set_bytes": 45801472,
+        "peak_live_process_count": 1,
+        "sample_interval_ms": 5.0,
+        "memory_samples": 248
+      },
+      "rust_process_tree": {
+        "return_code": 0,
+        "stdout": "{\n  \"comparison_read_time_ms\": 181,\n  \"config_read_time_ms\": 4,\n  \"output_workbook\": \"C:\\\\Users\\\\AZI\\\\AppData\\\\Local\\\\Temp\\\\audit-s3f2-peak-memory-kaz2_p9_\\\\rust-1.xlsx\",\n  \"reader\": \"calamine\",\n  \"selected_rows\": 2610,\n  \"status\": \"completed\",\n  \"total_time_ms\": 437,\n  \"workbook_write_time_ms\": 179,\n  \"writer\": \"rust_xlsxwriter\"\n}\n",
+        "stderr": "{\"feature\":\"S3-F02\",\"product\":\"open-data-audit\",\"started_at\":\"2026-10-30T20:15:33.385432700+08:00\",\"status\":\"started\",\"step\":\"selected_explanation_export\",\"type\":\"progress\"}\n{\"comparison_read_time_ms\":181,\"config_read_time_ms\":4,\"elapsed_ms\":460,\"feature\":\"S3-F02\",\"finished_at\":\"2026-10-30T20:15:33.845812+08:00\",\"product\":\"open-data-audit\",\"reader\":\"calamine\",\"selected_rows\":2610,\"started_at\":\"2026-10-30T20:15:33.385432700+08:00\",\"status\":\"completed\",\"step\":\"selected_explanation_export\",\"type\":\"progress\",\"workbook_write_time_ms\":179,\"writer\":\"rust_xlsxwriter\"}\n",
+        "peak_sampled_process_tree_working_set_bytes": 46538752,
+        "peak_sampled_process_tree_working_set_mb": 44.383,
+        "sum_per_process_peak_working_set_bytes": 46538752,
+        "peak_live_process_count": 1,
+        "sample_interval_ms": 5.0,
+        "memory_samples": 24
+      }
+    },
+    {
+      "round": 2,
+      "order": "Rust-first",
+      "output_rows_compared": 2610,
+      "cell_differences": 0,
+      "python_output_bytes": 116385,
+      "rust_output_bytes": 103466,
+      "python_process_tree": {
+        "return_code": 0,
+        "stdout": "{\"status\": \"completed\", \"selected_rows\": 2610}\r\n",
+        "stderr": "",
+        "peak_sampled_process_tree_working_set_bytes": 45809664,
+        "peak_sampled_process_tree_working_set_mb": 43.688,
+        "sum_per_process_peak_working_set_bytes": 45809664,
+        "peak_live_process_count": 1,
+        "sample_interval_ms": 5.0,
+        "memory_samples": 250
+      },
+      "rust_process_tree": {
+        "return_code": 0,
+        "stdout": "{\n  \"comparison_read_time_ms\": 129,\n  \"config_read_time_ms\": 2,\n  \"output_workbook\": \"C:\\\\Users\\\\AZI\\\\AppData\\\\Local\\\\Temp\\\\audit-s3f2-peak-memory-kaz2_p9_\\\\rust-2.xlsx\",\n  \"reader\": \"calamine\",\n  \"selected_rows\": 2610,\n  \"status\": \"completed\",\n  \"total_time_ms\": 309,\n  \"workbook_write_time_ms\": 141,\n  \"writer\": \"rust_xlsxwriter\"\n}\n",
+        "stderr": "{\"feature\":\"S3-F02\",\"product\":\"open-data-audit\",\"started_at\":\"2026-10-30T20:15:45.774260800+08:00\",\"status\":\"started\",\"step\":\"selected_explanation_export\",\"type\":\"progress\"}\n{\"comparison_read_time_ms\":129,\"config_read_time_ms\":2,\"elapsed_ms\":322,\"feature\":\"S3-F02\",\"finished_at\":\"2026-10-30T20:15:46.096854400+08:00\",\"product\":\"open-data-audit\",\"reader\":\"calamine\",\"selected_rows\":2610,\"started_at\":\"2026-10-30T20:15:45.774260800+08:00\",\"status\":\"completed\",\"step\":\"selected_explanation_export\",\"type\":\"progress\",\"workbook_write_time_ms\":141,\"writer\":\"rust_xlsxwriter\"}\n",
+        "peak_sampled_process_tree_working_set_bytes": 46473216,
+        "peak_sampled_process_tree_working_set_mb": 44.32,
+        "sum_per_process_peak_working_set_bytes": 46501888,
+        "peak_live_process_count": 1,
+        "sample_interval_ms": 5.0,
+        "memory_samples": 22
+      }
+    },
+    {
+      "round": 3,
+      "order": "Python-first",
+      "output_rows_compared": 2610,
+      "cell_differences": 0,
+      "python_output_bytes": 116387,
+      "rust_output_bytes": 103465,
+      "python_process_tree": {
+        "return_code": 0,
+        "stdout": "{\"status\": \"completed\", \"selected_rows\": 2610}\r\n",
+        "stderr": "",
+        "peak_sampled_process_tree_working_set_bytes": 46080000,
+        "peak_sampled_process_tree_working_set_mb": 43.945,
+        "sum_per_process_peak_working_set_bytes": 46088192,
+        "peak_live_process_count": 1,
+        "sample_interval_ms": 5.0,
+        "memory_samples": 251
+      },
+      "rust_process_tree": {
+        "return_code": 0,
+        "stdout": "{\n  \"comparison_read_time_ms\": 122,\n  \"config_read_time_ms\": 2,\n  \"output_workbook\": \"C:\\\\Users\\\\AZI\\\\AppData\\\\Local\\\\Temp\\\\audit-s3f2-peak-memory-kaz2_p9_\\\\rust-3.xlsx\",\n  \"reader\": \"calamine\",\n  \"selected_rows\": 2610,\n  \"status\": \"completed\",\n  \"total_time_ms\": 297,\n  \"workbook_write_time_ms\": 134,\n  \"writer\": \"rust_xlsxwriter\"\n}\n",
+        "stderr": "{\"feature\":\"S3-F02\",\"product\":\"open-data-audit\",\"started_at\":\"2026-10-30T20:16:07.438166400+08:00\",\"status\":\"started\",\"step\":\"selected_explanation_export\",\"type\":\"progress\"}\n{\"comparison_read_time_ms\":122,\"config_read_time_ms\":2,\"elapsed_ms\":308,\"feature\":\"S3-F02\",\"finished_at\":\"2026-10-30T20:16:07.747141100+08:00\",\"product\":\"open-data-audit\",\"reader\":\"calamine\",\"selected_rows\":2610,\"started_at\":\"2026-10-30T20:16:07.438166400+08:00\",\"status\":\"completed\",\"step\":\"selected_explanation_export\",\"type\":\"progress\",\"workbook_write_time_ms\":134,\"writer\":\"rust_xlsxwriter\"}\n",
+        "peak_sampled_process_tree_working_set_bytes": 46493696,
+        "peak_sampled_process_tree_working_set_mb": 44.34,
+        "sum_per_process_peak_working_set_bytes": 46493696,
+        "peak_live_process_count": 1,
+        "sample_interval_ms": 5.0,
+        "memory_samples": 22
+      }
+    }
+  ]
+}

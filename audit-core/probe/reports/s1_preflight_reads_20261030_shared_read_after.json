@@ -1,0 +1,345 @@
+{
+  "schema_version": 1,
+  "suite": "audit.s1_structure_preflight_and_conditional_audit_profile",
+  "status": "passed",
+  "created_at": "2026-10-30T10:31:02.226372+00:00",
+  "environment": {
+    "platform": "win32",
+    "python_version": "3.12.10",
+    "rust_binary": "F:\\RustBuild\\audit\\release\\open-data-audit.exe",
+    "rust_binary_sha256": "78d0d25b238ff6190a6e42adef6c6e60a209526802964c335560dd25f0eed230",
+    "timer_scope": "Python template read + structure preflight + conditional service internal totals; Rust conditional-audit developer event elapsed includes one shared source read, template read, structure preflight, conditional evaluation/issue build, and CLI work after argument dispatch; it excludes process startup.",
+    "memory_sampling_interval_ms": 5
+  },
+  "input": {
+    "sheets": 1,
+    "rows_including_header": 4001,
+    "columns": 8,
+    "nonempty_cells": 32008,
+    "conditional_rules": 4,
+    "scanned_cells_expected": 16000,
+    "source_bytes": 144031,
+    "template_bytes": 144031,
+    "source_sha256_before": "10f573197cc46bca3301866dec532cbaf7c2d52e9b8a5a6f87aac485b028721f",
+    "source_sha256_after": "10f573197cc46bca3301866dec532cbaf7c2d52e9b8a5a6f87aac485b028721f",
+    "template_sha256_before": "10f573197cc46bca3301866dec532cbaf7c2d52e9b8a5a6f87aac485b028721f",
+    "template_sha256_after": "10f573197cc46bca3301866dec532cbaf7c2d52e9b8a5a6f87aac485b028721f"
+  },
+  "runs": {
+    "warmup": 1,
+    "measured": 5
+  },
+  "medians_ms": {
+    "python_template_read_once": 7.512,
+    "python_structure_preflight": 88.034,
+    "rust_structure_preflight_file_elapsed": 93,
+    "rust_structure_source_read": 93,
+    "rust_template_read_once": 98,
+    "python_conditional_service": 19125.0,
+    "rust_conditional_read": 0,
+    "rust_source_read_shared_with_preflight": 93,
+    "rust_conditional_evaluation": 89,
+    "rust_conditional_issue_build": 57,
+    "python_preflight_plus_conditional": 19222.839,
+    "rust_preflight_plus_conditional": 390,
+    "python_over_rust_combined_ratio": 49.2893
+  },
+  "peak_rss_mb_median": {
+    "python_process": 77.312,
+    "rust_process": 85.949
+  },
+  "correctness": {
+    "all_rounds_issue_parity": true,
+    "rounds": [
+      {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "canonical_issue_sha256_multiset_matches": true
+      },
+      {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "canonical_issue_sha256_multiset_matches": true
+      },
+      {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "canonical_issue_sha256_multiset_matches": true
+      },
+      {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "canonical_issue_sha256_multiset_matches": true
+      },
+      {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "canonical_issue_sha256_multiset_matches": true
+      }
+    ],
+    "source_unchanged": true,
+    "template_unchanged": true
+  },
+  "measured_rounds": [
+    {
+      "round": 1,
+      "order": "rust_then_python",
+      "python": {
+        "template_read_ms": 7.33,
+        "preflight": {
+          "matched": true,
+          "matched_labels": 8,
+          "checked_labels": 8,
+          "elapsed_ms": 88.42
+        },
+        "conditional": {
+          "elapsed_ms": 20500.0,
+          "normalize_ms": 62.0,
+          "evaluation_ms": 938.0,
+          "issue_build_ms": 19500.0,
+          "issues": 8610
+        },
+        "peak_rss_mb": 77.199
+      },
+      "rust": {
+        "preflight": {
+          "matched": true,
+          "matched_labels": 8,
+          "checked_labels": 8,
+          "source_read_ms": 90,
+          "elapsed_ms": 90,
+          "summary_elapsed_ms": 215,
+          "template_read_ms": 106
+        },
+        "conditional": {
+          "elapsed_ms": 149,
+          "command_elapsed_ms": 388,
+          "combined_command_elapsed_ms": 388,
+          "source_read_ms": 0,
+          "shared_source_read_ms": 90,
+          "evaluation_ms": 92,
+          "issue_build_ms": 57,
+          "issues": 8610
+        },
+        "peak_rss_mb": 85.988
+      },
+      "parity": {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "canonical_issue_sha256_multiset_matches": true
+      }
+    },
+    {
+      "round": 2,
+      "order": "python_then_rust",
+      "python": {
+        "template_read_ms": 7.512,
+        "preflight": {
+          "matched": true,
+          "matched_labels": 8,
+          "checked_labels": 8,
+          "elapsed_ms": 82.266
+        },
+        "conditional": {
+          "elapsed_ms": 19812.0,
+          "normalize_ms": 62.0,
+          "evaluation_ms": 828.0,
+          "issue_build_ms": 18906.0,
+          "issues": 8610
+        },
+        "peak_rss_mb": 77.348
+      },
+      "rust": {
+        "preflight": {
+          "matched": true,
+          "matched_labels": 8,
+          "checked_labels": 8,
+          "source_read_ms": 110,
+          "elapsed_ms": 110,
+          "summary_elapsed_ms": 234,
+          "template_read_ms": 95
+        },
+        "conditional": {
+          "elapsed_ms": 146,
+          "command_elapsed_ms": 403,
+          "combined_command_elapsed_ms": 403,
+          "source_read_ms": 0,
+          "shared_source_read_ms": 110,
+          "evaluation_ms": 89,
+          "issue_build_ms": 57,
+          "issues": 8610
+        },
+        "peak_rss_mb": 85.949
+      },
+      "parity": {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "canonical_issue_sha256_multiset_matches": true
+      }
+    },
+    {
+      "round": 3,
+      "order": "rust_then_python",
+      "python": {
+        "template_read_ms": 8.311,
+        "preflight": {
+          "matched": true,
+          "matched_labels": 8,
+          "checked_labels": 8,
+          "elapsed_ms": 88.034
+        },
+        "conditional": {
+          "elapsed_ms": 18297.0,
+          "normalize_ms": 62.0,
+          "evaluation_ms": 859.0,
+          "issue_build_ms": 17360.0,
+          "issues": 8610
+        },
+        "peak_rss_mb": 77.312
+      },
+      "rust": {
+        "preflight": {
+          "matched": true,
+          "matched_labels": 8,
+          "checked_labels": 8,
+          "source_read_ms": 97,
+          "elapsed_ms": 97,
+          "summary_elapsed_ms": 215,
+          "template_read_ms": 93
+        },
+        "conditional": {
+          "elapsed_ms": 142,
+          "command_elapsed_ms": 380,
+          "combined_command_elapsed_ms": 380,
+          "source_read_ms": 0,
+          "shared_source_read_ms": 97,
+          "evaluation_ms": 88,
+          "issue_build_ms": 54,
+          "issues": 8610
+        },
+        "peak_rss_mb": 85.988
+      },
+      "parity": {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "canonical_issue_sha256_multiset_matches": true
+      }
+    },
+    {
+      "round": 4,
+      "order": "python_then_rust",
+      "python": {
+        "template_read_ms": 7.33,
+        "preflight": {
+          "matched": true,
+          "matched_labels": 8,
+          "checked_labels": 8,
+          "elapsed_ms": 87.553
+        },
+        "conditional": {
+          "elapsed_ms": 18765.0,
+          "normalize_ms": 62.0,
+          "evaluation_ms": 891.0,
+          "issue_build_ms": 17812.0,
+          "issues": 8610
+        },
+        "peak_rss_mb": 77.555
+      },
+      "rust": {
+        "preflight": {
+          "matched": true,
+          "matched_labels": 8,
+          "checked_labels": 8,
+          "source_read_ms": 93,
+          "elapsed_ms": 93,
+          "summary_elapsed_ms": 215,
+          "template_read_ms": 98
+        },
+        "conditional": {
+          "elapsed_ms": 151,
+          "command_elapsed_ms": 390,
+          "combined_command_elapsed_ms": 390,
+          "source_read_ms": 0,
+          "shared_source_read_ms": 93,
+          "evaluation_ms": 89,
+          "issue_build_ms": 62,
+          "issues": 8610
+        },
+        "peak_rss_mb": 85.859
+      },
+      "parity": {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "canonical_issue_sha256_multiset_matches": true
+      }
+    },
+    {
+      "round": 5,
+      "order": "rust_then_python",
+      "python": {
+        "template_read_ms": 7.939,
+        "preflight": {
+          "matched": true,
+          "matched_labels": 8,
+          "checked_labels": 8,
+          "elapsed_ms": 89.9
+        },
+        "conditional": {
+          "elapsed_ms": 19125.0,
+          "normalize_ms": 47.0,
+          "evaluation_ms": 797.0,
+          "issue_build_ms": 18250.0,
+          "issues": 8610
+        },
+        "peak_rss_mb": 77.262
+      },
+      "rust": {
+        "preflight": {
+          "matched": true,
+          "matched_labels": 8,
+          "checked_labels": 8,
+          "source_read_ms": 93,
+          "elapsed_ms": 93,
+          "summary_elapsed_ms": 216,
+          "template_read_ms": 98
+        },
+        "conditional": {
+          "elapsed_ms": 172,
+          "command_elapsed_ms": 410,
+          "combined_command_elapsed_ms": 410,
+          "source_read_ms": 0,
+          "shared_source_read_ms": 93,
+          "evaluation_ms": 112,
+          "issue_build_ms": 60,
+          "issues": 8610
+        },
+        "peak_rss_mb": 85.852
+      },
+      "parity": {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "canonical_issue_sha256_multiset_matches": true
+      }
+    }
+  ]
+}

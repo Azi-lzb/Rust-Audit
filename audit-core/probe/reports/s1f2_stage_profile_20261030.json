@@ -1,0 +1,284 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-10-30T14:26:15.528189+00:00",
+  "feature": "S1-F2",
+  "profile_kind": "Rust-only phase diagnostic; no new Python/Rust ratio",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python_version": "3.12.10",
+  "rust_binary": "F:\\RustBuild\\audit\\release\\open-data-audit.exe",
+  "rust_binary_sha256": "d9823be57071493acb04834f4144a3f91631ef3fdc4f576344e130af59c7b1b8",
+  "fixture": {
+    "generator": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\audit-core\\tests\\compare\\compare_s1_region_summary.py",
+    "template_and_mapping_config_bytes": 5672,
+    "source_workbooks": 2,
+    "source_sheets": 3,
+    "source_data_rows": 5,
+    "source_bytes": {
+      "!Alpha_20260731.xlsx": 5429,
+      "Beta_20260731.xlsx": 4938
+    },
+    "output_sheets": 2,
+    "output_data_rows": 9,
+    "sha256_before": {
+      "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\audit-core\\tests\\fixtures\\s1_region_summary_template.xlsx": "19996ace605ffe3abb0e683291c9ed5fe29d348fd8923100e3462e94fb6aeb21",
+      "C:\\Users\\AZI\\AppData\\Local\\Temp\\audit-s1f2-stage-profile-tx0pxmz1\\input\\!Alpha_20260731.xlsx": "080d03a526e97095745815be6e408d765e7581d4cc117ea5696203a889014243",
+      "C:\\Users\\AZI\\AppData\\Local\\Temp\\audit-s1f2-stage-profile-tx0pxmz1\\input\\Beta_20260731.xlsx": "c39fda6bca9323061073a554d52c9abd7315d9dda5cec8a516c06c62194ff792"
+    },
+    "sha256_after": {
+      "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\audit-core\\tests\\fixtures\\s1_region_summary_template.xlsx": "19996ace605ffe3abb0e683291c9ed5fe29d348fd8923100e3462e94fb6aeb21",
+      "C:\\Users\\AZI\\AppData\\Local\\Temp\\audit-s1f2-stage-profile-tx0pxmz1\\input\\!Alpha_20260731.xlsx": "080d03a526e97095745815be6e408d765e7581d4cc117ea5696203a889014243",
+      "C:\\Users\\AZI\\AppData\\Local\\Temp\\audit-s1f2-stage-profile-tx0pxmz1\\input\\Beta_20260731.xlsx": "c39fda6bca9323061073a554d52c9abd7315d9dda5cec8a516c06c62194ff792"
+    }
+  },
+  "measurement_environment": {
+    "performance_eligible_for_baseline": false,
+    "reason": "Excel COM processes or the Rust-Tools XLS-to-XLSX runner were active during measurement; use only as stage identification.",
+    "observed_background_processes": [
+      {
+        "pid": 2952,
+        "name": "EXCEL.EXE",
+        "command_line": "C:\\Program Files\\Microsoft Office\\Root\\Office16\\EXCEL.EXE /automation -Embedding",
+        "create_time": 1793336765.6335888
+      },
+      {
+        "pid": 6932,
+        "name": "EXCEL.EXE",
+        "command_line": "C:\\Program Files\\Microsoft Office\\Root\\Office16\\EXCEL.EXE /automation -Embedding",
+        "create_time": 1793336663.1863656
+      },
+      {
+        "pid": 8016,
+        "name": "EXCEL.EXE",
+        "command_line": "C:\\Program Files\\Microsoft Office\\Root\\Office16\\EXCEL.EXE /automation -Embedding",
+        "create_time": 1793336697.9659612
+      },
+      {
+        "pid": 9140,
+        "name": "EXCEL.EXE",
+        "command_line": "C:\\Program Files\\Microsoft Office\\Root\\Office16\\EXCEL.EXE /automation -Embedding",
+        "create_time": 1793336782.7311437
+      },
+      {
+        "pid": 9200,
+        "name": "cargo.exe",
+        "command_line": "C:\\Users\\AZI\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe run --release --manifest-path benchmarks/xls-to-xlsx-com/runner/Cargo.toml --",
+        "create_time": 1793344200.6417675
+      },
+      {
+        "pid": 13056,
+        "name": "EXCEL.EXE",
+        "command_line": "C:\\Program Files\\Microsoft Office\\Root\\Office16\\EXCEL.EXE /automation -Embedding",
+        "create_time": 1793336757.0943005
+      },
+      {
+        "pid": 14512,
+        "name": "cargo.exe",
+        "command_line": "C:\\Users\\AZI\\.cargo\\bin\\cargo.exe run --release --manifest-path benchmarks/xls-to-xlsx-com/runner/Cargo.toml --",
+        "create_time": 1793344200.6097398
+      },
+      {
+        "pid": 19644,
+        "name": "pwsh.exe",
+        "command_line": "C:\\Users\\AZI\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell\\pwsh.exe -Command try { [Console]::OutputEncoding=[System.Text.Encoding]::UTF8 } catch {}\n$env:CARGO_TARGET_DIR = 'F:\\RustBuild\\pytools\\xls-com-bench'; cargo run --release --manifest-path 'benchmarks/xls-to-xlsx-com/runner/Cargo.toml' --",
+        "create_time": 1793344200.1206074
+      },
+      {
+        "pid": 19856,
+        "name": "powershell.exe",
+        "command_line": "powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -STA -File C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Tools\\benchmarks\\xls-to-xlsx-com\\workers\\excel_com.ps1 -Stdin",
+        "create_time": 1793370370.1197534
+      },
+      {
+        "pid": 20440,
+        "name": "EXCEL.EXE",
+        "command_line": "C:\\Program Files\\Microsoft Office\\Root\\Office16\\EXCEL.EXE /automation -Embedding",
+        "create_time": 1793331955.7344227
+      },
+      {
+        "pid": 20668,
+        "name": "xls-to-xlsx-com-bench.exe",
+        "command_line": "F:\\RustBuild\\pytools\\xls-com-bench\\release\\xls-to-xlsx-com-bench.exe",
+        "create_time": 1793344225.456686
+      },
+      {
+        "pid": 22076,
+        "name": "EXCEL.EXE",
+        "command_line": "C:\\Program Files\\Microsoft Office\\Root\\Office16\\EXCEL.EXE /automation -Embedding",
+        "create_time": 1793370370.7872212
+      },
+      {
+        "pid": 22884,
+        "name": "EXCEL.EXE",
+        "command_line": "C:\\Program Files\\Microsoft Office\\Root\\Office16\\EXCEL.EXE /automation -Embedding",
+        "create_time": 1793331781.9269023
+      },
+      {
+        "pid": 22888,
+        "name": "EXCEL.EXE",
+        "command_line": "C:\\Program Files\\Microsoft Office\\Root\\Office16\\EXCEL.EXE /automation -Embedding",
+        "create_time": 1793336672.9873912
+      },
+      {
+        "pid": 22896,
+        "name": "EXCEL.EXE",
+        "command_line": "C:\\Program Files\\Microsoft Office\\Root\\Office16\\EXCEL.EXE /automation -Embedding",
+        "create_time": 1793336774.1678402
+      },
+      {
+        "pid": 26848,
+        "name": "EXCEL.EXE",
+        "command_line": "C:\\Program Files\\Microsoft Office\\Root\\Office16\\EXCEL.EXE /automation -Embedding",
+        "create_time": 1793336706.5394988
+      },
+      {
+        "pid": 27180,
+        "name": "EXCEL.EXE",
+        "command_line": "C:\\Program Files\\Microsoft Office\\Root\\Office16\\EXCEL.EXE /automation -Embedding",
+        "create_time": 1793336689.572689
+      },
+      {
+        "pid": 29080,
+        "name": "EXCEL.EXE",
+        "command_line": "C:\\Program Files\\Microsoft Office\\Root\\Office16\\EXCEL.EXE /automation -Embedding",
+        "create_time": 1793336792.7693036
+      },
+      {
+        "pid": 29556,
+        "name": "EXCEL.EXE",
+        "command_line": "C:\\Program Files\\Microsoft Office\\Root\\Office16\\EXCEL.EXE /automation -Embedding",
+        "create_time": 1793336681.2918637
+      },
+      {
+        "pid": 32128,
+        "name": "EXCEL.EXE",
+        "command_line": "C:\\Program Files\\Microsoft Office\\Root\\Office16\\EXCEL.EXE /automation -Embedding",
+        "create_time": 1793336655.6679633
+      },
+      {
+        "pid": 33628,
+        "name": "EXCEL.EXE",
+        "command_line": "C:\\Program Files\\Microsoft Office\\Root\\Office16\\EXCEL.EXE /automation -Embedding",
+        "create_time": 1793336745.851068
+      }
+    ]
+  },
+  "method": {
+    "rounds": 3,
+    "timing_resolution": "Rust internal stages are integer milliseconds; CLI wall time has microsecond-derived milliseconds.",
+    "rust_cli_wall_scope": "fresh Release CLI process; excludes fixture generation and output snapshot comparison",
+    "rust_internal_scope": "discovery, template read, structure preflight, source read, calculation, history, writing, validation and total as emitted by S1-F2 summary",
+    "correctness_scope": "expected counts and output workbook readability/shape; output cell snapshot identical across Rust rounds; prior Python/Rust 3-round full cell/structure parity remains the cross-runtime evidence",
+    "source_policy": "synthetic temporary inputs only; Python source project is imported read-only for the established fixture generator"
+  },
+  "summary": {
+    "rust_cli_wall_median_ms": 61.06,
+    "rust_stage_medians_ms": {
+      "discovery_time_ms": 0,
+      "template_read_time_ms": 2,
+      "structure_preflight_time_ms": 2,
+      "source_read_time_ms": 2,
+      "calculation_time_ms": 0,
+      "history_elapsed_ms": 0,
+      "write_time_ms": 3,
+      "validation_time_ms": 3,
+      "elapsed_ms": 22
+    },
+    "output_rounds_identical": true,
+    "all_inputs_unchanged": true
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "rust_cli_wall_ms": 67.463,
+      "rust_internal_stage_timings_ms": {
+        "discovery_time_ms": 0,
+        "template_read_time_ms": 2,
+        "structure_preflight_time_ms": 3,
+        "source_read_time_ms": 2,
+        "calculation_time_ms": 0,
+        "history_elapsed_ms": 0,
+        "write_time_ms": 3,
+        "validation_time_ms": 13,
+        "elapsed_ms": 28
+      },
+      "reader": "calamine+namespace_aware_ooxml",
+      "writer": "rust_xlsxwriter 0.101.0",
+      "output_bytes": 6800,
+      "output_sha256": "8471ccd277919ef26f2fc8d475ca08d2e1ddb64a70579152f8e24596b442c4b9",
+      "output_structure": [
+        {
+          "sheet": "Data_2",
+          "rows": 5,
+          "columns": 6
+        },
+        {
+          "sheet": "Data",
+          "rows": 6,
+          "columns": 6
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "rust_cli_wall_ms": 61.06,
+      "rust_internal_stage_timings_ms": {
+        "discovery_time_ms": 0,
+        "template_read_time_ms": 2,
+        "structure_preflight_time_ms": 2,
+        "source_read_time_ms": 3,
+        "calculation_time_ms": 0,
+        "history_elapsed_ms": 0,
+        "write_time_ms": 5,
+        "validation_time_ms": 3,
+        "elapsed_ms": 22
+      },
+      "reader": "calamine+namespace_aware_ooxml",
+      "writer": "rust_xlsxwriter 0.101.0",
+      "output_bytes": 6800,
+      "output_sha256": "8471ccd277919ef26f2fc8d475ca08d2e1ddb64a70579152f8e24596b442c4b9",
+      "output_structure": [
+        {
+          "sheet": "Data_2",
+          "rows": 5,
+          "columns": 6
+        },
+        {
+          "sheet": "Data",
+          "rows": 6,
+          "columns": 6
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "rust_cli_wall_ms": 52.154,
+      "rust_internal_stage_timings_ms": {
+        "discovery_time_ms": 0,
+        "template_read_time_ms": 2,
+        "structure_preflight_time_ms": 2,
+        "source_read_time_ms": 2,
+        "calculation_time_ms": 0,
+        "history_elapsed_ms": 0,
+        "write_time_ms": 3,
+        "validation_time_ms": 2,
+        "elapsed_ms": 16
+      },
+      "reader": "calamine+namespace_aware_ooxml",
+      "writer": "rust_xlsxwriter 0.101.0",
+      "output_bytes": 6800,
+      "output_sha256": "8471ccd277919ef26f2fc8d475ca08d2e1ddb64a70579152f8e24596b442c4b9",
+      "output_structure": [
+        {
+          "sheet": "Data_2",
+          "rows": 5,
+          "columns": 6
+        },
+        {
+          "sheet": "Data",
+          "rows": 6,
+          "columns": 6
+        }
+      ]
+    }
+  ]
+}

@@ -440,9 +440,20 @@ struct GeneralSettingsResult {
 pub fn load_config(path: impl AsRef<Path>) -> Result<S2AuditConfig> {
     let path = path.as_ref();
     let sheets = read_config_sheets(path)?;
+    load_config_from_sheets(path, &sheets)
+}
+
+/// Parse a runtime configuration from an already-read worksheet projection.
+///
+/// The service config-check path uses this to validate and execute from the
+/// same stored-value read instead of reopening the workbook for each phase.
+pub(crate) fn load_config_from_sheets(
+    path: &Path,
+    sheets: &[SheetValues],
+) -> Result<S2AuditConfig> {
     let resolved = resolved_path(path)?;
     let mut config = S2AuditConfig::default();
-    let general = load_general_settings(&sheets, path)?;
+    let general = load_general_settings(sheets, path)?;
     config.unit_settings = general.units;
     config.hide_unchanged_period_rows = general.hide_unchanged_period_rows;
     config.hide_matching_external_rows = general.hide_matching_external_rows;
@@ -452,7 +463,7 @@ pub fn load_config(path: impl AsRef<Path>) -> Result<S2AuditConfig> {
     config.warnings.extend(general.missing_row_warnings);
 
     let indicator_sheet =
-        sheet(&sheets, "指标参照").ok_or_else(|| anyhow!("比较配置缺少“指标参照”"))?;
+        sheet(sheets, "指标参照").ok_or_else(|| anyhow!("比较配置缺少“指标参照”"))?;
     let indicator_rows = rows(indicator_sheet);
     let headers = first_row(&indicator_rows);
     let inline_unit_headers = headers
@@ -507,10 +518,10 @@ pub fn load_config(path: impl AsRef<Path>) -> Result<S2AuditConfig> {
         );
     }
 
-    load_external_rules(&sheets, &resolved, &mut config)?;
-    load_institutions(&sheets, &mut config);
-    load_bands(&sheets, &mut config);
-    load_rules(&sheets, &resolved, &mut config);
+    load_external_rules(sheets, &resolved, &mut config)?;
+    load_institutions(sheets, &mut config);
+    load_bands(sheets, &mut config);
+    load_rules(sheets, &resolved, &mut config);
     Ok(config)
 }
 

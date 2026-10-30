@@ -55,22 +55,40 @@ pub fn recommend_template_for_workbooks(
         return Ok(unmatched("源数据目录中没有可识别的 .xlsx 文件"));
     }
 
-    let templates = template_workbook_paths(template_dir)?
+    let templates = load_template_profiles(template_dir)?;
+    Ok(recommend_template_with_profiles(&templates, source_files))
+}
+
+/// Read the candidate templates and their worksheet directories once so a
+/// caller processing many source workbooks can reuse the immutable profiles.
+pub fn load_template_profiles(template_dir: &Path) -> Result<Vec<TemplateProfile>> {
+    Ok(template_workbook_paths(template_dir)?
         .into_iter()
         .map(|path| TemplateProfile {
             sheet_names: read_xlsx_sheet_names_ooxml(&path).unwrap_or_default(),
             path,
         })
-        .collect::<Vec<_>>();
+        .collect())
+}
+
+/// Recommend using previously loaded candidate profiles. Source workbook
+/// sheet names are still read independently for each requested source.
+pub fn recommend_template_with_profiles(
+    templates: &[TemplateProfile],
+    source_files: &[PathBuf],
+) -> TemplateSuggestion {
+    if source_files.is_empty() {
+        return unmatched("源数据目录中没有可识别的 .xlsx 文件");
+    }
     if templates.is_empty() {
-        return Ok(unmatched("模板文件目录中没有正式模板"));
+        return unmatched("模板文件目录中没有正式模板");
     }
 
     let source_sheets = source_files
         .iter()
         .map(|path| read_xlsx_sheet_names_ooxml(path).unwrap_or_default())
         .collect::<Vec<_>>();
-    Ok(recommend_from_sheet_sets(&templates, &source_sheets))
+    recommend_from_sheet_sets(templates, &source_sheets)
 }
 
 /// List the direct `.xlsx` templates considered by recommendation. Keeping

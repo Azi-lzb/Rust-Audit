@@ -8,7 +8,7 @@ use crate::{
 };
 use anyhow::{bail, ensure, Context, Result};
 use chrono::Local;
-use excel_reader::read_workbook;
+use excel_reader::read_workbook_sheet_formula_counts;
 use excel_writer::{Color, Format, FormatAlign, Workbook, Worksheet};
 use serde_json::{Number, Value};
 use std::{
@@ -771,17 +771,17 @@ fn write_cell(
 }
 
 fn validate_workbook(path: &Path, expected_formulas: usize) -> Result<()> {
-    let workbook = read_workbook(path).context("重新打开并校验 S2 XLSX 报告失败")?;
-    let names = workbook
-        .sheets
+    let sheets =
+        read_workbook_sheet_formula_counts(path).context("重新打开并校验 S2 XLSX 报告失败")?;
+    let names = sheets
         .iter()
-        .map(|sheet| sheet.name.as_str())
+        .map(|(name, _)| name.as_str())
         .collect::<Vec<_>>();
     ensure!(names == SHEET_ORDER, "S2 XLSX 报告工作表名称或顺序不匹配");
-    let formula_count = workbook
-        .sheets
+    let formula_count = sheets
         .iter()
-        .map(|sheet| sheet.formulas.len())
+        .map(|(_, formula_count)| formula_count)
+        .copied()
         .sum::<usize>();
     ensure!(
         formula_count == expected_formulas,
@@ -850,7 +850,8 @@ impl Drop for TemporaryWorkbook {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_tables, checked_text, decimal_python_text, exact_integer_cell, value_cell, ExcelCell,
+        build_tables, checked_text, decimal_python_text, exact_integer_cell, validate_workbook,
+        value_cell, ExcelCell, Workbook,
     };
     use crate::{s2_validation::S2AuditFinding, unit_conversion::DecimalTuple};
     use serde_json::json;
@@ -941,5 +942,26 @@ mod tests {
     #[test]
     fn unsafe_integer_is_rejected_before_xlsx_precision_is_lost() {
         assert!(exact_integer_cell(9_007_199_254_740_993).is_err());
+    }
+
+    #[test]
+    fn output_validation_reopens_only_sheet_and_formula_inventory() {
+        let counter = super::TEMP_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "rust-audit-s2f1-validation-{}-{counter}.xlsx",
+            std::process::id()
+        ));
+        let mut workbook = Workbook::new();
+        let worksheet = workbook.add_worksheet();
+        worksheet.set_name("环比规则").unwrap();
+        worksheet.write_formula(0, 0, "=1+1").unwrap();
+        for name in ["外部核对规则", "校验规则"] {
+            workbook.add_worksheet().set_name(name).unwrap();
+        }
+        workbook.save(&path).unwrap();
+
+        assert!(validate_workbook(&path, 1).is_ok());
+        assert!(validate_workbook(&path, 0).is_err());
+        std::fs::remove_file(path).unwrap();
     }
 }

@@ -2,9 +2,11 @@
 //!
 //! This mirrors the source product's `config_check.check_s2_config` contract. It
 //! reads stored values through the shared Calamine adapter and delegates runtime
-//! parsing to `s2_config::load_config`; it never writes the source workbook.
+//! parsing to the S2 runtime config loader; it never writes the source workbook.
 
-use crate::s2_config::{cell_code, cell_text, cell_yes, load_config, severity};
+use crate::s2_config::{
+    cell_code, cell_text, cell_yes, load_config_from_sheets, severity, S2AuditConfig,
+};
 use excel_reader::{read_value_columns_with_iso_dates, CellValue, SheetValues};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
@@ -92,6 +94,15 @@ struct StrategyRow {
 
 /// Inspect an S2 configuration workbook without changing it.
 pub fn check_s2_config(path: impl AsRef<Path>) -> S2ConfigCheckReport {
+    check_s2_config_and_load(path).0
+}
+
+/// Validate an S2 configuration and return the runtime config parsed from the
+/// same Calamine worksheet projection. Execution callers can avoid reopening
+/// the workbook after structural and runtime-parse checks have completed.
+pub(crate) fn check_s2_config_and_load(
+    path: impl AsRef<Path>,
+) -> (S2ConfigCheckReport, Option<S2AuditConfig>) {
     let target = path.as_ref();
     let mut report = S2ConfigCheckReport {
         path: target.to_string_lossy().into_owned(),
@@ -133,7 +144,7 @@ pub fn check_s2_config(path: impl AsRef<Path>) -> S2ConfigCheckReport {
             "配置文件不存在，无法读取。",
         );
         report.message = blocked_message(report.blocking_errors);
-        return report;
+        return (report, None);
     }
 
     let sheets = match read_value_columns_with_iso_dates(target, usize::MAX) {
@@ -153,7 +164,7 @@ pub fn check_s2_config(path: impl AsRef<Path>) -> S2ConfigCheckReport {
                 "配置文件无法打开，详见下方问题明细。",
             );
             report.message = blocked_message(report.blocking_errors);
-            return report;
+            return (report, None);
         }
     };
 
@@ -188,12 +199,12 @@ pub fn check_s2_config(path: impl AsRef<Path>) -> S2ConfigCheckReport {
     );
     if report.blocking_errors > 0 {
         report.message = blocked_message(report.blocking_errors);
-        return report;
+        return (report, None);
     }
 
     let referenced_groups = check_indicators(&mut report, &sheets);
     check_period_strategies(&mut report, &sheets, &referenced_groups);
-    check_runtime_parse(&mut report, &sheets, target);
+    let runtime_config = check_runtime_parse(&mut report, &sheets, target);
 
     report.passed = report.blocking_errors == 0;
     report.message = if report.passed {
@@ -201,7 +212,7 @@ pub fn check_s2_config(path: impl AsRef<Path>) -> S2ConfigCheckReport {
     } else {
         blocked_message(report.blocking_errors)
     };
-    report
+    (report, runtime_config)
 }
 
 /// Format the structured check report for the existing UI text contract.
@@ -608,19 +619,26 @@ fn check_period_strategies(
     );
 }
 
-fn check_runtime_parse(report: &mut S2ConfigCheckReport, sheets: &[SheetValues], path: &Path) {
+fn check_runtime_parse(
+    report: &mut S2ConfigCheckReport,
+    sheets: &[SheetValues],
+    path: &Path,
+) -> Option<S2AuditConfig> {
     let start = report.issues.len();
     warn_legacy_severity_values(report, sheets);
-    match load_config(path) {
-        Err(error) => push_issue(
-            report,
-            "blocking",
-            format!("配置无法进入运行时解析：{error}"),
-            None,
-            None,
-        ),
+    let config = match load_config_from_sheets(path, sheets) {
+        Err(error) => {
+            push_issue(
+                report,
+                "blocking",
+                format!("配置无法进入运行时解析：{error}"),
+                None,
+                None,
+            );
+            None
+        }
         Ok(config) => {
-            for warning in config.warnings {
+            for warning in &config.warnings {
                 let level = if ["已跳过", "不存在", "无效", "暂不支持"]
                     .iter()
                     .any(|token| warning.contains(token))
@@ -629,16 +647,18 @@ fn check_runtime_parse(report: &mut S2ConfigCheckReport, sheets: &[SheetValues],
                 } else {
                     "warning"
                 };
-                push_issue(report, level, warning, None, None);
+                push_issue(report, level, warning.clone(), None, None);
             }
+            Some(config)
         }
-    }
+    };
     finish_check(
         report,
         "runtime_parse",
         start,
         "指标参照、机构参照、校验规则、外部核对规则和通用设置均已交给正式配置解析器检查",
     );
+    config
 }
 
 fn warn_legacy_severity_values(report: &mut S2ConfigCheckReport, sheets: &[SheetValues]) {

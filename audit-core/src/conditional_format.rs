@@ -199,14 +199,35 @@ pub fn evaluate_xlsx_workbook_with_dump(
         .with_context(|| format!("读取工作簿 {}", path.display()))?;
     let workbook = read_report.workbook;
     let read_time_ms = read_started.elapsed().as_millis();
-    let mut report = evaluate_dump(
-        &workbook.sheets,
+    let report = evaluate_workbook_dump(
+        &workbook,
+        &read_report.diagnostics,
         scan_areas,
         read_time_ms,
         total_started.elapsed().as_millis(),
     )?;
-    report.read_diagnostics = read_report.diagnostics;
     Ok((report, workbook))
+}
+
+/// Evaluate conditional formatting from a workbook projection that has
+/// already been read by the caller. `read_time_ms` and `elapsed_before_eval_ms`
+/// let the caller preserve stage accounting; pass zero when the read belongs
+/// to a preceding stage such as S1 structure preflight.
+pub fn evaluate_workbook_dump(
+    workbook: &WorkbookDump,
+    read_diagnostics: &WorkbookReadDiagnostics,
+    scan_areas: &[String],
+    read_time_ms: u128,
+    elapsed_before_eval_ms: u128,
+) -> Result<ConditionalEvaluationReport> {
+    let mut report = evaluate_dump(
+        &workbook.sheets,
+        scan_areas,
+        read_time_ms,
+        elapsed_before_eval_ms,
+    )?;
+    report.read_diagnostics = read_diagnostics.clone();
+    Ok(report)
 }
 
 fn evaluate_dump(

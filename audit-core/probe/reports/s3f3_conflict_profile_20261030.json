@@ -1,0 +1,363 @@
+{
+  "status": "passed",
+  "feature": "S3-F3",
+  "scenario": "1000 matching keys with conflicting reasons from two feedback workbooks",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python_version": "3.12.10",
+  "python_source": "C:\\Users\\AZI\\Desktop\\VibeCode\\3.open-data-audit",
+  "python_source_sha256_unchanged": true,
+  "python_source_sha256": "e4946cdcbb8eb60267d63b6bb03c15d6a91446dde836b97a19c01992358d5e77",
+  "rust_binary": "F:\\RustBuild\\audit\\release\\open-data-audit.exe",
+  "rust_binary_sha256": "74c167b5a304d357bfd14f4dab3f65f173c63e8c45a0b631bf7323891148edef",
+  "fixture": {
+    "unique_matching_keys": 1000,
+    "feedback_workbooks": 2,
+    "conflicting_keys": 1000,
+    "expected_imported": 0,
+    "expected_unmatched": 0,
+    "expected_conflicts": 1000,
+    "inputs": {
+      "target": {
+        "bytes": 47169,
+        "sheets": [
+          {
+            "name": "说明文件",
+            "rows": 1002,
+            "columns": 8
+          }
+        ]
+      },
+      "feedback_a": {
+        "bytes": 50084,
+        "sheets": [
+          {
+            "name": "机构反馈",
+            "rows": 1001,
+            "columns": 8
+          }
+        ]
+      },
+      "feedback_b": {
+        "bytes": 50234,
+        "sheets": [
+          {
+            "name": "机构反馈",
+            "rows": 1001,
+            "columns": 8
+          }
+        ]
+      }
+    },
+    "feedback_inputs_sha256_unchanged": true
+  },
+  "methodology": {
+    "warmup_rounds": 1,
+    "measured_rounds": 3,
+    "order": "alternating Python/Rust",
+    "python_timing": "in-process service call; excludes interpreter/module startup and output comparison",
+    "rust_timing": "Release CLI wall clock including process startup; service stages also recorded",
+    "memory_sampling": "separate process-tree working-set probe sampled every 5 ms"
+  },
+  "timing_medians_ms": {
+    "python_service": 1332.49,
+    "rust_cli_wall": 149.89,
+    "rust_internal_total": 120,
+    "python_over_rust_cli": 8.89,
+    "python_over_rust_internal": 11.104
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "order": "python-first",
+      "python_service_ms": 1332.4858,
+      "rust_cli_wall_ms": 149.8903,
+      "rust_internal_total_ms": 120,
+      "rust_stages_ms": {
+        "target_read": 11,
+        "feedback_read": 35,
+        "conflict_report_write": 19,
+        "writeback": 4,
+        "total": 120
+      },
+      "summary": {
+        "imported": 0,
+        "unmatched": 0,
+        "conflicts": 1000
+      },
+      "conflict_report": {
+        "python": {
+          "sheet_count": 1,
+          "rows_including_header": 1001,
+          "columns": 10,
+          "file_bytes": 64300
+        },
+        "rust": {
+          "sheet_count": 1,
+          "rows_including_header": 1001,
+          "columns": 10,
+          "file_bytes": 67159
+        },
+        "comparison": {
+          "compared_nonempty_cells": 10010,
+          "difference_count": 0,
+          "difference_examples": [],
+          "cached_value_sheet_difference_count": 0,
+          "python_structure": {
+            "sheet_names": [
+              "冲突明细"
+            ],
+            "dimensions": [
+              [
+                1001,
+                10
+              ]
+            ]
+          },
+          "rust_structure": {
+            "sheet_names": [
+              "冲突明细"
+            ],
+            "dimensions": [
+              [
+                1001,
+                10
+              ]
+            ]
+          }
+        }
+      },
+      "target_comparison": {
+        "compared_nonempty_cells": 8009,
+        "difference_count": 0,
+        "difference_examples": [],
+        "cached_value_sheet_difference_count": 0,
+        "python_structure": {
+          "sheet_names": [
+            "说明文件"
+          ],
+          "dimensions": [
+            [
+              1002,
+              8
+            ]
+          ]
+        },
+        "rust_structure": {
+          "sheet_names": [
+            "说明文件"
+          ],
+          "dimensions": [
+            [
+              1002,
+              8
+            ]
+          ]
+        }
+      },
+      "rust_backup": {
+        "backup_sha256_matches_original": true,
+        "target_sha256_unchanged": true
+      }
+    },
+    {
+      "round": 2,
+      "order": "rust-first",
+      "python_service_ms": 1314.8343,
+      "rust_cli_wall_ms": 140.6928,
+      "rust_internal_total_ms": 112,
+      "rust_stages_ms": {
+        "target_read": 11,
+        "feedback_read": 32,
+        "conflict_report_write": 18,
+        "writeback": 2,
+        "total": 112
+      },
+      "summary": {
+        "imported": 0,
+        "unmatched": 0,
+        "conflicts": 1000
+      },
+      "conflict_report": {
+        "python": {
+          "sheet_count": 1,
+          "rows_including_header": 1001,
+          "columns": 10,
+          "file_bytes": 64300
+        },
+        "rust": {
+          "sheet_count": 1,
+          "rows_including_header": 1001,
+          "columns": 10,
+          "file_bytes": 67160
+        },
+        "comparison": {
+          "compared_nonempty_cells": 10010,
+          "difference_count": 0,
+          "difference_examples": [],
+          "cached_value_sheet_difference_count": 0,
+          "python_structure": {
+            "sheet_names": [
+              "冲突明细"
+            ],
+            "dimensions": [
+              [
+                1001,
+                10
+              ]
+            ]
+          },
+          "rust_structure": {
+            "sheet_names": [
+              "冲突明细"
+            ],
+            "dimensions": [
+              [
+                1001,
+                10
+              ]
+            ]
+          }
+        }
+      },
+      "target_comparison": {
+        "compared_nonempty_cells": 8009,
+        "difference_count": 0,
+        "difference_examples": [],
+        "cached_value_sheet_difference_count": 0,
+        "python_structure": {
+          "sheet_names": [
+            "说明文件"
+          ],
+          "dimensions": [
+            [
+              1002,
+              8
+            ]
+          ]
+        },
+        "rust_structure": {
+          "sheet_names": [
+            "说明文件"
+          ],
+          "dimensions": [
+            [
+              1002,
+              8
+            ]
+          ]
+        }
+      },
+      "rust_backup": {
+        "backup_sha256_matches_original": true,
+        "target_sha256_unchanged": true
+      }
+    },
+    {
+      "round": 3,
+      "order": "python-first",
+      "python_service_ms": 1583.7217,
+      "rust_cli_wall_ms": 158.7438,
+      "rust_internal_total_ms": 125,
+      "rust_stages_ms": {
+        "target_read": 11,
+        "feedback_read": 38,
+        "conflict_report_write": 21,
+        "writeback": 3,
+        "total": 125
+      },
+      "summary": {
+        "imported": 0,
+        "unmatched": 0,
+        "conflicts": 1000
+      },
+      "conflict_report": {
+        "python": {
+          "sheet_count": 1,
+          "rows_including_header": 1001,
+          "columns": 10,
+          "file_bytes": 64299
+        },
+        "rust": {
+          "sheet_count": 1,
+          "rows_including_header": 1001,
+          "columns": 10,
+          "file_bytes": 67160
+        },
+        "comparison": {
+          "compared_nonempty_cells": 10010,
+          "difference_count": 0,
+          "difference_examples": [],
+          "cached_value_sheet_difference_count": 0,
+          "python_structure": {
+            "sheet_names": [
+              "冲突明细"
+            ],
+            "dimensions": [
+              [
+                1001,
+                10
+              ]
+            ]
+          },
+          "rust_structure": {
+            "sheet_names": [
+              "冲突明细"
+            ],
+            "dimensions": [
+              [
+                1001,
+                10
+              ]
+            ]
+          }
+        }
+      },
+      "target_comparison": {
+        "compared_nonempty_cells": 8009,
+        "difference_count": 0,
+        "difference_examples": [],
+        "cached_value_sheet_difference_count": 0,
+        "python_structure": {
+          "sheet_names": [
+            "说明文件"
+          ],
+          "dimensions": [
+            [
+              1002,
+              8
+            ]
+          ]
+        },
+        "rust_structure": {
+          "sheet_names": [
+            "说明文件"
+          ],
+          "dimensions": [
+            [
+              1002,
+              8
+            ]
+          ]
+        }
+      },
+      "rust_backup": {
+        "backup_sha256_matches_original": true,
+        "target_sha256_unchanged": true
+      }
+    }
+  ],
+  "memory": {
+    "python_working_set_bytes": 43032576,
+    "rust_working_set_bytes": 17182720,
+    "python_peak_live_process_count": 1,
+    "rust_peak_live_process_count": 1,
+    "conflict_output_difference_count": 0
+  },
+  "correctness": {
+    "summary_differences": 0,
+    "conflict_workbook_value_structure_differences": 0,
+    "updated_target_differences": 0,
+    "rust_backup_matches_original": true,
+    "rust_target_sha256_unchanged": true
+  }
+}

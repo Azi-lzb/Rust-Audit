@@ -2,6 +2,16 @@
 
 > **历史证据档案（截至 2026-10-28）**：以下条目和状态是原工作区不同时间的记录，不作为当前进度或操作指令。当前功能状态和验收口径以 [独立项目开发目标](../DEVELOPMENT_GOAL.md) 及 [V2 需求](AUDIT_RUST_V2_BUSINESS_REQUIREMENTS.md) 为准；本文件保留旧证据，不自动要求全面对拍或编译。
 
+### S1/S2/S3 性能地图索引（2026-10-30）
+
+当前可用于优化决策的功能级基线、数据规模、正确性证据和缺项汇总见 [PERFORMANCE_BASELINE.md](PERFORMANCE_BASELINE.md)；逐次记录及历史口径见 [PERFORMANCE_HISTORY.md](PERFORMANCE_HISTORY.md)，可复跑入口索引见 [benchmarks/README.md](benchmarks/README.md)。该台账按 S1-F1/F2、S2-F1、S3-F1 至 F5 建立；S5 排除。S1-F1 原生 COM 批次与 S3-F1 性能项目按当前用户目标暂结；S1-F1 条件格式异常指标定位、结构预检/条件审核共享源读取及模板结构投影读取均已定点优化。4k 结构预检+条件审核 CLI 中位数为 390 ms；20k 结构模板读取为 528→224 ms。完整业务链仍待计时。
+
+S1-F1 源读取复用使用单个输入工作簿内的只读 `WorkbookDump`，不跨批次或重算阶段缓存。4,000 行、8,610 条异常的五轮测试中，Rust CLI 内部事件耗时（不含进程启动）从两次读取状态的 498 ms 降至 390 ms，异常摘要对拍 5/5，峰值工作集与前态相当。详细证据见本文件末尾对应增量及 `PERFORMANCE_HISTORY.md`。
+
+台账复核发现 2026-10-30 汇总 Markdown 中部分 S2-F1、S3-F1/F2/F3 数字与逐轮 JSON 不符，基线使用 JSON 逐轮值重新计算中位数并保留不一致说明；未改写历史报告。大多数性能样本未记录输入字节数、统一阶段计时或峰值内存，未验证全单元格业务一致性的功能也明确标出。性能数据不得替代人工业务验收。
+
+补充：S3-F2 另有一轮新的规模扩展剖析，使用合成 7,830 行比较表、2,610 条选中输出；三轮完整工作簿对拍差异均为 0，Rust CLI 墙钟中位数 359.88 ms、Python 2,919.43 ms。详情见 `tests/compare/perf_s3f2_scale_20261030.py` 与 `probe/reports/s3f2_scale_profile_20261030.json`。这不是不可得的旧真实工作簿重测，不据此改动业务实现。
+
 ### Windows 原生 COM 与 lo-convert 退出默认运行链（2026-10-30）
 
 S1-F1 Windows GUI/CLI 现使用 Audit 自身的一次性批次工作进程直接调用原生 COM，批次内复用 Excel/WPS；工作进程隔离用于限制 COM 卡死对 GUI 的影响。缓存清理、计算属性设置、公式/缓存读回验证和不覆盖发布保留；自动模式 COM 失败时由 Audit 直接调用 LibreOffice，失败则走人工重算恢复。Office 进程以 PID 和创建时间核对并持有句柄，超时仅终止已验证的进程。Linux 仍使用现有 LibreOffice sidecar。可选的旧格式转换工具保留源码，其 Windows COM 转换及 Word 文本校验移除生产 PowerShell 调用；Windows 标准构建/打包不再要求或包含 lo-convert。打包脚本本身仍使用 PowerShell 压缩，已有 dist 未修改。旧 API 仍保留显式 sidecar 兼容入口，不代表默认 GUI/CLI 会调用它。
@@ -796,3 +806,99 @@ Windows 当前源码全工作区回归 `CARGO_TARGET_DIR=F:/RustBuild/audit carg
 - 正常 COM 会话测试与受控 35 秒 parent-timeout 清理测试分别 1/1 通过。timeout 用例是在公式重算成功后人为延迟 worker 响应，验证 worker/准确归属的 Excel 清理、源文件保护和不发布输出；并非 Excel 内部 COM 永久挂起模拟。
 - 当前源码全 workspace 回归：82 个测试目标、501 passed / 0 failed / 34 ignored；Release open-data-audit 构建成功；Rust 修改文件 rustfmt --check 与 Python harness py_compile 通过。ignored 项新增 1 个受控 COM timeout 测试，已单独实际运行。没有运行 push、打包或 Linux 实测。
 - **结论：S1-F1 Windows COM 性能优化已完成。** Excel 冷启动是两端共同主成本；Rust 约 43 ms/批的 worker 启动/ready 开销不值得牺牲进程隔离。性能数据视为平价；合成验收不能替代真实机构输入、GUI 完整链路或业务审核结论人工验收。报告与原始数据：probe/reports/s1f1_com_final_acceptance_20261030.md/.json；批测脚本 tests/compare/s1f1_final_acceptance_20261030.py；全 workspace 日志 F:\RustBuild\audit\s1f1_final_workspace_regression_20261030.log。
+
+### 2026-10-30 增量：S2-F1 外部规则性能剖析
+
+在只读参考 Python Audit 上调用 `PeriodAuditV2Service`，Rust 使用既有 Release CLI；输入来自隔离的 S2-F1 外部规则人工验收样本，正常和异常值各预热一次并交错运行三轮。输入包括两期源工作簿（各 6,033 bytes、2 张表）、6 表配置（8,656 bytes）及 3 表外部数据（6,164/6,161 bytes）。输出两端均为 3 张分类工作表、292 个比较单元格。
+
+Python 业务服务中位数 41.92/42.19 ms；Rust CLI 墙钟 50.26/51.56 ms，CLI 内部阶段约 24 ms。Python/Rust 倍率依次为 CLI 口径 0.83×/0.82×，服务口径 1.75×/1.76×。Rust 各阶段计时显示配置 3 ms、外部簿读取 1 ms、导出 2 ms、保存/回读验证 15 ms；Python 配置检查与读取约 29 ms、外部簿读取约 3–4 ms、保存约 4 ms。独立 CLI 的启动开销抹平了服务内优势；保存验证虽较长，但总服务仍快，不能据此删减验证。
+
+两种情形各 3/3 轮摘要与输出逐格/结构对拍通过；无业务差异，只有每个输出中 4 个 Windows 文件路径的 `\\?\` 前缀表示差异。外部值、0/1,233,333.39 差值及硬性异常级别符合样本预期；源文件哈希及旧 Python 核心文件哈希均未改变。单独进程采样峰值工作集 Python 40.69/40.71 MB、Rust 13.09/12.38 MB（含进程启动）。
+
+详细计时和负载见 `audit-core/probe/reports/s2f1_external_profile_20261030.md/.json`，复跑脚本为 `audit-core/tests/compare/perf_s2f1_external_20261030.py`。该结果未触发 S2 代码修改；S2-F1 当前已具备一个有外部数据读取和规则输出对拍的定点性能基线，仍不代表 21+21 份生产报表的 A/B。
+
+### 2026-10-30 增量：S3-F4 本期核对值级性能复测
+
+复用本期值核对历史性能基准的 10,000 行 CSV 和 3.0/3.2 配置，含两条本期核对规则。Python `run_cross_period_check` 服务 7,071.61 ms；Rust CLI 墙钟 989.30 ms，服务内部 945 ms（Python/Rust 7.15×/7.48×）。Rust 配置、输入读取、计算、写出/验证中位数分别 1、84、157、702 ms。两边各输出 20,000 条结果，工作簿 20,001×17；预热及三轮逐格/公式/关键结构比较每轮 340,017 个格，差异均为 0。输出约 1.39 MB/1.01 MB。输入与 Python 服务源文件哈希均未变化。
+
+单独进程树采样峰值工作集 Python 181.42 MB、Rust CLI 94.49 MB；两端各一进程。写出验证为最大 Rust 阶段（约 74%），但当前实现整体约 1 秒且比 Python 快逾 7 倍，没有看到值得优先承担实现复杂度的改进点。
+
+数据和限制见 `audit-core/probe/reports/s3f4_parity_profile_20261030.md/.json`，复跑入口 `audit-core/tests/compare/perf_s3f4_parity_20261030.py`。该结果是合成配置的完整输出对照，不替代机构真实数据验收。
+
+### 2026-10-30 增量：S3-F5 有效渲染基准纠错与复测
+
+检查此前性能夹具时发现，2026-10-29/30 两个 S3-F5 生成器均用 `AF001`…`AF004` 作为表单工作表名。实际业务按 `A1/A2` 标识推断人民币/外币业务类，因此这些负载没有匹配业务记录，Rust 报告为 `matched_indicators=0`，所有结果表为空；此前只比较输出文件数量，速度数据不具业务代表性。机器数据保留，但在性能历史中标记无效。修正当前 `perf_compare_20261030.py` 配置生成器，并为聚焦剖析器加入“每表单指标行必须命中”和“回填数值格必须非零”断言；没有修改 S3-F5 产品代码。
+
+有效样本为 30 家机构 × 40 指标 × 4 张 A1 表，共 1,200 行比较输入与 4,800 个表单指标行。Python/Rust 服务中位数 3,509.17/1,510 ms；Rust CLI 墙钟 1,538.36 ms，Python/Rust 分别快 2.32×（服务）及 2.28×（CLI）。Rust 读表 36 ms、规划 51 ms、机构文件编辑中位数每份 45 ms、编辑阶段合计 1,449 ms。每轮生成同名 30 册、6 张表/册；三轮逐单元格值、公式、关键结构和隐藏行对拍为 0 差异（每轮 35,460 格、19,200 数值格）。输入配置哈希未变。
+
+单独进程树采样峰值工作集约 Python 475.34 MB（13 个进程）、Rust 24.25 MB（1 个进程）；S3-F5 Rust 运行仍约 2.3× 快，故本轮未并行化单册写入。详细报告 `audit-core/probe/reports/s3f5_parity_profile_20261030.md/.json`，复跑驱动 `audit-core/tests/compare/perf_s3f5_parity_20261030.py`。当前两个 benchmark 脚本已 py_compile 且实际通过三轮运行和输出对拍；未执行 Cargo。
+
+### 2026-10-30 增量：S3-F3 原地计划内存传递优化
+
+检查 S3-F3 原地写回计时时发现，执行链会将已构造且已校验的 ExcelEditPlan 序列化到暂存 JSON、同步磁盘，随后立即读回；此计划文件不属于用户输出。`audit-core/src/s3_explanation_feedback.rs` 现将公共计划 API 与内部执行规划拆开：显式计划导出仍持久化原 JSON；原地更新及保留的副本入口从内存取得同一份计划并交给 Excel-Core，省去无用磁盘往返。匹配、冲突、输入哈希保护、备份、原子发布及工作簿修改语义未变。旧记录中 S3-F3 小规模略慢的结论被本次同负载优化后结果取代，原值仍保留在历史比较表中。
+
+同一业务数据为 1,000 条唯一反馈、无冲突。Rust 内部中位数由 946 ms 降至 203 ms（78.54%），CLI 墙钟由 975.25 ms 降至 235.54 ms（75.85%）；优化后 Python/Rust CLI 为 912.62/235.54 ms。三轮完整值、公式计数、关键结构和输入保护比较均为 0 差异；只改 H3:H1002；备份与原目标 SHA-256 一致。优化前后 XLSX 容器大小因生成元数据各相差 1 byte，数据布局与业务数据相同。峰值工作集约 38.86/21.73 MB。
+
+定向验证通过：`audit-core` 库测试 7/7（含执行冲突清单及目标保护用例）、S3-F3 计划 CLI 集成测试 3/3；Release `open-data-audit` 构建成功，二进制 SHA-256 `d21e355a8ec05129e81ccdda008f257a98702b64537010c24b773433b416db66`。基准驱动语法及优化前后 JSON 解析检查通过。未运行全工作区回归；`cargo fmt --check --all` 因多处既有格式差异失败，未格式化无关文件。详细数据见 `audit-core/probe/reports/s3f3_parity_profile_20261030.md/.json` 与 `audit-core/probe/reports/s3f3_parity_optimized_20261030.md/.json`；复跑脚本为 `audit-core/tests/compare/perf_s3f3_parity_20261030.py`。
+
+当前无冲突与全冲突 1,000 键合成样本均已记录；实际机构规模及 GUI 常驻服务负载仍缺。变更留在 `main` 工作区，HEAD `7517a9c`，未提交、未 push；S1/S2/S3 持续性能目标保持进行中。
+
+### 2026-10-30 增量：S3-F3 全冲突输出剖析与阶段可观测性
+
+为覆盖原无冲突样本未经过的冲突分支，新增 1,000 匹配键、两份反馈原因相互冲突的 Python/Rust A/B。三轮均输出 1,000 条冲突、0 导入、0 未匹配；冲突清单及目标值/结构对拍 0 差异。目标原字节未改，备份与目标 SHA-256 一致，反馈输入哈希不变。Python 服务中位数 1,332.49 ms、Rust CLI 墙钟 149.89 ms（约 8.89×），Rust 内部 120 ms；冲突清单写出为 18–21 ms。进程树峰值工作集约 Python 41.04 MB、Rust 16.39 MB。该全冲突比例仅是压力测试，不代表生产数据分布。
+
+`S3ExplanationFeedbackExecutionReport` 增加 `conflict_write_time_ms`，并由现有 CLI JSON 序列化输出，使冲突表写出阶段可以从执行结果观测。S3-F3 定向库测试 7/7、计划 CLI 集成测试 3/3 通过，Release 构建成功（SHA-256 `74c167b5a304d357bfd14f4dab3f65f173c63e8c45a0b631bf7323891148edef`）。未跑全工作区回归；性能目标仍在进行中。报告、逐轮数据和脚本见 `audit-core/probe/reports/s3f3_conflict_profile_20261030.md/.json`、`audit-core/tests/compare/perf_s3f3_conflict_profile_20261030.py`。
+
+### 2026-10-30 增量：S1-F1 条件格式指标定位优化
+
+旧条件格式微基准 `s1_conditional_profile_20261030` 没有把模板结构区域传给任一实现，因此其中 1,343/246 ms（5.46×）未覆盖生产异常字段 `check_field` 的指标定位。本次保留该历史报告并在性能基线中标明此范围，不把轻量路径结果当作生产结构区域性能。
+
+新专项使用 4,000 行、32,008 个非空值、4 条条件格式规则、16,000 个扫描格及 `S1Conditional!A1:H1` 结构区域，五轮交错得到 8,610 条异常。旧 Rust 每个触发项都从结构起点重复扫描同列全部上方行，异常组装中位数达 15,523 ms。现按工作表/列分组并单次累积有序去重的上方指标标签，保留左侧标签、合并锚点、值过滤、字段格式和原触发顺序。没有改 Python 或审核规则。
+
+同一驱动的优化前/后 Rust 异常组装为 15,523/57 ms；结构预检+条件格式 Rust developer event 耗时（不含启动）为 16,044/498 ms。优化后 Python/Rust 为 19,264.7/498 ms（38.68×，两端均为内部事件计时（不含进程启动），倍率只用于该专项参考）。Rust 采样峰值工作集约 86.61/86.56 MB。五轮每轮异常数均为 8,610，规范化字段摘要 5/5 对拍一致；结构标签 8/8，源/模板哈希不变。
+
+定向库测试 `cargo test -p audit-core --lib s1_conditional_audit::tests -- --nocapture` 为 5/5 通过；Release 构建成功，二进制 SHA-256 `d7c49818f3905a5f31da7a351cfd8d44e5bc20fb3cfe1e8b76992bba6b536e56`。没有运行全 workspace、真实机构 GUI 或 Linux 测试。完整链路耗时仍未知；结构预检和条件审核分别重复读取源工作簿约 99/97 ms，是否复用整簿数据待完整多文件链路内存测量后再决定。报告、前后逐轮数据与驱动见 `PERFORMANCE_BASELINE.md`、`PERFORMANCE_HISTORY.md`、`probe/reports/s1_indicator_resolution_optimization_20261030.md` 和 `tests/compare/perf_s1_preflight_reads_20261030.py`。
+### 2026-10-30 增量：S1-F1 结构预检和条件审核复用源读取
+
+在 S1-F1 单工作簿作用域内，结构预检和条件格式异常提取现在复用一次读取所得的 `WorkbookDump` 与读取诊断；工作簿投影在后续公式副本/重算开始前释放。保留既有文件路径 API，生产目录和单文件 CLI 路径接入复用实现；新增复用路径结果一致性测试。没有跨多个输入文件驻留内存缓存。
+
+相同生成器的 4,000 行结构区域样本进行了预热 1 轮、交错 5 轮：Rust Release CLI 中位数由前态 498 ms 降到 390 ms（省 108 ms，21.7%），源文件解析由两次约 99+97 ms 降为一次 93 ms。每轮 8,610 条异常摘要与 Python 完全相同、结构标签 8/8 匹配，源及模板运行前后哈希不变；Rust 峰值工作集 85.949 MB，与前态 86.562 MB 相当。前后生成 XLSX 容器相差 1 byte，因此仅声明相同生成器、值和结构，不声称前后字节哈希相同。
+
+定向 S1 conditional、structure compare、conditional format 测试及 CLI 编译目标均通过，Release 构建成功。完整 GUI 审核链、真实机构输入、全 workspace 回归、Linux 目标机仍未在本轮验证；不替代人工业务验收。详见 `PERFORMANCE_BASELINE.md`、`PERFORMANCE_HISTORY.md`、`probe/reports/s1_source_read_reuse_optimization_20261030.md`、`probe/reports/s1_preflight_reads_20261030_shared_read_after.json` 与 `tests/compare/perf_s1_preflight_reads_20261030.py`。
+
+### 2026-10-30 增量：S1-F1/F2 模板推荐元数据批次复用
+
+S1-F1 worker、S1 源文件识别界面和 S1-F2 多文件自动模板识别原先在每个源文件循环中重复扫描模板目录、读取每个模板的 OOXML Sheet 目录。现在每次多文件操作只加载一次模板档案；源文件仍独立读取并逐本匹配，单文件公开推荐 API 保持兼容。Release-profile 合成对照为 21 源簿 × 5 模板簿（源簿各 8 Sheet、模板簿各 9 Sheet，输入总计 229,831 bytes，0 个数据格），模板推荐阶段中位数由 30.2814 ms 降至 5.9081 ms，约省 24.3733 ms / 5.13×；21/21 完整匹配建议完全一致。S1-F1 三文件 GUI 合成路径测试 1/1 通过，Release `open-data-audit` 构建成功，SHA-256 `7be5fdece2ae26e931feb796daa7075395ab3fa44591cc242ba0813beba96792`。本机没有可用的自动重算引擎，GUI 测试验证的是人工重算降级路径；没有全 workspace 或 Linux 回归。源码 HEAD `7517a9c`、工作区未提交，未 push。详见 `PERFORMANCE_BASELINE.md`、`PERFORMANCE_HISTORY.md`、`probe/reports/s1_template_profile_reuse_optimization_20261030.md/.json` 和 `tests/compare/perf_s1_template_profile_reuse_20261030.py`。
+
+### 2026-10-30 增量：S1-F1 模板结构预检投影读取
+
+结构预检此前用完整 `read_workbook` 构造所有单元格 JSON/BTreeMap，并解析不参与结构比对的批注、条件格式和数据验证元数据。现新增专用 Calamine 结构投影，仅保留映射区域中的值/公式、全部 Sheet 名及合并区域；所有 Sheet 的 Calamine 值读取仍执行，以维持失败行为。源结构坐标落入合并区域时，投影也读取左上锚点。Calamine 遇未知错误值时继续走现有按错误单元格 OOXML 临时规范化及重试路径；条件格式审核仍使用原完整读取器。
+
+20,000 行 Rust-only 夹具由同一生成器生成，源/模板各 716,663 bytes、1 Sheet、160,008 非空格、4 条条件格式规则、80,000 扫描格。前后容器哈希不同，故不声称输入逐字节一致。模板预检读取中位数 528→224 ms，减少 304 ms / 57.6%；条件审核命令内部 2,165→1,654 ms、CLI 3,254.905→2,645.195 ms，但总时长变化不能全归因于本次变更。43,051 条异常逐轮规范化摘要与旧/新三轮完全相同，结构标签 8/8，输入运行前后未变。峰值工作集 385.672→385.824 MiB，基本不变，后续条件审核全量读取主导。
+
+定向结果：`excel-reader` 全量/投影值、公式、Sheet 和合并区对拍、合并锚点、未知错误值回退共 3/3 通过；S1 结构比较库测试 7/7 通过；Release 构建通过，SHA-256 `a2ac5bc3fd16223a3c18976f9ed6042e941af6df17fc2fbd84ad5fe54b82f370`。一次未限定并行的 Cargo 命令因 Windows 页面文件不足失败；随后使用单任务并仅编译库测试通过。未运行全工作区回归、真实业务文件、GUI 完整链或 Linux/Kylin/UOS。详见 `PERFORMANCE_HISTORY.md` 与 `probe/reports/s1_structure_projection_optimization_20261030.md/.json`。
+
+### 2026-10-30 Codex 增量：S1-F1 源结构预检投影同输入性能对照
+
+新增 `tests/s1_structure_projection_source_perf.rs` 作为忽略式、显式运行的性能测试，以及 `tests/compare/perf_s1_structure_source_projection_20261030.py` 复跑驱动。Release 同进程、同输入交替对照完整 `read_workbook`+结构比对与 Calamine 投影路径，20,000 行数据、160,008 非空格；预热 1 次后 5 轮中位数为 501.532→237.579 ms（2.111× 子步骤加速）。两路径每轮匹配状态、分数、标签数、缺失表及诊断完全相同，均为 8/8 标签命中；源/模板各自 SHA-256 前后不变。此为 Rust 内部路径对照，不是 Python/Rust 或完整 S1-F1 性能结果；没有独立峰值 RSS、真实文件、GUI、全工作区或 Linux 回归数据。未修改产品业务代码。完整原始数据和测试边界见 `probe/reports/s1_structure_source_projection_20261030.md/.json`；未提交、未 push。
+
+### 2026-10-30 Codex 增量：S3-F2 峰值工作集专测
+
+为补齐 S3-F2 7,830 行扩展负载的内存数据，新增只采进程树峰值工作集的 Python/Rust 对照，未重复耗时基准。三轮分别执行全新 Python 进程和 Rust Release CLI，5 ms 间隔采样；峰值中位数为 43.688/44.340 MB、最大值 43.945/44.383 MB，进程树各观察到 1 个进程。每轮 2,610 行完整输出对拍均为 0 差异，输入 SHA-256 不变。差距约 0.65 MB，不构成优化理由。采样可能遗漏短于 5 ms 的尖峰，夹具为合成数据。驱动及证据见 `tests/compare/perf_s3f2_peak_memory_20261030.py`、`probe/reports/s3f2_peak_memory_20261030.json/.md`。本次未修改产品代码，也未运行 Cargo 测试/构建、未提交、未 push。
+
+### 2026-10-30 Codex 增量：S1-F2 峰值工作集专测
+
+新增 `tests/compare/perf_s1f2_peak_memory_20261030.py`，仅采集 S1-F2 进程树峰值内存。2 本源工作簿、3 张源表、9 行输出，三轮交替执行 Python `ExcelSession`/Excel COM 与 Rust Release CLI；以 5 ms 间隔监测 worker 与本轮新启动的 Excel PID，排除运行前已有 Excel PID。Python+Excel COM/Rust 峰值中位数为 300.078/10.719 MB，最大值 301.574/10.727 MB；三轮输出值/结构对拍通过且输入哈希未变。3 个新 Excel PID 测量后均退出，未关闭用户已有实例。Python 的内存成本主要来自 Office 引擎；Rust 已约 10.7 MB，无明显内存优化空间。样本仅 5 行，采样间隔可能漏掉短峰；本轮仅测内存、未重复耗时基准、未改产品代码、未运行 Cargo 命令、未提交/推送。证据见 `probe/reports/s1f2_peak_memory_20261030.json/.md`。
+
+### 2026-10-30 Codex 增量：S3-F1 峰值工作集专测
+
+遵守 S3-F1 耗时性能已暂结的范围，只增加 memory-only 测量。10,000 行 current/previous CSV 各一份、14 列；3.0 与 3.1 配置各一份。Python 和 Rust 新 worker 三轮交替运行，进程树以 5 ms 间隔采样。峰值工作集中位数为 133.477/119.035 MB，最大值为 133.672/119.098 MB；每轮 220,022 个输出单元格在 1e-10 容差下对拍一致，最大浮点尾差 2.12e-22，输入 SHA-256 未变。未收集耗时，不改变约 1.02×已结项结论。比较器改为单遍流式读取；首次草测因旧比较器逐行重建工作表迭代器造成 O(n²) 耗时而中断，已停止该自建进程并修正后完成三轮。Python 源和产品业务代码均未修改；未运行 Cargo 命令、未提交、未 push。详见 `tests/compare/perf_s3f1_peak_memory_20261030.py` 与 `probe/reports/s3f1_peak_memory_20261030.json/.md`。
+
+
+### 2026-10-30 Codex 增量：S1-F1 规则表批注保真与全链路复测
+
+S1-F1 结构化模板的“审核规则”表现按 Python 整表复制语义；新增复制批注，并在真实重算结果发布前以受限 OOXML Patch 恢复源 comments XML/VML。只有源/输出批注坐标和文本相同、且 VML 仅含 Note shape 时才修补；遇到文本/位置变化或非批注 VML 则失败关闭。原始工作簿仍独立不变。Windows 合成完整 GUI 服务路径三轮通过：最终结果 52 格零差异、公式文本/缓存与独立期望相同、24 格规则表和批注文本/作者相同、Excel COM 全部可打开、输入哈希未变、新 Excel PID 均退出。S1 公式复制定点测试 17/17、OOXML 批注/VML 测试 3/3；Release 构建成功。全工作区回归、真实机构人工验收及 Linux/Kylin/UOS 未运行。性能数据和限制见 `PERFORMANCE_BASELINE.md` 与 `probe/reports/s1f1_full_chain_20261030.md/.json`；本轮未提交或 push。
+
+### 2026-10-30 Codex 增量：S1-F1 acceptance 阶段计时
+
+S1-F1 验收输出新增微秒阶段计时，覆盖请求/目录扫描、模板档案与匹配、模板预检、结构对比、Excel-Core 修改、真实重算、公式与条件格式异常提取、结果写出以及专用 Excel 会话退出，并记录逐文件耗时。定向 `s1_f1_` 测试 4 passed、0 failed、2 ignored；Release 构建通过。单轮诊断显示 Excel 重算 3.381 s、会话关闭 2.929 s，其他业务阶段远低于 0.2 s；测量与三轮粗复测期间有 Rust-Tools COM 基准及多个 Excel 实例并行，因此不改正式倍率基线，也不据此放松 Excel 隔离或清理。原始 clean-run JSON 因复跑使用固定路径而被覆盖；历史 Markdown 与性能历史保留 clean-run 结果/逐轮总耗时，现新增明确标记的恢复摘要和并发探针文件；驱动默认已改用唯一 UTC 时间戳输出。原始 clean-run Python 阶段日志和逐轮内存/输入哈希不再可恢复。详见 `PERFORMANCE_HISTORY.md`、`PERFORMANCE_BASELINE.md`、`probe/reports/s1f1_stage_profile_20261030.md` 与 `probe/reports/s1f1_full_chain_20261030.md`。工作区仍未提交；无 push。

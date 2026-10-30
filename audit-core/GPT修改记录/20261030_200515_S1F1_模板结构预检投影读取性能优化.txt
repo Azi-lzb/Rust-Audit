@@ -1,0 +1,26 @@
+时间：2026-10-30 20:05（Asia/Shanghai）
+执行者：Codex
+修改前 commit：main / 7517a9c
+修改后 commit：main / 7517a9c（未提交）
+工作区状态：保留本轮前已有的 S1/S2/S3 未提交变更和性能报告；未重置、覆盖或清理其它 WIP；未 push。
+
+目的：降低 S1-F1 模板结构预检读取 20k 工作簿的耗时，保留结构标签、公式、类型值、合并区域及未知错误值兼容语义。
+
+修改文件：
+- `crates/excel-reader/src/lib.rs`：新增 `read_workbook_structure_projection` 和投影结构类型；读取 Sheet 名、S1 结构映射区域中的值/公式及合并区域。继续由 Calamine 读取所有 Sheet 的值，并按当前政策只对未知错误 token 使用既有 OOXML 临时规范化回退。
+- `audit-core/src/s1_structure_compare.rs`：S1 模板标签提取及源结构比较改用投影结果；保留 `compare_s1_source_structure_dump` 供预载 WorkbookDump 的复用路径继续调用。
+- 更新 `audit-core/PERFORMANCE_BASELINE.md`、`PERFORMANCE_HISTORY.md`、`benchmarks/README.md`、`DEVELOPMENT_GOAL.md`、`MIGRATION_INVENTORY.md`。
+- 新增 `audit-core/probe/reports/s1_structure_projection_optimization_20261030.md/.json`。
+
+实测：复用既有 20,000 行 Rust-only 生成器，1 轮预热、3 轮。源/模板各 1 Sheet、20,001×8、160,008 非空格、4 条条件格式规则、80,000 个扫描格、716,663 bytes。模板预检读取中位数 528→224 ms（-304 ms / 57.6%）；命令内部 2,165→1,654 ms，CLI 3,254.905→2,645.195 ms，但其它未修改阶段也有轮间变化，总时长不全部归因于新投影。43,051 条异常 SHA-256 与旧/新各三轮完全相同、结构标签 8/8，源/模板运行前后哈希不变。前后 XLSX 容器 SHA 不同，尺寸和形状相同；不宣称逐字节同输入。峰值工作集 385.672→385.824 MiB，基本不变，受条件审核后续完整读取主导。Python 20k 参考超过 150 CPU 秒后停止，不报告跨语言倍率。
+
+验证：
+- `cargo test --locked -p excel-reader structure_projection -- --nocapture`：3 passed。
+- `cargo test --locked -p audit-core --lib s1_structure_compare::tests -- --nocapture`：7 passed。
+- `cargo build --locked --release -p audit-core --bin open-data-audit`：成功；二进制 SHA-256 `a2ac5bc3fd16223a3c18976f9ed6042e941af6df17fc2fbd84ad5fe54b82f370`。
+- 20k Release 尺度驱动预热 1 轮、计时 3 轮；异常摘要一致、结构匹配、输入保护均通过。
+- 首次未限定并行的 audit-core 测试构建触发 Windows 页面文件不足；随后 `CARGO_BUILD_JOBS=1`、仅 `--lib` 定向测试 7/7 通过。未运行全 workspace 测试或 Linux 目标验证。
+- `rustfmt --edition 2021` 处理本次编辑的两个 Rust 文件；`git diff --check` 无空白错误，只有仓库原有 LF/CRLF 提示。
+
+影响边界：没有变更审核规则或输出格式；S1 条件格式审核仍需全量读取，故本轮全命令峰值内存没有下降。完整 S1-F1 GUI、公式复制/COM 重算/最终输出、真实机构文件及 Python 20k 倍率仍未验证。
+回滚提示：若后续脱敏真实工作簿的结构结果与完整读取路径不一致，先回退 `s1_structure_compare.rs` 两处文件式调用到 `read_workbook`；保留 `read_workbook_structure_projection` 和测试做调查，不重置整个工作区。

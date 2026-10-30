@@ -87,6 +87,7 @@ pub struct S3ExplanationFeedbackExecutionReport {
     pub copied_without_edits: bool,
     pub target_read_time_ms: u128,
     pub feedback_read_time_ms: u128,
+    pub conflict_write_time_ms: u128,
     pub writeback_time_ms: u128,
     pub total_time_ms: u128,
 }
@@ -238,6 +239,23 @@ pub fn plan_explanation_feedback_import(
     candidate_output_path: impl AsRef<Path>,
     plan_output_path: impl AsRef<Path>,
 ) -> Result<S3ExplanationFeedbackPlanSummary> {
+    plan_explanation_feedback_import_internal(
+        target_path,
+        feedback_paths,
+        candidate_output_path,
+        plan_output_path,
+        true,
+    )
+    .map(|(summary, _)| summary)
+}
+
+fn plan_explanation_feedback_import_internal(
+    target_path: impl AsRef<Path>,
+    feedback_paths: &[PathBuf],
+    candidate_output_path: impl AsRef<Path>,
+    plan_output_path: impl AsRef<Path>,
+    persist_plan: bool,
+) -> Result<(S3ExplanationFeedbackPlanSummary, Option<ExcelEditPlan>)> {
     let started = Instant::now();
     let target_path = target_path.as_ref();
     let candidate_output_path = candidate_output_path.as_ref();
@@ -474,23 +492,30 @@ pub fn plan_explanation_feedback_import(
     let mut snapshots = snapshots.into_iter();
     let target_snapshot = snapshots.next().expect("target snapshot exists");
     let feedback_snapshots = snapshots.collect::<Vec<_>>();
-    let document = PlanDocument {
-        schema_version: 1,
-        feature: "S3-F03".to_owned(),
-        status: "planned_not_applied".to_owned(),
-        created_at: Local::now().to_rfc3339(),
-        applied: false,
-        target: target_snapshot,
-        feedback_sources: feedback_snapshots,
-        candidate_output_workbook: candidate_path.clone(),
-        counts: PlanCounts {
-            imported,
-            unmatched,
-            conflicts,
-            planned_cell_updates: imported,
-        },
-        conflict_report_path: conflict_report_path.clone(),
-        edit_plan,
+    let (document, execution_edit_plan) = if persist_plan {
+        (
+            Some(PlanDocument {
+                schema_version: 1,
+                feature: "S3-F03".to_owned(),
+                status: "planned_not_applied".to_owned(),
+                created_at: Local::now().to_rfc3339(),
+                applied: false,
+                target: target_snapshot,
+                feedback_sources: feedback_snapshots,
+                candidate_output_workbook: candidate_path.clone(),
+                counts: PlanCounts {
+                    imported,
+                    unmatched,
+                    conflicts,
+                    planned_cell_updates: imported,
+                },
+                conflict_report_path: conflict_report_path.clone(),
+                edit_plan,
+            }),
+            None,
+        )
+    } else {
+        (None, edit_plan)
     };
 
     let conflict_write_started = Instant::now();
@@ -511,41 +536,47 @@ pub fn plan_explanation_feedback_import(
     };
 
     let plan_write_started = Instant::now();
-    let plan_temp = reserve_temporary_path(&plan_path, "json")?;
-    let plan_write_result = (|| -> Result<()> {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .open(&plan_temp)
-            .with_context(|| format!("打开临时导入计划：{}", plan_temp.display()))?;
-        serde_json::to_writer_pretty(&mut file, &document).context("序列化 S3-F03 导入计划")?;
-        file.write_all(b"\n").context("写入导入计划换行")?;
-        file.sync_all().context("刷新导入计划到磁盘")?;
-        Ok(())
-    })();
-    if let Err(error) = plan_write_result {
-        let _ = fs::remove_file(&plan_temp);
-        if let Some(temporary) = &conflict_temp {
-            let _ = fs::remove_file(temporary);
-        }
-        return Err(error);
-    }
-
-    if let (Some(temporary), Some(final_path)) = (&conflict_temp, &conflict_report_path) {
-        if let Err(error) = publish_without_overwrite(temporary, final_path) {
+    let plan_write_time_ms = if let Some(document) = &document {
+        let plan_temp = reserve_temporary_path(&plan_path, "json")?;
+        let plan_write_result = (|| -> Result<()> {
+            let mut file = OpenOptions::new()
+                .write(true)
+                .truncate(true)
+                .open(&plan_temp)
+                .with_context(|| format!("打开临时导入计划：{}", plan_temp.display()))?;
+            serde_json::to_writer_pretty(&mut file, document).context("序列化 S3-F03 导入计划")?;
+            file.write_all(b"\n").context("写入导入计划换行")?;
+            file.sync_all().context("刷新导入计划到磁盘")?;
+            Ok(())
+        })();
+        if let Err(error) = plan_write_result {
             let _ = fs::remove_file(&plan_temp);
+            if let Some(final_path) = &conflict_report_path {
+                let _ = fs::remove_file(final_path);
+            }
             return Err(error);
         }
-    }
-    if let Err(error) = publish_without_overwrite(&plan_temp, &plan_path) {
-        if let Some(final_path) = &conflict_report_path {
-            let _ = fs::remove_file(final_path);
+        if let (Some(temporary), Some(final_path)) = (&conflict_temp, &conflict_report_path) {
+            if let Err(error) = publish_without_overwrite(temporary, final_path) {
+                let _ = fs::remove_file(&plan_temp);
+                return Err(error);
+            }
         }
-        return Err(error);
-    }
-    let plan_write_time_ms = plan_write_started.elapsed().as_millis();
+        if let Err(error) = publish_without_overwrite(&plan_temp, &plan_path) {
+            if let Some(final_path) = &conflict_report_path {
+                let _ = fs::remove_file(final_path);
+            }
+            return Err(error);
+        }
+        plan_write_started.elapsed().as_millis()
+    } else {
+        if let (Some(temporary), Some(final_path)) = (&conflict_temp, &conflict_report_path) {
+            publish_without_overwrite(temporary, final_path)?;
+        }
+        0
+    };
 
-    Ok(S3ExplanationFeedbackPlanSummary {
+    let summary = S3ExplanationFeedbackPlanSummary {
         status: "planned_not_applied",
         applied: false,
         target_workbook: target_path.to_path_buf(),
@@ -564,7 +595,8 @@ pub fn plan_explanation_feedback_import(
         conflict_write_time_ms,
         plan_write_time_ms,
         total_time_ms: started.elapsed().as_millis(),
-    })
+    };
+    Ok((summary, execution_edit_plan))
 }
 
 /// Retained independent-copy workflow for callers that explicitly request it.
@@ -613,9 +645,14 @@ pub fn execute_explanation_feedback_import_to_copy(
     let staging = S3FeedbackStagingDirectory::create(&output_directory)?;
     let candidate_path = staging.path().join("反馈写回结果.xlsx");
     let plan_path = staging.path().join("反馈写回计划.json");
-    let summary =
-        plan_explanation_feedback_import(target_path, feedback_paths, &candidate_path, &plan_path)
-            .context("规划 S3-F03 机构说明回写")?;
+    let (summary, edit_plan) = plan_explanation_feedback_import_internal(
+        target_path,
+        feedback_paths,
+        &candidate_path,
+        &plan_path,
+        false,
+    )
+    .context("规划 S3-F03 机构说明回写")?;
 
     ensure!(
         source_hashes
@@ -626,7 +663,7 @@ pub fn execute_explanation_feedback_import_to_copy(
         "S3-F03 规划期间输入工作簿发生变化，未应用回写"
     );
     let writeback_started = Instant::now();
-    let edit = if let Some(edit_plan) = summary_edit_plan(&plan_path)? {
+    let edit = if let Some(edit_plan) = edit_plan {
         let edit = modifier.execute(&edit_plan).with_context(|| {
             summary
                 .conflict_report_path
@@ -672,6 +709,7 @@ pub fn execute_explanation_feedback_import_to_copy(
         copied_without_edits: summary.planned_cell_updates == 0,
         target_read_time_ms: summary.target_read_time_ms,
         feedback_read_time_ms: summary.feedback_read_time_ms,
+        conflict_write_time_ms: summary.conflict_write_time_ms,
         writeback_time_ms,
         total_time_ms: started.elapsed().as_millis(),
     })
@@ -797,6 +835,7 @@ pub fn execute_explanation_feedback_import(
         copied_without_edits: staged_report.copied_without_edits,
         target_read_time_ms: staged_report.target_read_time_ms,
         feedback_read_time_ms: staged_report.feedback_read_time_ms,
+        conflict_write_time_ms: staged_report.conflict_write_time_ms,
         writeback_time_ms: staged_report.writeback_time_ms,
         total_time_ms: started.elapsed().as_millis(),
     })
@@ -877,19 +916,6 @@ fn publish_candidate_in_place(
     Ok(fs::remove_file(rollback)
         .err()
         .map(|error| format!("S3-F03 已更新目标；回滚暂存文件清理失败：{} ({error})", rollback.display())))
-}
-
-fn summary_edit_plan(plan_path: &Path) -> Result<Option<ExcelEditPlan>> {
-    let document: PlanDocument = serde_json::from_reader(
-        File::open(plan_path)
-            .with_context(|| format!("打开 S3-F03 回写计划：{}", plan_path.display()))?,
-    )
-    .with_context(|| format!("读取 S3-F03 回写计划：{}", plan_path.display()))?;
-    ensure!(
-        document.feature == "S3-F03" && document.schema_version == 1 && !document.applied,
-        "S3-F03 回写计划标识或版本不匹配"
-    );
-    Ok(document.edit_plan)
 }
 
 fn next_feedback_output_path(output_directory: &Path, target_path: &Path) -> Result<PathBuf> {
@@ -1719,6 +1745,70 @@ mod tests {
         assert_eq!(
             sheet.cell("G2").map(|cell| cell.value().to_string()),
             Some("核实后调整".to_owned())
+        );
+
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn conflicting_execution_publishes_conflict_report_and_preserves_target() -> Result<()> {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("audit_s3_f3_conflicts_{suffix}"));
+        fs::create_dir_all(&root)?;
+        let target = root.join("说明文件.xlsx");
+        let feedback_a = root.join("机构反馈甲.xlsx");
+        let feedback_b = root.join("机构反馈乙.xlsx");
+        write_explanation(&target, "待机构填写");
+        write_explanation(&feedback_a, "原因甲");
+        write_explanation(&feedback_b, "原因乙");
+        let target_hash_before = sha256_file(&target)?;
+        let feedback_hashes_before = [sha256_file(&feedback_a)?, sha256_file(&feedback_b)?];
+        let modifier = ExcelModifier::new(
+            "test-platform",
+            Vec::new(),
+            Arc::new(AcceptAllValidator),
+        )?;
+
+        let report = execute_explanation_feedback_import(
+            &target,
+            &[feedback_a.clone(), feedback_b.clone()],
+            &modifier,
+        )?;
+
+        assert_eq!(report.imported, 0);
+        assert_eq!(report.conflicts, 1);
+        assert_eq!(report.planned_cell_updates, 0);
+        assert!(report.conflict_write_time_ms <= report.total_time_ms);
+        assert_eq!(sha256_file(&target)?, target_hash_before);
+        assert_eq!(
+            [sha256_file(&feedback_a)?, sha256_file(&feedback_b)?],
+            feedback_hashes_before
+        );
+        let backup = report.backup_workbook.expect("pre-write target backup");
+        assert_eq!(sha256_file(&backup)?, target_hash_before);
+        let conflict_path = report
+            .conflict_report_path
+            .expect("conflict workbook should be published");
+        assert!(conflict_path.is_file());
+        let conflict_book = excel_editor::open_xlsx(&conflict_path)?;
+        let sheet = conflict_book.sheet_by_name("冲突明细")?;
+        assert_eq!(
+            sheet.cell("A2").map(|cell| cell.value().to_string()),
+            Some("冲突".to_owned())
+        );
+        let reasons = sheet
+            .cell("I2")
+            .map(|cell| cell.value().to_string())
+            .expect("conflict report should include feedback reasons");
+        assert!(reasons.contains("原因甲"));
+        assert!(reasons.contains("原因乙"));
+        assert_eq!(
+            sheet.cell("J2").map(|cell| cell.value().to_string()),
+            Some("多个反馈文件给出不同变动原因".to_owned())
         );
 
         fs::remove_dir_all(root)?;

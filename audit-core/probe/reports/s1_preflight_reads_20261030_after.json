@@ -1,0 +1,334 @@
+{
+  "schema_version": 1,
+  "suite": "audit.s1_structure_preflight_and_conditional_audit_profile",
+  "status": "passed",
+  "created_at": "2026-10-30T09:58:09.214953+00:00",
+  "environment": {
+    "platform": "win32",
+    "python_version": "3.12.10",
+    "rust_binary": "F:\\RustBuild\\audit\\release\\open-data-audit.exe",
+    "rust_binary_sha256": "d7c49818f3905a5f31da7a351cfd8d44e5bc20fb3cfe1e8b76992bba6b536e56",
+    "timer_scope": "Python validate_source_xlsx + ConditionalFormatService internal totals; Rust conditional-audit developer event includes structure preflight and conditional stage.",
+    "memory_sampling_interval_ms": 5
+  },
+  "input": {
+    "sheets": 1,
+    "rows_including_header": 4001,
+    "columns": 8,
+    "nonempty_cells": 32008,
+    "conditional_rules": 4,
+    "scanned_cells_expected": 16000,
+    "source_bytes": 144030,
+    "template_bytes": 144030,
+    "source_sha256_before": "8f7042a0ced02a6f542bf621a135cb959982dc25746ccc340f4732efc1c7364b",
+    "source_sha256_after": "8f7042a0ced02a6f542bf621a135cb959982dc25746ccc340f4732efc1c7364b",
+    "template_sha256_before": "8f7042a0ced02a6f542bf621a135cb959982dc25746ccc340f4732efc1c7364b",
+    "template_sha256_after": "8f7042a0ced02a6f542bf621a135cb959982dc25746ccc340f4732efc1c7364b"
+  },
+  "runs": {
+    "warmup": 1,
+    "measured": 5
+  },
+  "medians_ms": {
+    "python_template_read_once": 7.933,
+    "python_structure_preflight": 83.073,
+    "rust_structure_preflight_file_elapsed": 99,
+    "rust_structure_source_read": 99,
+    "rust_template_read_once": 95,
+    "python_conditional_service": 19172.0,
+    "rust_conditional_read": 97,
+    "rust_conditional_evaluation": 88,
+    "rust_conditional_issue_build": 57,
+    "python_preflight_plus_conditional": 19264.677,
+    "rust_preflight_plus_conditional": 498,
+    "python_over_rust_combined_ratio": 38.6841
+  },
+  "peak_rss_mb_median": {
+    "python_process": 77.402,
+    "rust_process": 86.562
+  },
+  "correctness": {
+    "all_rounds_issue_parity": true,
+    "rounds": [
+      {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "canonical_issue_sha256_multiset_matches": true
+      },
+      {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "canonical_issue_sha256_multiset_matches": true
+      },
+      {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "canonical_issue_sha256_multiset_matches": true
+      },
+      {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "canonical_issue_sha256_multiset_matches": true
+      },
+      {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "canonical_issue_sha256_multiset_matches": true
+      }
+    ],
+    "source_unchanged": true,
+    "template_unchanged": true
+  },
+  "measured_rounds": [
+    {
+      "round": 1,
+      "order": "rust_then_python",
+      "python": {
+        "template_read_ms": 9.049,
+        "preflight": {
+          "matched": true,
+          "matched_labels": 8,
+          "checked_labels": 8,
+          "elapsed_ms": 86.03
+        },
+        "conditional": {
+          "elapsed_ms": 19046.0,
+          "normalize_ms": 62.0,
+          "evaluation_ms": 797.0,
+          "issue_build_ms": 18187.0,
+          "issues": 8610
+        },
+        "peak_rss_mb": 77.473
+      },
+      "rust": {
+        "preflight": {
+          "matched": true,
+          "matched_labels": 8,
+          "checked_labels": 8,
+          "source_read_ms": 96,
+          "elapsed_ms": 96,
+          "summary_elapsed_ms": 234,
+          "template_read_ms": 99
+        },
+        "conditional": {
+          "elapsed_ms": 236,
+          "command_elapsed_ms": 491,
+          "source_read_ms": 92,
+          "evaluation_ms": 88,
+          "issue_build_ms": 56,
+          "issues": 8610
+        },
+        "peak_rss_mb": 86.535
+      },
+      "parity": {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "canonical_issue_sha256_multiset_matches": true
+      }
+    },
+    {
+      "round": 2,
+      "order": "python_then_rust",
+      "python": {
+        "template_read_ms": 7.825,
+        "preflight": {
+          "matched": true,
+          "matched_labels": 8,
+          "checked_labels": 8,
+          "elapsed_ms": 84.852
+        },
+        "conditional": {
+          "elapsed_ms": 19172.0,
+          "normalize_ms": 63.0,
+          "evaluation_ms": 812.0,
+          "issue_build_ms": 18281.0,
+          "issues": 8610
+        },
+        "peak_rss_mb": 77.25
+      },
+      "rust": {
+        "preflight": {
+          "matched": true,
+          "matched_labels": 8,
+          "checked_labels": 8,
+          "source_read_ms": 99,
+          "elapsed_ms": 99,
+          "summary_elapsed_ms": 236,
+          "template_read_ms": 94
+        },
+        "conditional": {
+          "elapsed_ms": 251,
+          "command_elapsed_ms": 514,
+          "source_read_ms": 97,
+          "evaluation_ms": 93,
+          "issue_build_ms": 61,
+          "issues": 8610
+        },
+        "peak_rss_mb": 86.605
+      },
+      "parity": {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "canonical_issue_sha256_multiset_matches": true
+      }
+    },
+    {
+      "round": 3,
+      "order": "rust_then_python",
+      "python": {
+        "template_read_ms": 9.073,
+        "preflight": {
+          "matched": true,
+          "matched_labels": 8,
+          "checked_labels": 8,
+          "elapsed_ms": 81.414
+        },
+        "conditional": {
+          "elapsed_ms": 19562.0,
+          "normalize_ms": 62.0,
+          "evaluation_ms": 797.0,
+          "issue_build_ms": 18687.0,
+          "issues": 8610
+        },
+        "peak_rss_mb": 77.453
+      },
+      "rust": {
+        "preflight": {
+          "matched": true,
+          "matched_labels": 8,
+          "checked_labels": 8,
+          "source_read_ms": 119,
+          "elapsed_ms": 119,
+          "summary_elapsed_ms": 272,
+          "template_read_ms": 103
+        },
+        "conditional": {
+          "elapsed_ms": 244,
+          "command_elapsed_ms": 541,
+          "source_read_ms": 97,
+          "evaluation_ms": 87,
+          "issue_build_ms": 60,
+          "issues": 8610
+        },
+        "peak_rss_mb": 86.562
+      },
+      "parity": {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "canonical_issue_sha256_multiset_matches": true
+      }
+    },
+    {
+      "round": 4,
+      "order": "python_then_rust",
+      "python": {
+        "template_read_ms": 7.933,
+        "preflight": {
+          "matched": true,
+          "matched_labels": 8,
+          "checked_labels": 8,
+          "elapsed_ms": 83.073
+        },
+        "conditional": {
+          "elapsed_ms": 19875.0,
+          "normalize_ms": 78.0,
+          "evaluation_ms": 797.0,
+          "issue_build_ms": 19000.0,
+          "issues": 8610
+        },
+        "peak_rss_mb": 77.391
+      },
+      "rust": {
+        "preflight": {
+          "matched": true,
+          "matched_labels": 8,
+          "checked_labels": 8,
+          "source_read_ms": 91,
+          "elapsed_ms": 91,
+          "summary_elapsed_ms": 218,
+          "template_read_ms": 93
+        },
+        "conditional": {
+          "elapsed_ms": 231,
+          "command_elapsed_ms": 468,
+          "source_read_ms": 90,
+          "evaluation_ms": 86,
+          "issue_build_ms": 55,
+          "issues": 8610
+        },
+        "peak_rss_mb": 86.547
+      },
+      "parity": {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "canonical_issue_sha256_multiset_matches": true
+      }
+    },
+    {
+      "round": 5,
+      "order": "rust_then_python",
+      "python": {
+        "template_read_ms": 7.777,
+        "preflight": {
+          "matched": true,
+          "matched_labels": 8,
+          "checked_labels": 8,
+          "elapsed_ms": 80.344
+        },
+        "conditional": {
+          "elapsed_ms": 18922.0,
+          "normalize_ms": 62.0,
+          "evaluation_ms": 860.0,
+          "issue_build_ms": 18000.0,
+          "issues": 8610
+        },
+        "peak_rss_mb": 77.402
+      },
+      "rust": {
+        "preflight": {
+          "matched": true,
+          "matched_labels": 8,
+          "checked_labels": 8,
+          "source_read_ms": 101,
+          "elapsed_ms": 101,
+          "summary_elapsed_ms": 231,
+          "template_read_ms": 95
+        },
+        "conditional": {
+          "elapsed_ms": 246,
+          "command_elapsed_ms": 498,
+          "source_read_ms": 101,
+          "evaluation_ms": 88,
+          "issue_build_ms": 57,
+          "issues": 8610
+        },
+        "peak_rss_mb": 87.227
+      },
+      "parity": {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "canonical_issue_sha256_multiset_matches": true
+      }
+    }
+  ]
+}

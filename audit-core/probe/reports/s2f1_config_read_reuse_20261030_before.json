@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-30T18:45:57+08:00",
+  "feature": "S2-F1",
+  "scenario": "synthetic-production-sized-config-read-reuse",
+  "scope": "1 current + 1 previous workbook; 728 configured indicators and 7 institution profiles. This isolates config scaling and is not the historic 21+21 real-data batch.",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python_version": "3.12.10",
+  "source_root": "C:\\Users\\AZI\\Desktop\\VibeCode\\3.open-data-audit",
+  "rust_binary": "F:\\RustBuild\\audit\\release\\open-data-audit.exe",
+  "rust_binary_sha256": "78d0d25b238ff6190a6e42adef6c6e60a209526802964c335560dd25f0eed230",
+  "fixture_root": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\audit-core\\manual_acceptance\\20261027\\s2_f01_external_rule_cases",
+  "rounds": 5,
+  "status": "passed",
+  "synthetic_config": {
+    "indicator_rows": 728,
+    "institution_rows": 7
+  },
+  "input_sha256_before": {
+    "current/9144#2026-06-30#x#20202#甲银行.xlsx": "02541d0a4a074510a370b281f6b9ab302ae2daf0e48cb503c832ea3a583ff62f",
+    "previous/9144#2026-03-31#x#20202#甲银行.xlsx": "02541d0a4a074510a370b281f6b9ab302ae2daf0e48cb503c832ea3a583ff62f",
+    "s2_config_external_rule.xlsx": "3c8e4c0f25e48449f432f5549f4629886803466d5437c1a69d53ae912e0dfef1",
+    "external_normal.xlsx": "2691944ea17a8fd630008a18fd08d96fcea636e2d6dfa5b4d2a7fd72a684b740"
+  },
+  "input_sha256_after": {
+    "current/9144#2026-06-30#x#20202#甲银行.xlsx": "02541d0a4a074510a370b281f6b9ab302ae2daf0e48cb503c832ea3a583ff62f",
+    "previous/9144#2026-03-31#x#20202#甲银行.xlsx": "02541d0a4a074510a370b281f6b9ab302ae2daf0e48cb503c832ea3a583ff62f",
+    "s2_config_external_rule.xlsx": "3c8e4c0f25e48449f432f5549f4629886803466d5437c1a69d53ae912e0dfef1",
+    "external_normal.xlsx": "2691944ea17a8fd630008a18fd08d96fcea636e2d6dfa5b4d2a7fd72a684b740"
+  },
+  "inputs_unchanged": true,
+  "python_service_ms": {
+    "rounds": [
+      391.99,
+      393.38,
+      421.04,
+      440.37,
+      430.57
+    ],
+    "median": 421.04,
+    "config_stage_median": 408.7
+  },
+  "rust_service_ms": {
+    "rounds": [
+      64.0,
+      61.0,
+      63.0,
+      66.0,
+      66.0
+    ],
+    "median": 64.0,
+    "wall_rounds_including_cli_startup": [
+      94.37,
+      90.0,
+      94.23,
+      119.19,
+      99.9
+    ],
+    "wall_median_including_cli_startup": 94.37,
+    "config_stage_median": 40.0,
+    "stage_medians": {
+      "complete": 0.0,
+      "config": 40.0,
+      "current": 2.0,
+      "export": 2.0,
+      "external": 0.0,
+      "external_read": 1.0,
+      "period": 0.0,
+      "previous": 1.0,
+      "rules": 1.0,
+      "save": 17.0,
+      "validate": 0.0
+    }
+  },
+  "parity_rounds": [
+    {
+      "round": 1,
+      "summary_difference_count": 0,
+      "workbook_difference_count": 0,
+      "workbook_stats": {
+        "sheets": 3,
+        "cells": 292,
+        "numeric_cells": 35,
+        "formulas": 0,
+        "cell_styles": 0,
+        "column_widths": 0,
+        "hidden_rows": 0,
+        "worksheet_settings": 0
+      }
+    },
+    {
+      "round": 2,
+      "summary_difference_count": 0,
+      "workbook_difference_count": 0,
+      "workbook_stats": {
+        "sheets": 3,
+        "cells": 292,
+        "numeric_cells": 35,
+        "formulas": 0,
+        "cell_styles": 0,
+        "column_widths": 0,
+        "hidden_rows": 0,
+        "worksheet_settings": 0
+      }
+    },
+    {
+      "round": 3,
+      "summary_difference_count": 0,
+      "workbook_difference_count": 0,
+      "workbook_stats": {
+        "sheets": 3,
+        "cells": 292,
+        "numeric_cells": 35,
+        "formulas": 0,
+        "cell_styles": 0,
+        "column_widths": 0,
+        "hidden_rows": 0,
+        "worksheet_settings": 0
+      }
+    },
+    {
+      "round": 4,
+      "summary_difference_count": 0,
+      "workbook_difference_count": 0,
+      "workbook_stats": {
+        "sheets": 3,
+        "cells": 292,
+        "numeric_cells": 35,
+        "formulas": 0,
+        "cell_styles": 0,
+        "column_widths": 0,
+        "hidden_rows": 0,
+        "worksheet_settings": 0
+      }
+    },
+    {
+      "round": 5,
+      "summary_difference_count": 0,
+      "workbook_difference_count": 0,
+      "workbook_stats": {
+        "sheets": 3,
+        "cells": 292,
+        "numeric_cells": 35,
+        "formulas": 0,
+        "cell_styles": 0,
+        "column_widths": 0,
+        "hidden_rows": 0,
+        "worksheet_settings": 0
+      }
+    }
+  ],
+  "source_sha256_before": {
+    "core/src/base_audit/systems/s2_report_collection/service.py": "e81640910585d04b627c78dabc434028af52fbf386abbc321c5d84a5e099f127",
+    "core/src/base_audit/systems/s2_report_collection/config_check.py": "9d45df493604751fa12e61d9b7d65ff2968401e37e779761f58dabce70873502",
+    "core/src/base_audit/systems/s2_report_collection/config.py": "18af21c33ca45a791c449a2c484bc66f095921ee0839fb9ee9d9218e6fc56ed6"
+  },
+  "source_sha256_after": {
+    "core/src/base_audit/systems/s2_report_collection/service.py": "e81640910585d04b627c78dabc434028af52fbf386abbc321c5d84a5e099f127",
+    "core/src/base_audit/systems/s2_report_collection/config_check.py": "9d45df493604751fa12e61d9b7d65ff2968401e37e779761f58dabce70873502",
+    "core/src/base_audit/systems/s2_report_collection/config.py": "18af21c33ca45a791c449a2c484bc66f095921ee0839fb9ee9d9218e6fc56ed6"
+  },
+  "source_unchanged": true
+}

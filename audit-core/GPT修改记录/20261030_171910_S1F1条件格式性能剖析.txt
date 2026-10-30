@@ -1,0 +1,26 @@
+时间：2026-10-30 17:19:10（Asia/Shanghai）
+执行者：Codex
+修改前/后 commit：`7517a9c` / `7517a9c`（无新提交）
+工作区状态：保留既有未提交 S1/S2/S3 性能盘点与实现改动；未重置、覆盖或删除 WIP。
+
+修改目的：补充 S1-F1 条件格式异常提取子步骤的重复性能测量，判定是否存在值得修改的 Rust 瓶颈。
+
+测量：生成 4,000 行、32,008 个非空单元格、4 条规则、16,000 个扫描格的 XLSX；预热 1 次，随后交错运行 5 轮。每轮 Python/Rust 均产出 8,610 条异常，issue 字段逐项一致，诊断 0，输入 SHA-256 不变。Python/Rust 服务内部中位数 1,343/246 ms，约 5.46×；阶段中位数为 Python 规范化/求值/异常组装 62/844/453 ms，Rust 读取/求值/异常组装 102/94/24 ms。峰值工作集约 Python 87.94 MB、Rust 85.53 MB。仅覆盖条件格式子步骤，不代表完整 S1-F1。
+
+修改文件：
+- `audit-core/tests/compare/perf_s1_conditional_profile_20261030.py`
+- `audit-core/probe/reports/s1_conditional_profile_20261030.json`
+- `audit-core/probe/reports/s1_conditional_profile_20261030.md`
+- `audit-core/PERFORMANCE_BASELINE.md`
+- `audit-core/PERFORMANCE_HISTORY.md`
+- `audit-core/benchmarks/README.md`
+- `DEVELOPMENT_GOAL.md`
+- 本记录文件
+
+验证：专用 Python/Rust 性能驱动通过 5 轮逐异常对拍；使用既有 Release CLI SHA-256 `74c167b5a304d357bfd14f4dab3f65f173c63e8c45a0b631bf7323891148edef`。未修改 Rust 产品代码；未执行 Cargo build/test 或全工作区回归。运行过程先验证并修正了路径归一化与 JSON Decimal 数值传输，并改为父进程采样独立 worker 内存以避免采样线程干扰 Python 服务计时。
+
+结论：当前 4,000 行条件格式合成负载上的 Rust 实现快于 Python，无直接业务代码修改依据；保留现状。此前真实小负载单次结果方向相反但输入不可复测。静态检查还发现完整 S1-F1 在结构预检和条件格式提取阶段分别读取工作簿；重复解析耗时和缓存整簿数据的内存代价尚未测量，列为后续剖析候选。S1-F1 完整 GUI/业务链仍未计时。S5 不在性能范围内。
+
+删除清单：无。回滚提示：如需撤回本次记录，移除上述新建专用驱动、报告和本记录，并反向恢复台账/索引/目标文档本次增量；不要覆盖其它未提交性能档案。
+
+提交/push：均未执行。

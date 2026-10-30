@@ -1,0 +1,297 @@
+{
+  "schema_version": 1,
+  "suite": "audit.s1_conditional_issue_extraction_profile",
+  "status": "passed",
+  "created_at": "2026-10-30T09:17:56.863432+00:00",
+  "environment": {
+    "platform": "win32",
+    "python_version": "3.12.10",
+    "python_reference_root": "C:\\Users\\AZI\\Desktop\\VibeCode\\3.open-data-audit",
+    "rust_binary": "F:\\RustBuild\\audit\\release\\open-data-audit.exe",
+    "rust_binary_sha256": "74c167b5a304d357bfd14f4dab3f65f173c63e8c45a0b631bf7323891148edef",
+    "rust_cli_elapsed_includes_process_startup": true,
+    "internal_times_exclude_rust_json_output_serialization": true,
+    "peak_rss_sampling_interval_ms": 5,
+    "peak_rss_note": "Sampled child-process working set; measurements run in separate Python/Rust processes and do not execute the sampled business code on the sampling thread."
+  },
+  "input": {
+    "sheets": 1,
+    "rows_including_header": 4001,
+    "columns": 8,
+    "nonempty_cells": 32008,
+    "conditional_rules": 4,
+    "scanned_cells_expected": 16000,
+    "bytes": 144034,
+    "sha256_before": "01d1a0ec62fd2c0338fd68583e3168266e235085cccc63417df012a1d0b4a4cd",
+    "sha256_after": "01d1a0ec62fd2c0338fd68583e3168266e235085cccc63417df012a1d0b4a4cd"
+  },
+  "runs": {
+    "warmup": 1,
+    "measured": 5
+  },
+  "summary_ms": {
+    "python_internal_service": {
+      "median": 1343.0,
+      "min": 1312.0,
+      "max": 1516.0
+    },
+    "rust_internal_audit": {
+      "median": 246,
+      "min": 229,
+      "max": 270
+    },
+    "python_external_call": {
+      "median": 3150.873,
+      "min": 3030.665,
+      "max": 3396.191
+    },
+    "rust_external_cli": {
+      "median": 453.037,
+      "min": 422.633,
+      "max": 474.563
+    },
+    "python_to_rust_internal_ratio": 5.4593
+  },
+  "peak_rss_mb": {
+    "python_service_sampled_peak_median": 87.941,
+    "rust_cli_sampled_peak_median": 85.527
+  },
+  "correctness": {
+    "all_measured_rounds_exact_issue_parity": true,
+    "rounds": [
+      {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "field_differences": {}
+      },
+      {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "field_differences": {}
+      },
+      {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "field_differences": {}
+      },
+      {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "field_differences": {}
+      },
+      {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "field_differences": {}
+      }
+    ],
+    "input_unchanged": true
+  },
+  "measured_rounds": [
+    {
+      "round": 1,
+      "order": "rust_then_python",
+      "python": {
+        "internal_elapsed_ms": 1437.0,
+        "external_elapsed_ms": 3396.191,
+        "peak_rss_mb": 89.152,
+        "stage_ms": {
+          "rule_read": 0.0,
+          "rule_normalize": 62.0,
+          "evaluation": 844.0,
+          "issue_build": 531.0,
+          "context_build": 0.0
+        }
+      },
+      "rust": {
+        "internal_elapsed_ms": 246,
+        "external_elapsed_ms": 453.037,
+        "peak_rss_mb": 85.527,
+        "stage_ms": {
+          "read": 102,
+          "evaluation": 94,
+          "issue_build": 24,
+          "reported_total": 220
+        },
+        "rules_total": 4,
+        "rules_supported": 4,
+        "scanned_cells": 16000,
+        "issue_count": 8610,
+        "diagnostics": 0
+      },
+      "parity": {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "field_differences": {}
+      }
+    },
+    {
+      "round": 2,
+      "order": "python_then_rust",
+      "python": {
+        "internal_elapsed_ms": 1313.0,
+        "external_elapsed_ms": 3030.665,
+        "peak_rss_mb": 94.406,
+        "stage_ms": {
+          "rule_read": 0.0,
+          "rule_normalize": 63.0,
+          "evaluation": 797.0,
+          "issue_build": 453.0,
+          "context_build": 16.0
+        }
+      },
+      "rust": {
+        "internal_elapsed_ms": 270,
+        "external_elapsed_ms": 474.563,
+        "peak_rss_mb": 85.496,
+        "stage_ms": {
+          "read": 124,
+          "evaluation": 97,
+          "issue_build": 24,
+          "reported_total": 245
+        },
+        "rules_total": 4,
+        "rules_supported": 4,
+        "scanned_cells": 16000,
+        "issue_count": 8610,
+        "diagnostics": 0
+      },
+      "parity": {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "field_differences": {}
+      }
+    },
+    {
+      "round": 3,
+      "order": "rust_then_python",
+      "python": {
+        "internal_elapsed_ms": 1312.0,
+        "external_elapsed_ms": 3055.107,
+        "peak_rss_mb": 87.562,
+        "stage_ms": {
+          "rule_read": 0.0,
+          "rule_normalize": 62.0,
+          "evaluation": 797.0,
+          "issue_build": 437.0,
+          "context_build": 0.0
+        }
+      },
+      "rust": {
+        "internal_elapsed_ms": 255,
+        "external_elapsed_ms": 459.634,
+        "peak_rss_mb": 85.531,
+        "stage_ms": {
+          "read": 102,
+          "evaluation": 106,
+          "issue_build": 21,
+          "reported_total": 229
+        },
+        "rules_total": 4,
+        "rules_supported": 4,
+        "scanned_cells": 16000,
+        "issue_count": 8610,
+        "diagnostics": 0
+      },
+      "parity": {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "field_differences": {}
+      }
+    },
+    {
+      "round": 4,
+      "order": "python_then_rust",
+      "python": {
+        "internal_elapsed_ms": 1343.0,
+        "external_elapsed_ms": 3298.415,
+        "peak_rss_mb": 87.688,
+        "stage_ms": {
+          "rule_read": 0.0,
+          "rule_normalize": 62.0,
+          "evaluation": 859.0,
+          "issue_build": 422.0,
+          "context_build": 0.0
+        }
+      },
+      "rust": {
+        "internal_elapsed_ms": 231,
+        "external_elapsed_ms": 443.326,
+        "peak_rss_mb": 85.508,
+        "stage_ms": {
+          "read": 95,
+          "evaluation": 87,
+          "issue_build": 25,
+          "reported_total": 207
+        },
+        "rules_total": 4,
+        "rules_supported": 4,
+        "scanned_cells": 16000,
+        "issue_count": 8610,
+        "diagnostics": 0
+      },
+      "parity": {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "field_differences": {}
+      }
+    },
+    {
+      "round": 5,
+      "order": "rust_then_python",
+      "python": {
+        "internal_elapsed_ms": 1516.0,
+        "external_elapsed_ms": 3150.873,
+        "peak_rss_mb": 87.941,
+        "stage_ms": {
+          "rule_read": 0.0,
+          "rule_normalize": 78.0,
+          "evaluation": 891.0,
+          "issue_build": 547.0,
+          "context_build": 0.0
+        }
+      },
+      "rust": {
+        "internal_elapsed_ms": 229,
+        "external_elapsed_ms": 422.633,
+        "peak_rss_mb": 86.57,
+        "stage_ms": {
+          "read": 96,
+          "evaluation": 91,
+          "issue_build": 19,
+          "reported_total": 206
+        },
+        "rules_total": 4,
+        "rules_supported": 4,
+        "scanned_cells": 16000,
+        "issue_count": 8610,
+        "diagnostics": 0
+      },
+      "parity": {
+        "python_issues": 8610,
+        "rust_issues": 8610,
+        "missing_in_rust": 0,
+        "missing_in_python": 0,
+        "field_differences": {}
+      }
+    }
+  ]
+}

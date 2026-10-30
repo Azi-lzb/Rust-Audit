@@ -256,7 +256,12 @@ fn python_plain_value(value: &Value) -> String {
         Value::String(value) => value.clone(),
         Value::Bool(true) => "True".to_owned(),
         Value::Bool(false) => "False".to_owned(),
-        Value::Number(value) => value.to_string(),
+        Value::Number(value) => {
+            let integral = value
+                .as_f64()
+                .filter(|number| number.fract() == 0.0 && number.abs() <= 9_007_199_254_740_991.0);
+            integral.map_or_else(|| value.to_string(), |number| format!("{number:.0}"))
+        }
         Value::Array(_) | Value::Object(_) => value.to_string(),
     }
 }
@@ -431,7 +436,8 @@ fn cell_address(row: usize, column: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{absolute_file_uri_from_path, percent_encode_uri_path};
+    use super::{absolute_file_uri_from_path, percent_encode_uri_path, python_plain_value};
+    use serde_json::json;
 
     #[test]
     fn encodes_absolute_posix_file_paths_as_uris() {
@@ -467,5 +473,13 @@ mod tests {
             percent_encode_uri_path("C:/a b#c.xlsx"),
             "C:/a%20b%23c.xlsx"
         );
+    }
+
+    #[test]
+    fn formats_integral_numeric_audit_values_without_a_decimal_suffix() {
+        assert_eq!(python_plain_value(&json!(10_000.0)), "10000");
+        assert_eq!(python_plain_value(&json!(-5_000_000.0)), "-5000000");
+        assert_eq!(python_plain_value(&json!(10_000.25)), "10000.25");
+        assert_eq!(python_plain_value(&json!(10_000)), "10000");
     }
 }

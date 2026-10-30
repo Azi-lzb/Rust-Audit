@@ -4,7 +4,7 @@ use roxmltree::Document;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs,
     io::{Read, Write},
     ops::Range,
@@ -115,6 +115,35 @@ pub struct WorkbookDump {
     pub reader: &'static str,
     pub elapsed_ms: u128,
     pub sheets: Vec<SheetDump>,
+}
+
+/// A one-based worksheet area needed by a structure-only read.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CellProjectionRegion {
+    pub sheet_name: String,
+    pub start_row: usize,
+    pub start_column: usize,
+    pub end_row: usize,
+    pub end_column: usize,
+}
+
+/// Cell values, formula text, and merged ranges selected for one worksheet.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ProjectedSheetCells {
+    pub name: String,
+    pub values: BTreeMap<String, CellValue>,
+    pub formulas: BTreeMap<String, String>,
+    pub merges: Vec<String>,
+}
+
+/// Minimal workbook data needed to compare fixed S1 structure labels.
+#[derive(Clone, Debug, PartialEq)]
+pub struct WorkbookCellProjection {
+    pub sheet_names: Vec<String>,
+    pub sheets: Vec<ProjectedSheetCells>,
+    pub elapsed_ms: u128,
+    /// True when the existing OOXML error-token compatibility path was used.
+    pub fallback_used: bool,
 }
 
 /// A local unsupported error token identified in OOXML before the normalized
@@ -888,6 +917,290 @@ fn merges_for(
 
 pub fn read_workbook(path: impl AsRef<Path>) -> Result<WorkbookDump> {
     read_workbook_with_diagnostics(path).map(|report| report.workbook)
+}
+
+/// Read only the cells covered by the supplied regions for S1 structure
+/// matching. Calamine still validates stored values in every worksheet, as
+/// the full reader does, but this path avoids building a workbook-wide JSON
+/// dump and skips unrelated OOXML metadata such as comments and conditional
+/// formatting. `include_merge_anchors` is used for source workbooks so a
+/// requested merged cell can be compared through its top-left anchor.
+pub fn read_workbook_structure_projection(
+    path: impl AsRef<Path>,
+    regions: &[CellProjectionRegion],
+    include_merge_anchors: bool,
+) -> Result<WorkbookCellProjection> {
+    let path = path.as_ref();
+    let started = std::time::Instant::now();
+    match read_workbook_structure_projection_calamine(path, regions, include_merge_anchors) {
+        Ok(mut projection) => {
+            projection.elapsed_ms = started.elapsed().as_millis();
+            Ok(projection)
+        }
+        Err(primary_error) => {
+            let failure_class = classify_read_failure(path, &primary_error);
+            if failure_class != WorkbookReadFailureClass::UnsupportedCellErrorToken {
+                let primary_context = format!("{primary_error:#}");
+                return Err(primary_error).context(format!(
+                    "Calamine structure projection failed ({}) for {}; no safe OOXML value fallback applies: {primary_context}",
+                    failure_class.as_str(),
+                    path.display()
+                ));
+            }
+
+            // Keep the existing narrow compatibility behavior for uncommon
+            // error tokens: normalize only those OOXML cells on a temporary
+            // copy, then project from the successful full-reader result.
+            let report = read_workbook_with_diagnostics(path).with_context(|| {
+                format!(
+                    "Calamine structure projection failed ({}) for {}: {:#}; existing error-token fallback failed",
+                    failure_class.as_str(),
+                    path.display(),
+                    primary_error
+                )
+            })?;
+            let fallback_used = report.diagnostics.fallback_reader.is_some();
+            let mut projection =
+                project_workbook_dump(&report.workbook, regions, include_merge_anchors)?;
+            projection.elapsed_ms = started.elapsed().as_millis();
+            projection.fallback_used = fallback_used;
+            Ok(projection)
+        }
+    }
+}
+
+fn read_workbook_structure_projection_calamine(
+    path: &Path,
+    regions: &[CellProjectionRegion],
+    include_merge_anchors: bool,
+) -> Result<WorkbookCellProjection> {
+    validate_legacy_xls_signature(path)?;
+    let started = std::time::Instant::now();
+    let mut workbook =
+        open_workbook_auto(path).with_context(|| format!("open {}", path.display()))?;
+    let sheet_names = workbook.sheet_names().to_vec();
+    let mut regions_by_sheet = BTreeMap::<String, Vec<&CellProjectionRegion>>::new();
+    for region in regions {
+        regions_by_sheet
+            .entry(region.sheet_name.clone())
+            .or_default()
+            .push(region);
+    }
+
+    let mut sheets = Vec::new();
+    for name in &sheet_names {
+        let range = workbook
+            .worksheet_range(name)
+            .with_context(|| format!("read values for {name}"))?;
+        let merges = merges_for(&mut workbook, name)
+            .with_context(|| format!("read merge regions for {name}"))?
+            .0;
+        let Some(sheet_regions) = regions_by_sheet.get(name) else {
+            continue;
+        };
+
+        let mut merge_anchors = BTreeSet::new();
+        if include_merge_anchors {
+            for merge in &merges {
+                let Some((first_row, first_column, last_row, last_column)) =
+                    parse_ooxml_range_reference(merge).ok()
+                else {
+                    continue;
+                };
+                if sheet_regions.iter().any(|region| {
+                    region.start_row == region.end_row
+                        && region.start_column == region.end_column
+                        && coordinate_within(
+                            region.start_row,
+                            region.start_column,
+                            first_row,
+                            first_column,
+                            last_row,
+                            last_column,
+                        )
+                }) {
+                    merge_anchors.insert((first_row, first_column));
+                }
+            }
+        }
+
+        let (start_row, start_column) = range.start().unwrap_or((0, 0));
+        let mut values = BTreeMap::new();
+        for (local_row, local_column, value) in range.cells() {
+            let row = start_row as usize + local_row + 1;
+            let column = start_column as usize + local_column + 1;
+            if !projection_coordinate_requested(row, column, sheet_regions)
+                && !merge_anchors.contains(&(row, column))
+            {
+                continue;
+            }
+            let value = CellValue::from(value);
+            if !matches!(value, CellValue::Empty) {
+                values.insert(coord(row - 1, column - 1), value);
+            }
+        }
+
+        let mut formulas = BTreeMap::new();
+        if let Ok(formula_range) = workbook.worksheet_formula(name) {
+            let (formula_start_row, formula_start_column) = formula_range.start().unwrap_or((0, 0));
+            for (local_row, local_column, formula) in formula_range.cells() {
+                if formula.trim().is_empty() {
+                    continue;
+                }
+                let row = formula_start_row as usize + local_row + 1;
+                let column = formula_start_column as usize + local_column + 1;
+                if projection_coordinate_requested(row, column, sheet_regions)
+                    || merge_anchors.contains(&(row, column))
+                {
+                    formulas.insert(coord(row - 1, column - 1), formula.to_owned());
+                }
+            }
+        }
+
+        sheets.push(ProjectedSheetCells {
+            name: name.clone(),
+            values,
+            formulas,
+            merges,
+        });
+    }
+
+    Ok(WorkbookCellProjection {
+        sheet_names,
+        sheets,
+        elapsed_ms: started.elapsed().as_millis(),
+        fallback_used: false,
+    })
+}
+
+fn project_workbook_dump(
+    workbook: &WorkbookDump,
+    regions: &[CellProjectionRegion],
+    include_merge_anchors: bool,
+) -> Result<WorkbookCellProjection> {
+    let mut regions_by_sheet = BTreeMap::<String, Vec<&CellProjectionRegion>>::new();
+    for region in regions {
+        regions_by_sheet
+            .entry(region.sheet_name.clone())
+            .or_default()
+            .push(region);
+    }
+    let mut sheets = Vec::new();
+    for sheet in &workbook.sheets {
+        let Some(sheet_regions) = regions_by_sheet.get(&sheet.name) else {
+            continue;
+        };
+        let mut merge_anchors = BTreeSet::new();
+        if include_merge_anchors {
+            for merge in &sheet.merges {
+                let Some((first_row, first_column, last_row, last_column)) =
+                    parse_ooxml_range_reference(merge).ok()
+                else {
+                    continue;
+                };
+                if sheet_regions.iter().any(|region| {
+                    region.start_row == region.end_row
+                        && region.start_column == region.end_column
+                        && coordinate_within(
+                            region.start_row,
+                            region.start_column,
+                            first_row,
+                            first_column,
+                            last_row,
+                            last_column,
+                        )
+                }) {
+                    merge_anchors.insert((first_row, first_column));
+                }
+            }
+        }
+
+        let mut values = BTreeMap::new();
+        for (address, value) in &sheet.values {
+            let Some((row, column)) = parse_ooxml_cell_reference(address).ok() else {
+                continue;
+            };
+            if projection_coordinate_requested(row, column, sheet_regions)
+                || merge_anchors.contains(&(row, column))
+            {
+                values.insert(address.clone(), CellValue::from_probe_json(value)?);
+            }
+        }
+        let formulas = sheet
+            .formulas
+            .iter()
+            .filter_map(|(address, formula)| {
+                let (row, column) = parse_ooxml_cell_reference(address).ok()?;
+                (projection_coordinate_requested(row, column, sheet_regions)
+                    || merge_anchors.contains(&(row, column)))
+                .then(|| (address.clone(), formula.clone()))
+            })
+            .collect();
+        sheets.push(ProjectedSheetCells {
+            name: sheet.name.clone(),
+            values,
+            formulas,
+            merges: sheet.merges.clone(),
+        });
+    }
+
+    Ok(WorkbookCellProjection {
+        sheet_names: workbook
+            .sheets
+            .iter()
+            .map(|sheet| sheet.name.clone())
+            .collect(),
+        sheets,
+        elapsed_ms: workbook.elapsed_ms,
+        fallback_used: false,
+    })
+}
+
+fn projection_coordinate_requested(
+    row: usize,
+    column: usize,
+    regions: &[&CellProjectionRegion],
+) -> bool {
+    regions.iter().any(|region| {
+        row >= region.start_row
+            && row <= region.end_row
+            && column >= region.start_column
+            && column <= region.end_column
+    })
+}
+
+fn coordinate_within(
+    row: usize,
+    column: usize,
+    first_row: usize,
+    first_column: usize,
+    last_row: usize,
+    last_column: usize,
+) -> bool {
+    row >= first_row && row <= last_row && column >= first_column && column <= last_column
+}
+
+/// Read the worksheet order and formula counts without materializing stored
+/// cell values or OOXML metadata. This is intended for output checks whose
+/// contract only requires confirming that a workbook reopens with its expected
+/// sheets and formula inventory.
+pub fn read_workbook_sheet_formula_counts(path: impl AsRef<Path>) -> Result<Vec<(String, usize)>> {
+    let path = path.as_ref();
+    validate_legacy_xls_signature(path)?;
+    let mut workbook =
+        open_workbook_auto(path).with_context(|| format!("open {}", path.display()))?;
+    let names = workbook.sheet_names().to_vec();
+    let mut result = Vec::with_capacity(names.len());
+    for name in names {
+        let formula_count = workbook
+            .worksheet_formula(&name)
+            .with_context(|| format!("read formulas for {name}"))?
+            .cells()
+            .filter(|(_, _, formula)| !formula.trim().is_empty())
+            .count();
+        result.push((name, formula_count));
+    }
+    Ok(result)
 }
 
 /// Read with Calamine first and use a temporary, cell-scoped OOXML
@@ -2232,7 +2545,7 @@ mod tests {
             r#"<Relationships xmlns="{PACKAGE_REL_NS}"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>"#
         );
         let worksheet = format!(
-            r#"<s:worksheet xmlns:s="{SPREADSHEET_MAIN_NS}"><s:dimension ref="A1:XFD1048576"/><s:sheetData><s:row r="3"><s:c r="B3"><s:v>4</s:v></s:c></s:row><s:row r="8"><s:c r="G8" s="1"/></s:row></s:sheetData><s:mergeCells count="1"><s:mergeCell ref="C10:D12"/></s:mergeCells></s:worksheet>"#
+            r#"<s:worksheet xmlns:s="{SPREADSHEET_MAIN_NS}"><s:dimension ref="A1:XFD1048576"/><s:sheetData><s:row r="3"><s:c r="B3"><s:v>4</s:v></s:c></s:row><s:row r="8"><s:c r="G8" s="1"/></s:row><s:row r="10"><s:c r="C10" t="inlineStr"><s:is><s:t>merged anchor</s:t></s:is></s:c></s:row></s:sheetData><s:mergeCells count="1"><s:mergeCell ref="C10:D12"/></s:mergeCells></s:worksheet>"#
         );
         let mut archive = ZipWriter::new(fs::File::create(&path)?);
         for (name, xml) in [
@@ -2466,6 +2779,125 @@ mod tests {
                 .collect();
             assert_eq!(projection.values, expected);
         }
+    }
+
+    #[test]
+    fn structure_projection_matches_full_dump_for_values_formulas_and_merges() -> Result<()> {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../audit-core/tests/fixtures/synthetic_probe.xlsx");
+        let dump = read_workbook(&fixture)?;
+        let regions = dump
+            .sheets
+            .iter()
+            .map(|sheet| CellProjectionRegion {
+                sheet_name: sheet.name.clone(),
+                start_row: 1,
+                start_column: 1,
+                end_row: 1_048_576,
+                end_column: 16_384,
+            })
+            .collect::<Vec<_>>();
+        let projection = read_workbook_structure_projection(&fixture, &regions, false)?;
+
+        assert_eq!(
+            projection.sheet_names,
+            dump.sheets
+                .iter()
+                .map(|sheet| sheet.name.clone())
+                .collect::<Vec<_>>()
+        );
+        assert!(!projection.fallback_used);
+        for full_sheet in &dump.sheets {
+            let projected = projection
+                .sheets
+                .iter()
+                .find(|sheet| sheet.name == full_sheet.name)
+                .with_context(|| format!("missing projected sheet {}", full_sheet.name))?;
+            let projected_values = projected
+                .values
+                .iter()
+                .map(|(address, value)| {
+                    (
+                        address.clone(),
+                        serde_json::to_value(value).expect("serialize projected value"),
+                    )
+                })
+                .collect::<BTreeMap<_, _>>();
+            assert_eq!(
+                projected_values, full_sheet.values,
+                "values in {}",
+                full_sheet.name
+            );
+            assert_eq!(
+                projected.formulas, full_sheet.formulas,
+                "formulas in {}",
+                full_sheet.name
+            );
+            assert_eq!(
+                projected.merges, full_sheet.merges,
+                "merges in {}",
+                full_sheet.name
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn structure_projection_reads_merge_anchor_for_non_anchor_request() -> Result<()> {
+        let fixture = worksheet_extent_fixture()?;
+        let projection = read_workbook_structure_projection(
+            &fixture,
+            &[CellProjectionRegion {
+                sheet_name: "Layout".to_owned(),
+                start_row: 11,
+                start_column: 4,
+                end_row: 11,
+                end_column: 4,
+            }],
+            true,
+        )?;
+        let sheet = projection
+            .sheets
+            .iter()
+            .find(|sheet| sheet.name == "Layout")
+            .context("projected Layout sheet missing")?;
+        assert_eq!(sheet.merges, vec!["C10:D12"]);
+        assert_eq!(
+            sheet.values.get("C10"),
+            Some(&CellValue::Text("merged anchor".to_owned()))
+        );
+        assert!(!sheet.values.contains_key("D11"));
+        fs::remove_file(fixture)?;
+        Ok(())
+    }
+
+    #[test]
+    fn structure_projection_reuses_unknown_error_token_fallback() -> Result<()> {
+        let (fixture, _) = unknown_error_token_fixture()?;
+        let projection = read_workbook_structure_projection(
+            &fixture,
+            &[CellProjectionRegion {
+                sheet_name: "Synthetic".to_owned(),
+                start_row: 1,
+                start_column: 1,
+                end_row: 1,
+                end_column: 10,
+            }],
+            false,
+        )?;
+        let sheet = projection
+            .sheets
+            .iter()
+            .find(|sheet| sheet.name == "Synthetic")
+            .context("projected Synthetic sheet missing")?;
+        assert!(projection.fallback_used);
+        assert_eq!(
+            sheet.values.get("B1"),
+            Some(&CellValue::Text("#CUSTOMERR!".to_owned()))
+        );
+        assert_eq!(sheet.formulas.get("C1").map(String::as_str), Some("1+1"));
+        fs::remove_file(fixture)?;
+        Ok(())
     }
 
     #[test]

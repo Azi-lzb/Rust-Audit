@@ -12,9 +12,9 @@ use audit_core::{
         DEFAULT_CONDITIONAL_FEATURE_NAME,
     },
     s1_conditional_audit::{
-        extract_conditional_issues, extract_conditional_issues_batch,
-        S1ConditionalBatchAuditResult, S1ConditionalBatchInput, S1ConditionalBatchProgress,
-        S1ConditionalMetadata,
+        extract_conditional_issues_batch, extract_conditional_issues_from_dump,
+        S1ConditionalAuditResult, S1ConditionalBatchAuditResult, S1ConditionalBatchFileSummary,
+        S1ConditionalBatchInput, S1ConditionalBatchProgress, S1ConditionalMetadata,
     },
     s1_formula_audit::{extract_s1_formula_issues, S1FormulaMetadata},
     s1_history::{
@@ -28,7 +28,8 @@ use audit_core::{
     s1_region_summary::summarize_s1_named_regions,
     s1_result_workbook::write_s1_result_workbook,
     s1_structure_compare::{
-        compare_s1_source_structure, read_s1_structure_template_with_required_sheets,
+        compare_s1_source_structure, compare_s1_source_structure_dump,
+        read_s1_structure_template_with_required_sheets, S1StructureMatch,
     },
     s1_summary_merge::merge_s1_workbook_tables,
     s1_template::{recommend_template, recommend_template_for_workbooks, template_workbook_paths},
@@ -61,6 +62,7 @@ use audit_core::{
     web_bridge::serve_web_ui,
 };
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use excel_reader::read_workbook_with_diagnostics;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -580,6 +582,7 @@ struct S1StructurePreflightSummary {
     template_areas: usize,
     template_labels: usize,
     template_read_time_ms: u128,
+    timing_scope: &'static str,
     elapsed_ms: u128,
     files: Vec<S1StructurePreflightFile>,
 }
@@ -1106,23 +1109,139 @@ fn run() -> Result<()> {
             } else {
                 eprintln!("正在执行 S1-F01 条件格式检查…");
             }
-            let (preflighted, structure_preflight) = prepare_s1_structure_inputs(
-                vec![S1ConditionalBatchInput {
-                    workbook_path: arguments.workbook.clone(),
-                    source_file: source_file.clone(),
-                    metadata: metadata.clone(),
-                }],
-                arguments.template_workbook.as_deref(),
-                &scan_areas,
-                &structure_ranges,
-                arguments.developer_view,
-            )?;
-            if preflighted.is_empty() {
-                anyhow::bail!("报送文件与模板表结构不匹配，已跳过条件格式审核");
+            let preflight_started = Instant::now();
+            let structure_template = if let Some(template_workbook) = arguments
+                .template_workbook
+                .as_deref()
+                .filter(|_| !structure_ranges.is_empty())
+            {
+                let required_sheets = scan_areas
+                    .iter()
+                    .filter_map(|area| scan_area_sheet_name(area))
+                    .chain(
+                        structure_ranges
+                            .iter()
+                            .map(|range| range.sheet_name.clone()),
+                    )
+                    .collect::<Vec<_>>();
+                Some(read_s1_structure_template_with_required_sheets(
+                    template_workbook,
+                    &structure_ranges,
+                    &required_sheets,
+                )?)
+            } else {
+                None
+            };
+            if structure_template.is_some() && arguments.developer_view {
+                eprintln!(
+                    "{}",
+                    serde_json::to_string(&serde_json::json!({
+                        "type": "progress",
+                        "product": "open-data-audit",
+                        "feature": "S1-F01",
+                        "step": "structure_preflight",
+                        "status": "started",
+                        "engine": "calamine",
+                        "files_total": 1,
+                        "started_at": started_at
+                    }))?
+                );
             }
-            let report = match extract_conditional_issues(
+            let read_report = read_workbook_with_diagnostics(&arguments.workbook)
+                .with_context(|| format!("读取 S1 报送文件 {}", arguments.workbook.display()))?;
+            let source_read_ms = read_report.workbook.elapsed_ms;
+            let structure_preflight = if let Some(template) = structure_template.as_ref() {
+                let structure_match =
+                    compare_s1_source_structure_dump(&read_report.workbook, template)?;
+                let accepted = structure_match.matched;
+                let summary = S1StructurePreflightSummary {
+                    status: if accepted {
+                        "completed"
+                    } else {
+                        "completed_with_rejections"
+                    },
+                    engine: "calamine",
+                    files_total: 1,
+                    files_accepted: usize::from(accepted),
+                    files_rejected: usize::from(!accepted),
+                    template_areas: template.area_count,
+                    template_labels: template.label_count,
+                    template_read_time_ms: template.read_time_ms,
+                    timing_scope: "structure_preflight_only",
+                    elapsed_ms: preflight_started.elapsed().as_millis(),
+                    files: vec![S1StructurePreflightFile {
+                        source_file: source_file
+                            .file_name()
+                            .map(|name| name.to_string_lossy().into_owned())
+                            .unwrap_or_else(|| source_file.display().to_string()),
+                        status: if accepted { "matched" } else { "rejected" },
+                        matched_labels: structure_match.matched_labels,
+                        checked_labels: structure_match.checked_labels,
+                        score: structure_match.score,
+                        missing_sheets: structure_match.missing_sheets.clone(),
+                        read_time_ms: Some(source_read_ms),
+                        elapsed_ms: structure_match.elapsed_ms + source_read_ms,
+                        diagnostic: structure_match.diagnostic.clone(),
+                        error: None,
+                    }],
+                };
+                if arguments.developer_view {
+                    eprintln!(
+                        "{}",
+                        serde_json::to_string(&serde_json::json!({
+                            "type": "progress",
+                            "product": "open-data-audit",
+                            "feature": "S1-F01",
+                            "step": "structure_preflight_file",
+                            "status": if accepted { "matched" } else { "rejected" },
+                            "engine": "calamine",
+                            "source_file": source_file.file_name().map(|name| name.to_string_lossy()),
+                            "matched_labels": structure_match.matched_labels,
+                            "checked_labels": structure_match.checked_labels,
+                            "score": structure_match.score,
+                            "missing_sheets": structure_match.missing_sheets,
+                            "read_time_ms": source_read_ms,
+                            "elapsed_ms": structure_match.elapsed_ms + source_read_ms,
+                            "diagnostic": structure_match.diagnostic
+                        }))?
+                    );
+                    eprintln!(
+                        "{}",
+                        serde_json::to_string(&serde_json::json!({
+                            "type": "progress",
+                            "product": "open-data-audit",
+                            "feature": "S1-F01",
+                            "step": "structure_preflight",
+                            "status": summary.status,
+                            "engine": summary.engine,
+                            "files_total": summary.files_total,
+                            "files_accepted": summary.files_accepted,
+                            "files_rejected": summary.files_rejected,
+                            "template_areas": summary.template_areas,
+                            "template_labels": summary.template_labels,
+                            "template_read_time_ms": summary.template_read_time_ms,
+                            "timing_scope": summary.timing_scope,
+                            "elapsed_ms": summary.elapsed_ms
+                        }))?
+                    );
+                }
+                if !accepted {
+                    anyhow::bail!("报送文件与模板表结构不匹配，已跳过条件格式审核");
+                }
+                Some(summary)
+            } else {
+                None
+            };
+            let report = match extract_conditional_issues_from_dump(
                 &arguments.workbook,
                 &source_file,
+                &read_report.workbook,
+                &read_report.diagnostics,
+                if structure_preflight.is_some() {
+                    0
+                } else {
+                    source_read_ms
+                },
                 &scan_areas,
                 &structure_ranges,
                 &metadata,
@@ -1149,6 +1268,7 @@ fn run() -> Result<()> {
                     return Err(error);
                 }
             };
+            drop(read_report);
             if arguments.developer_view {
                 eprintln!(
                     "{}",
@@ -1169,6 +1289,8 @@ fn run() -> Result<()> {
                         "issues": report.issues.len(),
                         "diagnostics": report.evaluation.diagnostics.len(),
                         "read_time_ms": report.evaluation.read_time_ms,
+                        "source_read_reused": structure_preflight.is_some(),
+                        "shared_source_read_ms": source_read_ms,
                         "evaluation_time_ms": report.evaluation.evaluation_time_ms,
                         "issue_build_time_ms": report.issue_build_time_ms,
                         "total_time_ms": report.evaluation.total_time_ms + report.issue_build_time_ms
@@ -1186,6 +1308,8 @@ fn run() -> Result<()> {
                 );
             }
             let mut output = serde_json::to_value(&report)?;
+            output["source_read_reused"] = json!(structure_preflight.is_some());
+            output["shared_source_read_ms"] = json!(source_read_ms);
             if let Some(summary) = structure_preflight {
                 output["structure_preflight"] = serde_json::to_value(summary)?;
             }
@@ -2955,13 +3079,17 @@ fn run_s1_audit_directory(arguments: S1AuditDirectoryArgs) -> Result<()> {
             },
         })
         .collect::<Vec<_>>();
-    let (accepted_inputs, structure_preflight) = prepare_s1_structure_inputs(
-        all_inputs,
-        Some(&template_workbook),
-        &scan_areas,
-        &structure_ranges,
-        arguments.developer_view,
-    )?;
+    let conditional_started = Instant::now();
+    let (accepted_inputs, structure_preflight, conditional_report) =
+        preflight_and_extract_s1_conditionals(
+            all_inputs,
+            Some(&template_workbook),
+            &scan_areas,
+            &structure_ranges,
+            &arguments.batch_id,
+            arguments.developer_view,
+        )?;
+    let conditional_elapsed_ms = conditional_started.elapsed().as_millis();
     anyhow::ensure!(
         !accepted_inputs.is_empty(),
         "没有通过模板表结构预检的源文件；未运行公式或条件格式审核"
@@ -3080,99 +3208,6 @@ fn run_s1_audit_directory(arguments: S1AuditDirectoryArgs) -> Result<()> {
             }
             recalculation_reports.push(report);
         }
-    }
-
-    let conditional_started = Instant::now();
-    if arguments.developer_view {
-        eprintln!(
-            "{}",
-            serde_json::to_string(&serde_json::json!({
-                "type": "progress",
-                "product": "open-data-audit",
-                "feature": "S1-F01",
-                "step": "conditional_format_issue_extraction",
-                "status": "started",
-                "engine": "calamine+namespace_aware_ooxml",
-                "files_total": accepted_inputs.len(),
-                "started_at": chrono::Local::now().to_rfc3339()
-            }))?
-        );
-    } else {
-        eprintln!("正在对通过结构预检的源文件执行条件格式审核…");
-    }
-    let conditional_report = extract_conditional_issues_batch(
-        &accepted_inputs,
-        &scan_areas,
-        &structure_ranges,
-        |progress: &S1ConditionalBatchProgress| {
-            if arguments.developer_view {
-                if let Ok(event) = serde_json::to_string(&serde_json::json!({
-                    "type": "progress",
-                    "product": "open-data-audit",
-                    "feature": "S1-F01",
-                    "step": "conditional_format_issue_extraction",
-                    "batch_id": arguments.batch_id,
-                    "event": progress
-                })) {
-                    eprintln!("{event}");
-                }
-            } else {
-                match progress.status {
-                    "started" => eprintln!(
-                        "正在检查条件格式：{}（{}/{}）",
-                        progress.source_file, progress.file_index, progress.files_total
-                    ),
-                    "completed" => eprintln!(
-                        "{}：规则 {}/{}，扫描 {} 格，形成 {} 条审核项；读取 {} ms、计算 {} ms、总计 {} ms。",
-                        progress.source_file,
-                        progress.rules_supported.unwrap_or_default(),
-                        progress.rules_total.unwrap_or_default(),
-                        progress.scanned_cells.unwrap_or_default(),
-                        progress.issue_count.unwrap_or_default(),
-                        progress.read_time_ms.unwrap_or_default(),
-                        progress.evaluation_time_ms.unwrap_or_default(),
-                        progress.elapsed_ms.unwrap_or_default()
-                    ),
-                    "failed" => eprintln!(
-                        "{}：条件格式检查失败（{} ms）：{}",
-                        progress.source_file,
-                        progress.elapsed_ms.unwrap_or_default(),
-                        progress.error.as_deref().unwrap_or("未知错误")
-                    ),
-                    _ => {}
-                }
-            }
-        },
-    )
-    .context("执行 S1 条件格式审核")?;
-    if conditional_report.status != "completed" {
-        eprintln!(
-            "条件格式审核有部分诊断或失败：保留已可靠提取的 {} 条审核项，仍继续公式审核与结果汇总。",
-            conditional_report.issues.len()
-        );
-    }
-    if arguments.developer_view {
-        eprintln!(
-            "{}",
-            serde_json::to_string(&serde_json::json!({
-                "type": "progress",
-                "product": "open-data-audit",
-                "feature": "S1-F01",
-                "step": "conditional_format_issue_extraction",
-                "status": "completed",
-                "engine": "calamine+namespace_aware_ooxml",
-                "files": conditional_report.files.len(),
-                "issues": conditional_report.issues.len(),
-                "elapsed_ms": conditional_started.elapsed().as_millis()
-            }))?
-        );
-    } else {
-        eprintln!(
-            "条件格式审核完成：{} 个工作簿，{} 条审核项；耗时 {} ms。",
-            conditional_report.files.len(),
-            conditional_report.issues.len(),
-            conditional_started.elapsed().as_millis()
-        );
     }
 
     let formula_started = Instant::now();
@@ -3789,7 +3824,8 @@ fn run_s1_audit_directory(arguments: S1AuditDirectoryArgs) -> Result<()> {
             "status": conditional_report.status,
             "files": conditional_report.files,
             "issues": conditional_report.issues.len(),
-            "elapsed_ms": conditional_started.elapsed().as_millis()
+            "source_read_shared_with_structure_preflight": structure_preflight.is_some(),
+            "elapsed_ms": conditional_elapsed_ms
         },
         "history_workbook_summary": history_read_summary,
         "summary": history_result.summary,
@@ -4373,90 +4409,15 @@ fn run_conditional_audit_inputs(
 ) -> Result<()> {
     let batch_started = Instant::now();
     let started_at = chrono::Local::now().to_rfc3339();
-    let (inputs, structure_preflight) = prepare_s1_structure_inputs(
+    let (_inputs, structure_preflight, mut report) = match preflight_and_extract_s1_conditionals(
         inputs,
         template_workbook,
         scan_areas,
         structure_ranges,
+        batch_id,
         developer_view,
-    )?;
-    if developer_view {
-        eprintln!(
-            "{}",
-            serde_json::to_string(&serde_json::json!({
-                "type": "progress",
-                "product": "open-data-audit",
-                "feature": "S1-F01",
-                "step": "conditional_format_issue_extraction",
-                "status": "started",
-                "batch_id": batch_id,
-                "files_total": inputs.len(),
-                "started_at": started_at.as_str()
-            }))?
-        );
-    } else {
-        eprintln!("正在执行 S1-F01 条件格式检查：{} 个工作簿。", inputs.len());
-    }
-
-    let report = if inputs.is_empty() {
-        Ok(S1ConditionalBatchAuditResult {
-            status: "completed_with_diagnostics",
-            issues: Vec::new(),
-            files: Vec::new(),
-            total_elapsed_ms: 0,
-        })
-    } else {
-        extract_conditional_issues_batch(
-            &inputs,
-            scan_areas,
-            structure_ranges,
-            |progress: &S1ConditionalBatchProgress| {
-                if developer_view {
-                    if let Ok(event) = serde_json::to_string(&serde_json::json!({
-                        "type": "progress",
-                        "product": "open-data-audit",
-                        "feature": "S1-F01",
-                        "step": "conditional_format_issue_extraction",
-                        "batch_id": batch_id,
-                        "event": progress
-                    })) {
-                        eprintln!("{event}");
-                    }
-                } else {
-                    match progress.status {
-                        "started" => eprintln!(
-                            "正在检查条件格式：{}（{}/{}）",
-                            progress.source_file, progress.file_index, progress.files_total
-                        ),
-                        "completed" => eprintln!(
-                            "{}：引擎 {}，规则 {}/{}，扫描 {} 格，触发 {} 项，未确定 {} 项；读取 {} ms、判定 {} ms、组装 {} ms、单文件总计 {} ms。",
-                            progress.source_file,
-                            progress.reader.unwrap_or("未知"),
-                            progress.rules_supported.unwrap_or_default(),
-                            progress.rules_total.unwrap_or_default(),
-                            progress.scanned_cells.unwrap_or_default(),
-                            progress.issue_count.unwrap_or_default(),
-                            progress.diagnostics.unwrap_or_default(),
-                            progress.read_time_ms.unwrap_or_default(),
-                            progress.evaluation_time_ms.unwrap_or_default(),
-                            progress.issue_build_time_ms.unwrap_or_default(),
-                            progress.elapsed_ms.unwrap_or_default()
-                        ),
-                        "failed" => eprintln!(
-                            "{}：条件格式检查失败（{} ms）：{}",
-                            progress.source_file,
-                            progress.elapsed_ms.unwrap_or_default(),
-                            progress.error.as_deref().unwrap_or("未知错误")
-                        ),
-                        _ => {}
-                    }
-                }
-            },
-        )
-    };
-
-    let mut report = match report {
-        Ok(report) => report,
+    ) {
+        Ok(result) => result,
         Err(error) => {
             if developer_view {
                 eprintln!(
@@ -4748,6 +4709,7 @@ fn prepare_s1_structure_inputs(
         template_areas: template.area_count,
         template_labels: template.label_count,
         template_read_time_ms: template.read_time_ms,
+        timing_scope: "structure_preflight_only",
         elapsed_ms: started.elapsed().as_millis(),
         files,
     };
@@ -4782,6 +4744,597 @@ fn prepare_s1_structure_inputs(
         );
     }
     Ok((accepted, Some(summary)))
+}
+
+struct S1PreflightConditionalFileOutcome {
+    input: S1ConditionalBatchInput,
+    structure: std::result::Result<S1StructureMatch, String>,
+    source_read_ms: Option<u128>,
+    structure_elapsed_ms: u128,
+    conditional: Option<std::result::Result<S1ConditionalAuditResult, String>>,
+    conditional_started_at: Option<String>,
+    conditional_finished_at: Option<String>,
+    conditional_elapsed_ms: Option<u128>,
+}
+
+/// Run structure preflight and conditional-format extraction against one
+/// workbook projection per source. The projection is dropped after each
+/// parallel worker finishes, before formula-copy/recalculation begins.
+fn preflight_and_extract_s1_conditionals(
+    inputs: Vec<S1ConditionalBatchInput>,
+    template_workbook: Option<&Path>,
+    scan_areas: &[String],
+    structure_ranges: &[CopyRange],
+    batch_id: &str,
+    developer_view: bool,
+) -> Result<(
+    Vec<S1ConditionalBatchInput>,
+    Option<S1StructurePreflightSummary>,
+    S1ConditionalBatchAuditResult,
+)> {
+    let combined_started = Instant::now();
+    let started_at = chrono::Local::now().to_rfc3339();
+    let Some(template_workbook) = template_workbook.filter(|_| !structure_ranges.is_empty()) else {
+        let (accepted_inputs, structure_preflight) = prepare_s1_structure_inputs(
+            inputs,
+            template_workbook,
+            scan_areas,
+            structure_ranges,
+            developer_view,
+        )?;
+        let conditional_started = Instant::now();
+        let conditional_report = if accepted_inputs.is_empty() {
+            S1ConditionalBatchAuditResult {
+                status: "completed_with_diagnostics",
+                issues: Vec::new(),
+                files: Vec::new(),
+                total_elapsed_ms: 0,
+            }
+        } else {
+            extract_conditional_issues_batch(
+                &accepted_inputs,
+                scan_areas,
+                structure_ranges,
+                |progress| emit_s1_conditional_progress(progress, batch_id, developer_view),
+            )?
+        };
+        let mut conditional_report = conditional_report;
+        conditional_report.total_elapsed_ms = conditional_started.elapsed().as_millis();
+        if structure_preflight
+            .as_ref()
+            .is_some_and(|summary| summary.files_rejected > 0)
+        {
+            conditional_report.status = "completed_with_diagnostics";
+        }
+        return Ok((accepted_inputs, structure_preflight, conditional_report));
+    };
+    let had_no_inputs = inputs.is_empty();
+
+    let required_sheets = scan_areas
+        .iter()
+        .filter_map(|area| scan_area_sheet_name(area))
+        .chain(
+            structure_ranges
+                .iter()
+                .map(|range| range.sheet_name.clone()),
+        )
+        .collect::<Vec<_>>();
+    let template = read_s1_structure_template_with_required_sheets(
+        template_workbook,
+        structure_ranges,
+        &required_sheets,
+    )
+    .context("S1-F01 表结构模板读取失败")?;
+
+    if developer_view {
+        eprintln!(
+            "{}",
+            serde_json::to_string(&serde_json::json!({
+                "type": "progress",
+                "product": "open-data-audit",
+                "feature": "S1-F01",
+                "step": "structure_preflight",
+                "status": "started",
+                "engine": "calamine",
+                "files_total": inputs.len(),
+                "template_workbook": template_workbook.file_name().map(|name| name.to_string_lossy()),
+                "started_at": started_at
+            }))?
+        );
+        eprintln!(
+            "{}",
+            serde_json::to_string(&serde_json::json!({
+                "type": "progress",
+                "product": "open-data-audit",
+                "feature": "S1-F01",
+                "step": "conditional_format_issue_extraction",
+                "status": "started",
+                "batch_id": batch_id,
+                "engine": "calamine+namespace_aware_ooxml",
+                "files_total": inputs.len(),
+                "source_read_shared_with_structure_preflight": true,
+                "started_at": started_at
+            }))?
+        );
+    } else {
+        eprintln!("正在按模板检查 S1-F01 报送文件并提取条件格式审核项…");
+    }
+
+    let outcomes = inputs
+        .par_iter()
+        .map(|input| {
+            let file_started = Instant::now();
+            let read_report = read_workbook_with_diagnostics(&input.workbook_path)
+                .with_context(|| format!("读取 S1 报送文件 {}", input.workbook_path.display()));
+            match read_report {
+                Err(error) => S1PreflightConditionalFileOutcome {
+                    input: input.clone(),
+                    structure: Err(format!("{error:#}")),
+                    source_read_ms: None,
+                    structure_elapsed_ms: file_started.elapsed().as_millis(),
+                    conditional: None,
+                    conditional_started_at: None,
+                    conditional_finished_at: None,
+                    conditional_elapsed_ms: None,
+                },
+                Ok(read_report) => {
+                    let source_read_ms = read_report.workbook.elapsed_ms;
+                    let structure_result =
+                        compare_s1_source_structure_dump(&read_report.workbook, &template)
+                            .map_err(|error| format!("{error:#}"));
+                    let structure_elapsed_ms = file_started.elapsed().as_millis();
+                    let is_matched = structure_result.as_ref().is_ok_and(|result| result.matched);
+                    let conditional_started_at =
+                        is_matched.then(|| chrono::Local::now().to_rfc3339());
+                    let conditional_started = Instant::now();
+                    let conditional = is_matched.then(|| {
+                        extract_conditional_issues_from_dump(
+                            &input.workbook_path,
+                            &input.source_file,
+                            &read_report.workbook,
+                            &read_report.diagnostics,
+                            0,
+                            scan_areas,
+                            structure_ranges,
+                            &input.metadata,
+                        )
+                        .map_err(|error| format!("{error:#}"))
+                    });
+                    let conditional_elapsed_ms =
+                        is_matched.then(|| conditional_started.elapsed().as_millis());
+                    let conditional_finished_at =
+                        is_matched.then(|| chrono::Local::now().to_rfc3339());
+                    S1PreflightConditionalFileOutcome {
+                        input: input.clone(),
+                        structure: structure_result,
+                        source_read_ms: Some(source_read_ms),
+                        structure_elapsed_ms,
+                        conditional,
+                        conditional_started_at,
+                        conditional_finished_at,
+                        conditional_elapsed_ms,
+                    }
+                }
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let combined_elapsed_ms = combined_started.elapsed().as_millis();
+    let mut accepted_inputs = Vec::new();
+    let mut structure_files = Vec::with_capacity(outcomes.len());
+    let mut conditional_files = Vec::new();
+    let mut conditional_issues = Vec::new();
+    let mut has_conditional_diagnostics = false;
+    let accepted_total = outcomes
+        .iter()
+        .filter(|outcome| {
+            outcome
+                .structure
+                .as_ref()
+                .is_ok_and(|result| result.matched)
+        })
+        .count();
+
+    for outcome in outcomes {
+        let source_name = outcome
+            .input
+            .source_file
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| outcome.input.source_file.display().to_string());
+        let (status, matched_labels, checked_labels, score, missing_sheets, diagnostic, error) =
+            match &outcome.structure {
+                Ok(result) => {
+                    if result.matched {
+                        accepted_inputs.push(outcome.input.clone());
+                    }
+                    (
+                        if result.matched {
+                            "matched"
+                        } else {
+                            "rejected"
+                        },
+                        result.matched_labels,
+                        result.checked_labels,
+                        result.score,
+                        result.missing_sheets.clone(),
+                        result.diagnostic.clone(),
+                        None,
+                    )
+                }
+                Err(error) => (
+                    "read_error",
+                    0,
+                    0,
+                    0.0,
+                    Vec::new(),
+                    None,
+                    Some(error.clone()),
+                ),
+            };
+        let structure_file = S1StructurePreflightFile {
+            source_file: source_name.clone(),
+            status,
+            matched_labels,
+            checked_labels,
+            score,
+            missing_sheets: missing_sheets.clone(),
+            read_time_ms: outcome.source_read_ms,
+            elapsed_ms: outcome.structure_elapsed_ms,
+            diagnostic: diagnostic.clone(),
+            error: error.as_ref().map(|_| "无法读取报送文件结构".to_owned()),
+        };
+        if developer_view {
+            eprintln!(
+                "{}",
+                serde_json::to_string(&serde_json::json!({
+                    "type": "progress",
+                    "product": "open-data-audit",
+                    "feature": "S1-F01",
+                    "step": "structure_preflight_file",
+                    "status": status,
+                    "engine": "calamine",
+                    "source_file": source_name,
+                    "matched_labels": matched_labels,
+                    "checked_labels": checked_labels,
+                    "score": score,
+                    "missing_sheets": missing_sheets,
+                    "read_time_ms": outcome.source_read_ms,
+                    "elapsed_ms": outcome.structure_elapsed_ms,
+                    "diagnostic": diagnostic,
+                    "error": error
+                }))?
+            );
+        } else if status == "rejected" {
+            eprintln!(
+                "{}：表结构未通过，匹配 {}/{}（{:.0}%），已跳过。{}{}",
+                source_name,
+                matched_labels,
+                checked_labels,
+                score * 100.0,
+                if missing_sheets.is_empty() {
+                    String::new()
+                } else {
+                    format!("缺少工作表：{}。", missing_sheets.join("、"))
+                },
+                diagnostic
+                    .as_deref()
+                    .map(|message| format!("{message}。"))
+                    .unwrap_or_default()
+            );
+        } else if status == "read_error" {
+            eprintln!("{}：无法读取表结构，已跳过。", source_name);
+        }
+        structure_files.push(structure_file);
+
+        if let Some(conditional) = outcome.conditional {
+            let conditional_started_at = outcome
+                .conditional_started_at
+                .unwrap_or_else(|| started_at.clone());
+            let conditional_finished_at = outcome
+                .conditional_finished_at
+                .unwrap_or_else(|| chrono::Local::now().to_rfc3339());
+            let file_elapsed_ms = outcome.conditional_elapsed_ms.unwrap_or_default();
+            let file_index = conditional_files.len() + 1;
+            if developer_view {
+                eprintln!(
+                    "{}",
+                    serde_json::to_string(&serde_json::json!({
+                        "type": "progress",
+                        "product": "open-data-audit",
+                        "feature": "S1-F01",
+                        "step": "conditional_format_issue_extraction",
+                        "batch_id": batch_id,
+                        "event": {
+                            "status": "started",
+                            "file_index": file_index,
+                            "files_total": accepted_total,
+                            "source_file": source_name,
+                            "started_at": conditional_started_at,
+                            "source_read_reused": true,
+                            "shared_source_read_ms": outcome.source_read_ms
+                        }
+                    }))?
+                );
+            }
+            match conditional {
+                Ok(report) => {
+                    let issue_count = report.issues.len();
+                    let progress = S1ConditionalBatchProgress {
+                        status: "completed",
+                        file_index,
+                        files_total: accepted_total,
+                        source_file: source_name.clone(),
+                        started_at: conditional_started_at,
+                        finished_at: Some(conditional_finished_at),
+                        elapsed_ms: Some(file_elapsed_ms),
+                        reader: Some(report.evaluation.reader),
+                        rules_total: Some(report.evaluation.rules_total),
+                        rules_supported: Some(report.evaluation.rules_supported),
+                        scanned_cells: Some(report.evaluation.scanned_cells),
+                        issue_count: Some(issue_count),
+                        diagnostics: Some(report.evaluation.diagnostics.len()),
+                        read_time_ms: Some(0),
+                        evaluation_time_ms: Some(report.evaluation.evaluation_time_ms),
+                        issue_build_time_ms: Some(report.issue_build_time_ms),
+                        error: None,
+                    };
+                    if developer_view {
+                        eprintln!(
+                            "{}",
+                            serde_json::to_string(&serde_json::json!({
+                                "type": "progress",
+                                "product": "open-data-audit",
+                                "feature": "S1-F01",
+                                "step": "conditional_format_issue_extraction",
+                                "batch_id": batch_id,
+                                "event": progress,
+                                "source_read_reused": true,
+                                "shared_source_read_ms": outcome.source_read_ms
+                            }))?
+                        );
+                    } else {
+                        eprintln!(
+                            "{}：规则 {}/{}，扫描 {} 格，形成 {} 条审核项；复用结构预检读取，计算 {} ms、组装 {} ms。",
+                            source_name,
+                            report.evaluation.rules_supported,
+                            report.evaluation.rules_total,
+                            report.evaluation.scanned_cells,
+                            issue_count,
+                            report.evaluation.evaluation_time_ms,
+                            report.issue_build_time_ms
+                        );
+                    }
+                    let total_time_ms =
+                        report.evaluation.total_time_ms + report.issue_build_time_ms;
+                    has_conditional_diagnostics |= report.status == "completed_with_diagnostics";
+                    conditional_issues.extend(report.issues);
+                    conditional_files.push(S1ConditionalBatchFileSummary {
+                        source_file: source_name,
+                        status: report.status,
+                        error: None,
+                        issue_count,
+                        reader: report.evaluation.reader,
+                        rules_total: report.evaluation.rules_total,
+                        rules_supported: report.evaluation.rules_supported,
+                        scanned_cells: report.evaluation.scanned_cells,
+                        diagnostics: report.evaluation.diagnostics,
+                        unresolved_indicator_count: report.context.unresolved_indicator_count,
+                        comments_unverified_sheet_count: report
+                            .context
+                            .comments_unverified_sheet_count,
+                        read_time_ms: 0,
+                        source_read_reused: true,
+                        evaluation_time_ms: report.evaluation.evaluation_time_ms,
+                        issue_build_time_ms: report.issue_build_time_ms,
+                        total_time_ms,
+                    });
+                }
+                Err(error) => {
+                    has_conditional_diagnostics = true;
+                    if developer_view {
+                        progress_event_failed_conditionals(
+                            file_index,
+                            accepted_total,
+                            &source_name,
+                            &conditional_started_at,
+                            &conditional_finished_at,
+                            file_elapsed_ms,
+                            &error,
+                            batch_id,
+                        )?;
+                    } else {
+                        eprintln!(
+                            "{}：条件格式检查失败（{} ms）：{}",
+                            source_name, file_elapsed_ms, error
+                        );
+                    }
+                    conditional_files.push(S1ConditionalBatchFileSummary {
+                        source_file: source_name,
+                        status: "failed",
+                        error: Some(error),
+                        issue_count: 0,
+                        reader: "unavailable",
+                        rules_total: 0,
+                        rules_supported: 0,
+                        scanned_cells: 0,
+                        diagnostics: Vec::new(),
+                        unresolved_indicator_count: 0,
+                        comments_unverified_sheet_count: 0,
+                        read_time_ms: 0,
+                        source_read_reused: true,
+                        evaluation_time_ms: 0,
+                        issue_build_time_ms: 0,
+                        total_time_ms: file_elapsed_ms,
+                    });
+                }
+            }
+        }
+    }
+
+    let files_rejected = structure_files.len() - accepted_inputs.len();
+    let structure_preflight = S1StructurePreflightSummary {
+        status: if files_rejected == 0 {
+            "completed"
+        } else {
+            "completed_with_rejections"
+        },
+        engine: "calamine",
+        files_total: structure_files.len(),
+        files_accepted: accepted_inputs.len(),
+        files_rejected,
+        template_areas: template.area_count,
+        template_labels: template.label_count,
+        template_read_time_ms: template.read_time_ms,
+        timing_scope: "structure_preflight_and_conditional_pipeline",
+        elapsed_ms: combined_elapsed_ms,
+        files: structure_files,
+    };
+    let conditional_report = S1ConditionalBatchAuditResult {
+        status: if has_conditional_diagnostics || files_rejected > 0 || had_no_inputs {
+            "completed_with_diagnostics"
+        } else {
+            "completed"
+        },
+        issues: conditional_issues,
+        files: conditional_files,
+        total_elapsed_ms: combined_elapsed_ms,
+    };
+    if developer_view {
+        eprintln!(
+            "{}",
+            serde_json::to_string(&serde_json::json!({
+                "type": "progress",
+                "product": "open-data-audit",
+                "feature": "S1-F01",
+                "step": "structure_preflight",
+                "status": structure_preflight.status,
+                "engine": structure_preflight.engine,
+                "files_total": structure_preflight.files_total,
+                "files_accepted": structure_preflight.files_accepted,
+                "files_rejected": structure_preflight.files_rejected,
+                "template_areas": structure_preflight.template_areas,
+                "template_labels": structure_preflight.template_labels,
+                "template_read_time_ms": structure_preflight.template_read_time_ms,
+                "timing_scope": structure_preflight.timing_scope,
+                "started_at": started_at,
+                "finished_at": chrono::Local::now().to_rfc3339(),
+                "elapsed_ms": structure_preflight.elapsed_ms
+            }))?
+        );
+        eprintln!(
+            "{}",
+            serde_json::to_string(&serde_json::json!({
+                "type": "progress",
+                "product": "open-data-audit",
+                "feature": "S1-F01",
+                "step": "conditional_format_issue_extraction",
+                "status": "completed",
+                "batch_id": batch_id,
+                "engine": "calamine+namespace_aware_ooxml",
+                "source_read_shared_with_structure_preflight": true,
+                "files": conditional_report.files.len(),
+                "issues": conditional_report.issues.len(),
+                "timing_scope": "combined_structure_preflight_and_conditional_pipeline",
+                "elapsed_ms": conditional_report.total_elapsed_ms
+            }))?
+        );
+    } else {
+        eprintln!(
+            "结构预检和条件格式审核完成：通过 {} 个，跳过 {} 个，形成 {} 条审核项；共用一次源文件读取，耗时 {} ms。",
+            structure_preflight.files_accepted,
+            structure_preflight.files_rejected,
+            conditional_report.issues.len(),
+            combined_elapsed_ms
+        );
+    }
+    Ok((
+        accepted_inputs,
+        Some(structure_preflight),
+        conditional_report,
+    ))
+}
+
+fn emit_s1_conditional_progress(
+    progress: &S1ConditionalBatchProgress,
+    batch_id: &str,
+    developer_view: bool,
+) {
+    if developer_view {
+        if let Ok(event) = serde_json::to_string(&serde_json::json!({
+            "type": "progress",
+            "product": "open-data-audit",
+            "feature": "S1-F01",
+            "step": "conditional_format_issue_extraction",
+            "batch_id": batch_id,
+            "event": progress
+        })) {
+            eprintln!("{event}");
+        }
+    } else {
+        match progress.status {
+            "started" => eprintln!(
+                "正在检查条件格式：{}（{}/{}）",
+                progress.source_file, progress.file_index, progress.files_total
+            ),
+            "completed" => eprintln!(
+                "{}：引擎 {}，规则 {}/{}，扫描 {} 格，触发 {} 项，未确定 {} 项；读取 {} ms、判定 {} ms、组装 {} ms、单文件总计 {} ms。",
+                progress.source_file,
+            progress.reader.unwrap_or("未知"),
+                progress.rules_supported.unwrap_or_default(),
+                progress.rules_total.unwrap_or_default(),
+                progress.scanned_cells.unwrap_or_default(),
+                progress.issue_count.unwrap_or_default(),
+                progress.diagnostics.unwrap_or_default(),
+                progress.read_time_ms.unwrap_or_default(),
+                progress.evaluation_time_ms.unwrap_or_default(),
+                progress.issue_build_time_ms.unwrap_or_default(),
+                progress.elapsed_ms.unwrap_or_default()
+            ),
+            "failed" => eprintln!(
+                "{}：条件格式检查失败（{} ms）：{}",
+                progress.source_file,
+                progress.elapsed_ms.unwrap_or_default(),
+                progress.error.as_deref().unwrap_or("未知错误")
+            ),
+            _ => {}
+        }
+    }
+}
+
+fn progress_event_failed_conditionals(
+    file_index: usize,
+    files_total: usize,
+    source_file: &str,
+    started_at: &str,
+    finished_at: &str,
+    elapsed_ms: u128,
+    error: &str,
+    batch_id: &str,
+) -> Result<()> {
+    eprintln!(
+        "{}",
+        serde_json::to_string(&serde_json::json!({
+            "type": "progress",
+            "product": "open-data-audit",
+            "feature": "S1-F01",
+            "step": "conditional_format_issue_extraction",
+            "batch_id": batch_id,
+            "event": {
+                "status": "failed",
+                "file_index": file_index,
+                "files_total": files_total,
+                "source_file": source_file,
+                "started_at": started_at,
+                "finished_at": finished_at,
+                "elapsed_ms": elapsed_ms,
+                "source_read_reused": true,
+                "read_time_ms": 0,
+                "error": error
+            }
+        }))?
+    );
+    Ok(())
 }
 
 fn recommend_s1_directory_template(

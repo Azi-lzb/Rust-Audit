@@ -447,6 +447,8 @@ def main() -> int:
     parser.add_argument("--audit-binary", type=Path, required=True)
     parser.add_argument("--report", type=Path)
     args = parser.parse_args()
+    if args.report and args.report.exists():
+        parser.error(f"refusing to overwrite benchmark report: {args.report}")
     binary = args.audit_binary.resolve(strict=True)
     template_path = WORKSPACE / "tests" / "fixtures" / "s1_region_summary_template.xlsx"
 
@@ -528,6 +530,7 @@ def main() -> int:
         if completed.returncode:
             raise RuntimeError(f"Rust CLI failed: {completed.stderr.strip()}")
         rust_payload = json.loads(completed.stdout)
+        rust_summary = rust_payload["summary"]
         rust_events = [
             json.loads(line)
             for line in completed.stderr.splitlines()
@@ -783,9 +786,31 @@ def main() -> int:
             "python_com_call_adapter": "test-only: this Office installation rejects the source adapter's named UpdateLinks=0 argument; the baseline used ReadOnly and IgnoreReadOnlyRecommended while Excel AskToUpdateLinks remained disabled",
             "rust_reader": rust_payload["summary"]["reader"],
             "rust_writer": rust_payload["summary"]["writer"],
+            "rust_stage_timings_ms": {
+                name: rust_summary[name]
+                for name in (
+                    "discovery_time_ms",
+                    "template_read_time_ms",
+                    "structure_preflight_time_ms",
+                    "source_read_time_ms",
+                    "calculation_time_ms",
+                    "history_elapsed_ms",
+                    "write_time_ms",
+                    "validation_time_ms",
+                    "elapsed_ms",
+                )
+            },
+            "rust_stage_timing_resolution": "integer milliseconds; CLI wall time is measured separately",
             "python_elapsed_ms": python_elapsed_ms,
             "rust_cli_elapsed_ms": rust_elapsed_ms,
             "rust_events": len(rust_events),
+            "input_sizes_bytes": {
+                "template_and_mapping_config": template_path.stat().st_size,
+                "source_workbooks": {
+                    path.name: path.stat().st_size for path in input_files
+                },
+                "source_total": sum(path.stat().st_size for path in input_files),
+            },
             "source_workbooks": rust_payload["summary"]["source_workbooks"],
             "source_sheets": rust_payload["summary"]["source_sheets"],
             "metadata_fields_left_blank": rust_payload["summary"][
@@ -857,8 +882,11 @@ def main() -> int:
         }
         encoded = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
         if args.report:
+            if args.report.exists():
+                raise FileExistsError(f"refusing to overwrite benchmark report: {args.report}")
             args.report.parent.mkdir(parents=True, exist_ok=True)
-            args.report.write_text(encoded, encoding="utf-8")
+            with args.report.open("x", encoding="utf-8", newline="\n") as stream:
+                stream.write(encoded)
         print(encoded, end="")
         return (
             0

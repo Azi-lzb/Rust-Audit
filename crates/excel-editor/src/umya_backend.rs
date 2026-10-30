@@ -10,8 +10,13 @@ use crate::{
 };
 use anyhow::{bail, Context, Result};
 use excel_reader::read_workbook;
-use std::path::Path;
+use std::{
+    path::Path,
+    sync::atomic::{AtomicU64, Ordering},
+};
 use umya_spreadsheet::Style;
+
+static NEXT_COMMENT_VML_PATCH: AtomicU64 = AtomicU64::new(1);
 
 pub struct UmyaXlsxBackend {
     capability: BackendCapability,
@@ -103,6 +108,29 @@ impl EditBackend for UmyaXlsxBackend {
                 _ => None,
             })
             .collect::<std::collections::BTreeSet<_>>();
+        let imported_comment_sheets = plan
+            .operations
+            .iter()
+            .filter_map(|operation| match operation {
+                EditOperation::ImportRange {
+                    source_workbook,
+                    source_sheet,
+                    target_sheet,
+                    copy_comments: true,
+                    ..
+                }
+                | EditOperation::ImportRangeWithFormulaTranslation {
+                    source_workbook,
+                    source_sheet,
+                    target_sheet,
+                    copy_comments: true,
+                    ..
+                } if source_sheet.eq_ignore_ascii_case(target_sheet) => {
+                    Some((source_workbook.clone(), target_sheet.clone()))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
         if let Some(sheet) = plan
             .operations
             .iter()
@@ -193,6 +221,17 @@ impl EditBackend for UmyaXlsxBackend {
         })?;
         crate::save_xlsx(&workbook, &plan.output)
             .map_err(|error| BackendFailure::failed(format!("save XLSX: {error:#}")))?;
+        restore_comment_vml(&plan.input, &plan.output).map_err(|error| {
+            BackendFailure::failed(format!("restore legacy comment drawing: {error:#}"))
+        })?;
+        for (source_workbook, sheet_name) in imported_comment_sheets {
+            restore_imported_comments_for_sheet(&source_workbook, &plan.output, &sheet_name)
+                .map_err(|error| {
+                    BackendFailure::failed(format!(
+                        "restore imported comments and drawing for worksheet {sheet_name:?}: {error:#}"
+                    ))
+                })?;
+        }
         for (
             source_workbook,
             source_sheet,
@@ -263,6 +302,52 @@ impl EditBackend for UmyaXlsxBackend {
         }
         Ok(())
     }
+}
+
+fn restore_comment_vml(source: &Path, output: &Path) -> Result<()> {
+    restore_comment_vml_selected(source, output, None)
+}
+
+fn restore_imported_comments_for_sheet(
+    source: &Path,
+    output: &Path,
+    sheet_name: &str,
+) -> Result<()> {
+    restore_comment_vml_selected(source, output, Some(sheet_name))
+}
+
+fn restore_comment_vml_selected(
+    source: &Path,
+    output: &Path,
+    only_sheet: Option<&str>,
+) -> Result<()> {
+    let file_name = output
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("candidate.xlsx");
+    let sequence = NEXT_COMMENT_VML_PATCH.fetch_add(1, Ordering::Relaxed);
+    let patched_output = output.with_file_name(format!(
+        ".{file_name}.comment-import-{}-{sequence}.xlsx",
+        std::process::id()
+    ));
+    let report = if let Some(sheet_name) = only_sheet {
+        ooxml_patch::restore_legacy_comments_for_sheet(
+            source,
+            output,
+            &patched_output,
+            sheet_name,
+        )?
+    } else {
+        ooxml_patch::restore_legacy_comment_vml(source, output, &patched_output)?
+    };
+    if report.restored_sheets.is_empty() {
+        return Ok(());
+    }
+    let install = std::fs::copy(&patched_output, output)
+        .with_context(|| format!("install restored imported comments for {}", output.display()));
+    let _ = std::fs::remove_file(&patched_output);
+    install?;
+    Ok(())
 }
 
 fn validate_row_deletion_scope(plan: &ExcelEditPlan, workbook: &Workbook) -> Result<()> {

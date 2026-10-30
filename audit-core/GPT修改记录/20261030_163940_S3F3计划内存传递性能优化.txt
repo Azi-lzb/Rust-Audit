@@ -1,0 +1,38 @@
+# S3-F3 原地写回计划内存传递性能优化
+
+- 时间：2026-10-30 16:39（Asia/Shanghai）
+- 执行者：Codex
+- 项目：`C:\Users\AZI\Desktop\VibeCode\Rust-Audit`
+- 分支：`main`
+- 修改前/后 HEAD：`7517a9c` / `7517a9c`（未提交）
+- WIP：保留此前性能地图、基准驱动、机器报告及其他工作区改动；未覆盖、清理或重置既有修改。
+
+## 目的与变更
+
+阶段剖析发现，S3-F3 原地写回先将已构造并校验的 ExcelEditPlan 写入临时 JSON、同步磁盘，再立即读回交给 Excel-Core；临时计划不会作为最终输出保留。本次将该计划直接留在内存传递，同时保留用户显式“生成计划”入口的 JSON 持久化行为。
+
+- `audit-core/src/s3_explanation_feedback.rs`：拆分公共持久化包装函数与内部规划函数；原地及副本执行链使用内存中的 ExcelEditPlan，公共计划导出继续写 JSON。匹配、冲突、哈希保护、备份和发布流程保持不变。
+- `audit-core/tests/compare/perf_s3f3_parity_20261030.py`：支持优化后报告及与优化前报告的机器数据关联。
+- `audit-core/probe/reports/s3f3_parity_profile_20261030.{json,md}`、`s3f3_parity_optimized_20261030.{json,md}`：保存优化前后逐轮计时、阶段、内存及输出对拍结果。
+- `audit-core/PERFORMANCE_BASELINE.md`、`audit-core/PERFORMANCE_HISTORY.md`、`audit-core/benchmarks/README.md`：记录优化后数据和驱动入口，保留旧数据。
+- `DEVELOPMENT_GOAL.md`：更新当前 S3-F3 性能结论和未覆盖负载。
+- `audit-core/MIGRATION_INVENTORY.md`：追加实现、验证、限制与二进制指纹证据。
+- 本修改记录。
+
+## 结果与验证
+
+同一业务值与布局的 1,000 条唯一反馈、无冲突样本。Rust 内部中位数 946→203 ms（减少 78.54%）；CLI 墙钟 975.25→235.54 ms（减少 75.85%）。优化后 Python/Rust CLI 为 912.62/235.54 ms（3.88×）。三轮输出值、公式计数与关键结构差异为 0；备份 SHA-256 与原目标一致，只改 H3:H1002；反馈源保持不变。优化前后 XLSX 文件容器字节数各差 1 byte，业务数据与表结构相同。峰值工作集约 38.86/21.73 MB。
+
+- `cargo test --offline --locked --target-dir F:\RustBuild\audit -p audit-core --lib s3_explanation_feedback::tests -- --nocapture`：7 passed；新增执行冲突路径测试，验证冲突清单、备份及输入保护。
+- `cargo test --offline --locked --target-dir F:\RustBuild\audit -p audit-core --test s3_explanation_feedback_plan -- --nocapture`：3 passed。
+- `cargo build --offline --locked --target-dir F:\RustBuild\audit --release -p audit-core --bin open-data-audit`：成功；Release SHA-256 `d21e355a8ec05129e81ccdda008f257a98702b64537010c24b773433b416db66`。
+- 基准 Python 脚本语法及优化前后 JSON 解析：通过。
+- `git diff --check`：通过（Git 提示若干工作区文件后续会转为 CRLF，不影响该检查）。
+- `cargo fmt --check --all`：因仓库已有格式差异未通过；未格式化无关文件。未运行全工作区回归。
+- 没有提交或 push。
+
+## 未完成项与回滚提示
+
+冲突密集反馈、真实机构规模和 GUI 常驻服务负载仍未测；本轮不代表 S3-F3 人工业务验收。若需回滚，只恢复本记录所列 S3-F3 源文件改动并保留历史报告，不要覆盖其它 WIP 或删除已生成的性能证据。
+
+【组件版本】不升级（无外部业务或配置契约变化）。

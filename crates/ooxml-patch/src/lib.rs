@@ -50,6 +50,12 @@ pub struct PatchReport {
     pub package_parts: usize,
 }
 
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct CommentVmlRestoreReport {
+    pub restored_sheets: Vec<String>,
+    pub package_parts: usize,
+}
+
 #[derive(Debug)]
 pub struct FormulaCachePatchReport {
     pub worksheet_part: String,
@@ -1235,6 +1241,383 @@ fn strict_sheet_parts_from_zip(
         );
     }
     Ok(result)
+}
+
+/// Restore source legacy-comment VML after a workbook editor rewrites it.
+///
+/// This is deliberately limited to comment drawings made entirely of note
+/// shapes. It preserves the editor's comment XML and replaces only the VML
+/// part for a worksheet whose comment references are unchanged. Unsupported
+/// or mixed VML drawings fail closed instead of silently dropping shapes.
+pub fn restore_legacy_comment_vml(
+    source: impl AsRef<Path>,
+    editor_output: impl AsRef<Path>,
+    patched_output: impl AsRef<Path>,
+) -> Result<CommentVmlRestoreReport> {
+    restore_legacy_comment_vml_selected(source, editor_output, patched_output, None, false)
+}
+
+/// Restore the legacy comments and VML for one imported worksheet.
+///
+/// The source and output must contain comments at the same cells with the same
+/// text. The source comments XML is then copied to the output so author names
+/// and rich comment text are not lost by a workbook editor. This is intended
+/// for whole-sheet imports whose comment coordinates are unchanged.
+pub fn restore_legacy_comments_for_sheet(
+    source: impl AsRef<Path>,
+    editor_output: impl AsRef<Path>,
+    patched_output: impl AsRef<Path>,
+    sheet_name: &str,
+) -> Result<CommentVmlRestoreReport> {
+    ensure!(
+        !sheet_name.trim().is_empty(),
+        "worksheet name must not be empty"
+    );
+    restore_legacy_comment_vml_selected(
+        source,
+        editor_output,
+        patched_output,
+        Some(sheet_name),
+        true,
+    )
+}
+
+fn restore_legacy_comment_vml_selected(
+    source: impl AsRef<Path>,
+    editor_output: impl AsRef<Path>,
+    patched_output: impl AsRef<Path>,
+    only_sheet: Option<&str>,
+    restore_comment_xml: bool,
+) -> Result<CommentVmlRestoreReport> {
+    let source = source.as_ref();
+    let editor_output = editor_output.as_ref();
+    let patched_output = patched_output.as_ref();
+    ensure!(source.is_file(), "source workbook does not exist");
+    ensure!(
+        editor_output.is_file(),
+        "editor output workbook does not exist"
+    );
+    ensure!(
+        fs::canonicalize(source)? != fs::canonicalize(editor_output)?,
+        "comment VML restore requires distinct source and editor output workbooks"
+    );
+    ensure!(
+        !patched_output.exists(),
+        "comment VML patched output already exists"
+    );
+
+    let mut source_zip = ZipArchive::new(fs::File::open(source)?)?;
+    if !package_has_relationship_type(&mut source_zip, "/comments")? {
+        return Ok(CommentVmlRestoreReport::default());
+    }
+    let source_sheets = strict_sheet_parts_from_zip(&mut source_zip, source)?;
+    let mut output_zip = ZipArchive::new(fs::File::open(editor_output)?)?;
+    let output_sheets = strict_sheet_parts_from_zip(&mut output_zip, editor_output)?
+        .into_iter()
+        .collect::<BTreeMap<_, _>>();
+
+    let mut replacements = BTreeMap::<String, Vec<u8>>::new();
+    let mut restored_sheets = Vec::new();
+    for (sheet_name, source_sheet_part) in source_sheets {
+        if only_sheet.is_some_and(|selected| !selected.eq_ignore_ascii_case(&sheet_name)) {
+            continue;
+        }
+        let Some(source_comments_part) =
+            relationship_target_part(&mut source_zip, &source_sheet_part, "/comments")?
+        else {
+            continue;
+        };
+        let source_comment_refs = comment_references(&mut source_zip, &source_comments_part)?;
+        if source_comment_refs.is_empty() {
+            continue;
+        }
+        let source_vml_part =
+            relationship_target_part(&mut source_zip, &source_sheet_part, "/vmlDrawing")?
+                .with_context(|| {
+                    format!("worksheet {sheet_name:?} has comments but no VML drawing relationship")
+                })?;
+        let source_vml = read_zip_part(&mut source_zip, &source_vml_part)
+            .with_context(|| format!("read comment VML part {source_vml_part}"))?;
+        validate_note_only_vml(&source_vml, source_comment_refs.len(), &source_vml_part)?;
+
+        let output_sheet_part = output_sheets
+            .get(&sheet_name)
+            .with_context(|| format!("editor output is missing source worksheet {sheet_name:?}"))?;
+        let output_comments_part =
+            relationship_target_part(&mut output_zip, output_sheet_part, "/comments")?
+                .with_context(|| {
+                    format!("editor output did not preserve comments on worksheet {sheet_name:?}")
+                })?;
+        let output_comment_refs = comment_references(&mut output_zip, &output_comments_part)?;
+        ensure!(
+            output_comment_refs == source_comment_refs,
+            "editor output comment references changed on worksheet {sheet_name:?}"
+        );
+        if restore_comment_xml {
+            let source_comment_texts = comment_texts(&mut source_zip, &source_comments_part)?;
+            let output_comment_texts = comment_texts(&mut output_zip, &output_comments_part)?;
+            ensure!(
+                output_comment_texts == source_comment_texts,
+                "editor output comment text changed on worksheet {sheet_name:?}"
+            );
+            let source_comments_xml = read_zip_part(&mut source_zip, &source_comments_part)?;
+            if replacements
+                .insert(output_comments_part.clone(), source_comments_xml)
+                .is_some()
+            {
+                bail!("multiple worksheets resolve to output comments part {output_comments_part}");
+            }
+        }
+        let output_vml_part =
+            relationship_target_part(&mut output_zip, output_sheet_part, "/vmlDrawing")?
+                .with_context(|| {
+                    format!(
+                        "editor output did not preserve comment VML on worksheet {sheet_name:?}"
+                    )
+                })?;
+        let output_vml = read_zip_part(&mut output_zip, &output_vml_part)
+            .with_context(|| format!("read editor comment VML part {output_vml_part}"))?;
+        validate_note_only_vml(&output_vml, output_comment_refs.len(), &output_vml_part)?;
+
+        if replacements
+            .insert(output_vml_part.clone(), source_vml)
+            .is_some()
+        {
+            bail!("multiple worksheets resolve to output VML part {output_vml_part}");
+        }
+        restored_sheets.push(sheet_name);
+    }
+
+    if replacements.is_empty() {
+        return Ok(CommentVmlRestoreReport::default());
+    }
+    let package_parts = output_zip.len();
+    if let Err(error) = rewrite_package_parts(&mut output_zip, patched_output, &replacements) {
+        let _ = fs::remove_file(patched_output);
+        return Err(error).with_context(|| {
+            format!(
+                "write comment VML patched workbook {}",
+                patched_output.display()
+            )
+        });
+    }
+    Ok(CommentVmlRestoreReport {
+        restored_sheets,
+        package_parts,
+    })
+}
+
+fn package_has_relationship_type(
+    zip: &mut ZipArchive<fs::File>,
+    relationship_suffix: &str,
+) -> Result<bool> {
+    let relationship_parts = zip
+        .file_names()
+        .filter(|name| name.ends_with(".rels"))
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    for part in relationship_parts {
+        let bytes = read_zip_part(zip, &part)?;
+        let document = Document::parse(
+            std::str::from_utf8(&bytes).with_context(|| format!("{part} must be UTF-8"))?,
+        )
+        .with_context(|| format!("parse relationships part {part}"))?;
+        if document.descendants().any(|node| {
+            node.is_element()
+                && node.tag_name().namespace() == Some(PACKAGE_REL_NS)
+                && node.tag_name().name() == "Relationship"
+                && !node
+                    .attribute("TargetMode")
+                    .is_some_and(|mode| mode.eq_ignore_ascii_case("External"))
+                && node
+                    .attribute("Type")
+                    .is_some_and(|kind| kind.ends_with(relationship_suffix))
+        }) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn relationship_target_part(
+    zip: &mut ZipArchive<fs::File>,
+    owner_part: &str,
+    relationship_suffix: &str,
+) -> Result<Option<String>> {
+    let rels_part = relationships_part(owner_part);
+    if !zip.file_names().any(|name| name == rels_part) {
+        return Ok(None);
+    }
+    let rels_xml = read_zip_part(zip, &rels_part)?;
+    let rels = Document::parse(
+        std::str::from_utf8(&rels_xml).with_context(|| format!("{rels_part} must be UTF-8"))?,
+    )
+    .with_context(|| format!("parse relationships part {rels_part}"))?;
+    let mut matches = rels.descendants().filter(|node| {
+        node.is_element()
+            && node.tag_name().namespace() == Some(PACKAGE_REL_NS)
+            && node.tag_name().name() == "Relationship"
+            && !node
+                .attribute("TargetMode")
+                .is_some_and(|mode| mode.eq_ignore_ascii_case("External"))
+            && node
+                .attribute("Type")
+                .is_some_and(|kind| kind.ends_with(relationship_suffix))
+    });
+    let Some(relationship) = matches.next() else {
+        return Ok(None);
+    };
+    ensure!(
+        matches.next().is_none(),
+        "multiple relationships of type {relationship_suffix} for {owner_part}"
+    );
+    let target = relationship
+        .attribute("Target")
+        .with_context(|| format!("relationship in {rels_part} has no Target"))?;
+    let parent = owner_part
+        .rsplit_once('/')
+        .map(|(parent, _)| parent)
+        .unwrap_or("");
+    Ok(Some(normalize_part(parent, target)))
+}
+
+fn comment_references(
+    zip: &mut ZipArchive<fs::File>,
+    comments_part: &str,
+) -> Result<BTreeSet<String>> {
+    let bytes = read_zip_part(zip, comments_part)?;
+    let document = Document::parse(
+        std::str::from_utf8(&bytes).with_context(|| format!("{comments_part} must be UTF-8"))?,
+    )
+    .with_context(|| format!("parse comments part {comments_part}"))?;
+    let mut refs = BTreeSet::new();
+    for comment in document.descendants().filter(|node| {
+        node.is_element()
+            && node.tag_name().namespace() == Some(MAIN_NS)
+            && node.tag_name().name() == "comment"
+    }) {
+        let reference = comment
+            .attribute("ref")
+            .with_context(|| format!("comment in {comments_part} has no cell reference"))?;
+        ensure!(
+            refs.insert(reference.to_owned()),
+            "duplicate comment reference {reference} in {comments_part}"
+        );
+    }
+    Ok(refs)
+}
+
+fn comment_texts(
+    zip: &mut ZipArchive<fs::File>,
+    comments_part: &str,
+) -> Result<BTreeMap<String, String>> {
+    let bytes = read_zip_part(zip, comments_part)?;
+    let document = Document::parse(
+        std::str::from_utf8(&bytes).with_context(|| format!("{comments_part} must be UTF-8"))?,
+    )
+    .with_context(|| format!("parse comments part {comments_part}"))?;
+    let mut texts = BTreeMap::new();
+    for comment in document.descendants().filter(|node| {
+        node.is_element()
+            && node.tag_name().namespace() == Some(MAIN_NS)
+            && node.tag_name().name() == "comment"
+    }) {
+        let reference = comment
+            .attribute("ref")
+            .with_context(|| format!("comment in {comments_part} has no cell reference"))?;
+        let text = comment
+            .descendants()
+            .filter(|node| {
+                node.is_element()
+                    && node.tag_name().namespace() == Some(MAIN_NS)
+                    && node.tag_name().name() == "t"
+            })
+            .filter_map(|node| node.text())
+            .collect::<String>();
+        ensure!(
+            texts.insert(reference.to_owned(), text).is_none(),
+            "duplicate comment reference {reference} in {comments_part}"
+        );
+    }
+    Ok(texts)
+}
+
+fn validate_note_only_vml(bytes: &[u8], expected_notes: usize, part: &str) -> Result<()> {
+    let document = Document::parse(
+        std::str::from_utf8(bytes).with_context(|| format!("{part} must be UTF-8"))?,
+    )
+    .with_context(|| format!("parse legacy comment drawing {part}"))?;
+    const VML_NS: &str = "urn:schemas-microsoft-com:vml";
+    const EXCEL_NS: &str = "urn:schemas-microsoft-com:office:excel";
+    let shapes = document
+        .descendants()
+        .filter(|node| {
+            node.is_element()
+                && node.tag_name().namespace() == Some(VML_NS)
+                && node.tag_name().name() == "shape"
+        })
+        .count();
+    let client_data = document
+        .descendants()
+        .filter(|node| {
+            node.is_element()
+                && node.tag_name().namespace() == Some(EXCEL_NS)
+                && node.tag_name().name() == "ClientData"
+        })
+        .collect::<Vec<_>>();
+    ensure!(
+        expected_notes > 0 && shapes == expected_notes && client_data.len() == expected_notes,
+        "VML part {part} contains an unexpected number of note shapes"
+    );
+    ensure!(
+        client_data
+            .iter()
+            .all(|node| node.attribute("ObjectType") == Some("Note")),
+        "VML part {part} contains a non-comment drawing object"
+    );
+    Ok(())
+}
+
+fn rewrite_package_parts(
+    zip: &mut ZipArchive<fs::File>,
+    output: &Path,
+    replacements: &BTreeMap<String, Vec<u8>>,
+) -> Result<()> {
+    let existing = zip.file_names().map(str::to_owned).collect::<BTreeSet<_>>();
+    ensure!(
+        replacements.keys().all(|part| existing.contains(part)),
+        "replacement references a missing output package part"
+    );
+    if let Some(parent) = output.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut writer = ZipWriter::new(fs::File::create(output)?);
+    for index in 0..zip.len() {
+        let mut entry = zip.by_index(index)?;
+        let name = entry.name().to_owned();
+        let mut options = SimpleFileOptions::default().compression_method(entry.compression());
+        if let Some(modified) = entry.last_modified() {
+            options = options.last_modified_time(modified);
+        }
+        if let Some(permissions) = entry.unix_mode() {
+            options = options.unix_permissions(permissions);
+        }
+        if entry.is_dir() {
+            writer.add_directory(name, options)?;
+            continue;
+        }
+        let mut data = Vec::new();
+        entry.read_to_end(&mut data)?;
+        writer.start_file(&name, options)?;
+        writer.write_all(
+            replacements
+                .get(&name)
+                .map(Vec::as_slice)
+                .unwrap_or(data.as_slice()),
+        )?;
+    }
+    writer.finish()?;
+    Ok(())
 }
 
 /// Patch one existing worksheet hyperlink and its external relationship.
@@ -4095,6 +4478,303 @@ mod formula_cache_recalculation_tests {
         );
         assert!(!patched_xml.contains("<x:v>"));
         assert!(!patched_xml.contains(" t=\"str\""));
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod comment_vml_restore_tests {
+    use super::{restore_legacy_comment_vml, restore_legacy_comments_for_sheet};
+    use anyhow::Result;
+    use std::{
+        fs::{self, File},
+        io::{Read, Write},
+        path::{Path, PathBuf},
+    };
+    use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
+
+    const MAIN_NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+    const REL_NS: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    const PACKAGE_REL_NS: &str = "http://schemas.openxmlformats.org/package/2006/relationships";
+
+    struct TestDirectory(PathBuf);
+
+    impl TestDirectory {
+        fn new() -> Result<Self> {
+            let nonce = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!(
+                "ooxml_comment_vml_{}_{}",
+                std::process::id(),
+                nonce
+            ));
+            fs::create_dir_all(&path)?;
+            Ok(Self(path))
+        }
+
+        fn path(&self, name: &str) -> PathBuf {
+            self.0.join(name)
+        }
+    }
+
+    impl Drop for TestDirectory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn note_vml(object_type: &str) -> String {
+        format!(
+            r#"<xml xmlns:v="urn:schemas-microsoft-com:vml" xmlns:x="urn:schemas-microsoft-com:office:excel"><v:shape id="note1"><x:ClientData ObjectType="{object_type}"><x:Row>3</x:Row><x:Column>2</x:Column></x:ClientData></v:shape></xml>"#
+        )
+    }
+
+    fn write_package(
+        path: &Path,
+        editor_output: bool,
+        reference: &str,
+        author: &str,
+        note_text: &str,
+        vml: &str,
+    ) -> Result<()> {
+        let workbook = if editor_output {
+            format!(
+                r#"<workbook xmlns="{MAIN_NS}" xmlns:r="{REL_NS}"><sheets><sheet name="Data" sheetId="1" r:id="rId1"/><sheet name="Imported" sheetId="2" r:id="rId2"/></sheets></workbook>"#
+            )
+        } else {
+            format!(
+                r#"<workbook xmlns="{MAIN_NS}" xmlns:r="{REL_NS}"><sheets><sheet name="Data" sheetId="1" r:id="rId1"/></sheets></workbook>"#
+            )
+        };
+        let workbook_rels = if editor_output {
+            format!(
+                r#"<Relationships xmlns="{PACKAGE_REL_NS}"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/></Relationships>"#
+            )
+        } else {
+            format!(
+                r#"<Relationships xmlns="{PACKAGE_REL_NS}"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>"#
+            )
+        };
+        let package_rels = format!(
+            r#"<Relationships xmlns="{PACKAGE_REL_NS}"><Relationship Id="root" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>"#
+        );
+        let sheet_xml = format!(
+            r#"<worksheet xmlns="{MAIN_NS}" xmlns:r="{REL_NS}"><sheetData/><legacyDrawing r:id="vml"/></worksheet>"#
+        );
+        let sheet_rels = format!(
+            r#"<Relationships xmlns="{PACKAGE_REL_NS}"><Relationship Id="comments" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="{}"/><Relationship Id="vml" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing" Target="{}"/></Relationships>"#,
+            if editor_output {
+                "../comments1.xml"
+            } else {
+                "../comments/comment1.xml"
+            },
+            if editor_output {
+                "../drawings/vmlDrawing1.vml"
+            } else {
+                "../drawings/sourceComments.vml"
+            },
+        );
+        let comments = format!(
+            r#"<comments xmlns="{MAIN_NS}"><authors><author>{author}</author></authors><commentList><comment ref="{reference}" authorId="0"><text><t>{note_text}</t></text></comment></commentList></comments>"#
+        );
+        let mut entries = vec![
+            ("_rels/.rels", package_rels),
+            ("xl/workbook.xml", workbook),
+            ("xl/_rels/workbook.xml.rels", workbook_rels),
+            ("xl/worksheets/sheet1.xml", sheet_xml),
+            ("xl/worksheets/_rels/sheet1.xml.rels", sheet_rels),
+            (
+                if editor_output {
+                    "xl/comments1.xml"
+                } else {
+                    "xl/comments/comment1.xml"
+                },
+                comments,
+            ),
+            (
+                if editor_output {
+                    "xl/drawings/vmlDrawing1.vml"
+                } else {
+                    "xl/drawings/sourceComments.vml"
+                },
+                vml.to_owned(),
+            ),
+            ("custom/keep.bin", "preserve me".to_owned()),
+        ];
+        if editor_output {
+            entries.push((
+                "xl/worksheets/sheet2.xml",
+                format!(r#"<worksheet xmlns="{MAIN_NS}"><sheetData/></worksheet>"#),
+            ));
+        }
+        let mut zip = ZipWriter::new(File::create(path)?);
+        for (name, content) in entries {
+            zip.start_file(
+                name,
+                SimpleFileOptions::default().compression_method(CompressionMethod::Deflated),
+            )?;
+            zip.write_all(content.as_bytes())?;
+        }
+        zip.finish()?;
+        Ok(())
+    }
+
+    fn read_part(path: &Path, name: &str) -> Result<Vec<u8>> {
+        let mut zip = ZipArchive::new(File::open(path)?)?;
+        let mut bytes = Vec::new();
+        zip.by_name(name)?.read_to_end(&mut bytes)?;
+        Ok(bytes)
+    }
+
+    #[test]
+    fn restores_only_note_vml_for_matching_source_sheet_and_keeps_imported_sheets() -> Result<()> {
+        let directory = TestDirectory::new()?;
+        let source = directory.path("source.xlsx");
+        let candidate = directory.path("candidate.xlsx");
+        let output = directory.path("patched.xlsx");
+        let source_vml = note_vml("Note");
+        write_package(&source, false, "C4", "tester", "note text", &source_vml)?;
+        write_package(
+            &candidate,
+            true,
+            "C4",
+            "rewritten-author",
+            "note text",
+            &note_vml("Note"),
+        )?;
+        let source_before = fs::read(&source)?;
+
+        let report = restore_legacy_comment_vml(&source, &candidate, &output)?;
+
+        assert_eq!(report.restored_sheets, ["Data"]);
+        assert!(report.package_parts >= 8);
+        assert_eq!(
+            read_part(&output, "xl/drawings/vmlDrawing1.vml")?,
+            source_vml.as_bytes()
+        );
+        assert!(!read_part(&output, "xl/worksheets/sheet2.xml")?.is_empty());
+        assert_eq!(read_part(&output, "custom/keep.bin")?, b"preserve me");
+        assert_eq!(fs::read(&source)?, source_before);
+        Ok(())
+    }
+
+    #[test]
+    fn refuses_changed_comment_positions_and_non_note_vml() -> Result<()> {
+        let directory = TestDirectory::new()?;
+        let source = directory.path("source.xlsx");
+        let candidate = directory.path("candidate.xlsx");
+        let output = directory.path("patched.xlsx");
+        write_package(
+            &source,
+            false,
+            "C4",
+            "tester",
+            "note text",
+            &note_vml("Note"),
+        )?;
+        write_package(
+            &candidate,
+            true,
+            "D5",
+            "rewritten-author",
+            "note text",
+            &note_vml("Note"),
+        )?;
+        assert!(restore_legacy_comment_vml(&source, &candidate, &output).is_err());
+        assert!(!output.exists());
+
+        let unsupported_source = directory.path("unsupported-source.xlsx");
+        let unsupported_candidate = directory.path("unsupported-candidate.xlsx");
+        let unsupported_output = directory.path("unsupported-output.xlsx");
+        write_package(
+            &unsupported_source,
+            false,
+            "C4",
+            "tester",
+            "note text",
+            &note_vml("Button"),
+        )?;
+        write_package(
+            &unsupported_candidate,
+            true,
+            "C4",
+            "rewritten-author",
+            "note text",
+            &note_vml("Note"),
+        )?;
+        assert!(restore_legacy_comment_vml(
+            &unsupported_source,
+            &unsupported_candidate,
+            &unsupported_output
+        )
+        .is_err());
+        assert!(!unsupported_output.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn restores_imported_comment_author_when_text_and_positions_match() -> Result<()> {
+        let directory = TestDirectory::new()?;
+        let source = directory.path("source.xlsx");
+        let candidate = directory.path("candidate.xlsx");
+        let output = directory.path("patched.xlsx");
+        let source_vml = note_vml("Note");
+        write_package(
+            &source,
+            false,
+            "C4",
+            "template-author",
+            "note text",
+            &source_vml,
+        )?;
+        write_package(
+            &candidate,
+            true,
+            "C4",
+            "editor-default-author",
+            "note text",
+            &note_vml("Note"),
+        )?;
+
+        restore_legacy_comments_for_sheet(&source, &candidate, &output, "Data")?;
+
+        assert_eq!(
+            read_part(&output, "xl/comments1.xml")?,
+            read_part(&source, "xl/comments/comment1.xml")?
+        );
+        assert_eq!(
+            read_part(&output, "xl/drawings/vmlDrawing1.vml")?,
+            source_vml.as_bytes()
+        );
+
+        let changed_text_source = directory.path("changed-text-source.xlsx");
+        let changed_text_candidate = directory.path("changed-text-candidate.xlsx");
+        let changed_text_output = directory.path("changed-text-output.xlsx");
+        write_package(
+            &changed_text_source,
+            false,
+            "C4",
+            "template-author",
+            "note text",
+            &source_vml,
+        )?;
+        write_package(
+            &changed_text_candidate,
+            true,
+            "C4",
+            "editor-default-author",
+            "changed text",
+            &note_vml("Note"),
+        )?;
+        assert!(restore_legacy_comments_for_sheet(
+            &changed_text_source,
+            &changed_text_candidate,
+            &changed_text_output,
+            "Data"
+        )
+        .is_err());
+        assert!(!changed_text_output.exists());
         Ok(())
     }
 }

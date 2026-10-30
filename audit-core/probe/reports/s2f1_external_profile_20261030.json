@@ -1,0 +1,546 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-30T15:59:55+08:00",
+  "feature": "S2-F1",
+  "scenario": "external-rule-manual-acceptance-normal-and-exception",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python_version": "3.12.10",
+  "python_source": "C:\\Users\\AZI\\Desktop\\VibeCode\\3.open-data-audit",
+  "rust_binary": "F:\\RustBuild\\audit\\release\\open-data-audit.exe",
+  "rust_binary_sha256": "9112415fb15454136905aefdd694236006178c177e6f542b0cb83e0215ac7ba4",
+  "fixture_root": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\audit-core\\manual_acceptance\\20261027\\s2_f01_external_rule_cases",
+  "rounds": 3,
+  "status": "passed",
+  "scenarios": {
+    "normal": {
+      "external_file": "external_normal.xlsx",
+      "inputs": {
+        "current/9144#2026-06-30#x#20202#甲银行.xlsx": {
+          "bytes": 6033,
+          "sheets": [
+            {
+              "name": "20202",
+              "rows": 15,
+              "columns": 3,
+              "data_rows_excluding_header": 14
+            },
+            {
+              "name": "20203",
+              "rows": 5,
+              "columns": 3,
+              "data_rows_excluding_header": 4
+            }
+          ]
+        },
+        "previous/9144#2026-03-31#x#20202#甲银行.xlsx": {
+          "bytes": 6033,
+          "sheets": [
+            {
+              "name": "20202",
+              "rows": 15,
+              "columns": 3,
+              "data_rows_excluding_header": 14
+            },
+            {
+              "name": "20203",
+              "rows": 5,
+              "columns": 3,
+              "data_rows_excluding_header": 4
+            }
+          ]
+        },
+        "s2_config_external_rule.xlsx": {
+          "bytes": 8656,
+          "sheets": [
+            {
+              "name": "通用设置",
+              "rows": 10,
+              "columns": 3,
+              "data_rows_excluding_header": 9
+            },
+            {
+              "name": "指标参照",
+              "rows": 3,
+              "columns": 9,
+              "data_rows_excluding_header": 2
+            },
+            {
+              "name": "机构参照",
+              "rows": 2,
+              "columns": 7,
+              "data_rows_excluding_header": 1
+            },
+            {
+              "name": "环比策略",
+              "rows": 2,
+              "columns": 8,
+              "data_rows_excluding_header": 1
+            },
+            {
+              "name": "校验规则",
+              "rows": 1,
+              "columns": 9,
+              "data_rows_excluding_header": 0
+            },
+            {
+              "name": "外部核对规则",
+              "rows": 2,
+              "columns": 7,
+              "data_rows_excluding_header": 1
+            }
+          ]
+        },
+        "external_normal.xlsx": {
+          "bytes": 6164,
+          "sheets": [
+            {
+              "name": "集中系统数据",
+              "rows": 4,
+              "columns": 4,
+              "data_rows_excluding_header": 3
+            },
+            {
+              "name": "机构参照表",
+              "rows": 2,
+              "columns": 4,
+              "data_rows_excluding_header": 1
+            },
+            {
+              "name": "参照表",
+              "rows": 1,
+              "columns": 2,
+              "data_rows_excluding_header": 0
+            }
+          ]
+        }
+      },
+      "input_sha256_before": {
+        "current/9144#2026-06-30#x#20202#甲银行.xlsx": "02541d0a4a074510a370b281f6b9ab302ae2daf0e48cb503c832ea3a583ff62f",
+        "previous/9144#2026-03-31#x#20202#甲银行.xlsx": "02541d0a4a074510a370b281f6b9ab302ae2daf0e48cb503c832ea3a583ff62f",
+        "s2_config_external_rule.xlsx": "cb9f630597c70774d8b19411d7e982262c0d658157dcbe13136eb23fdab41d18",
+        "external_normal.xlsx": "2691944ea17a8fd630008a18fd08d96fcea636e2d6dfa5b4d2a7fd72a684b740"
+      },
+      "input_sha256_after": {
+        "current/9144#2026-06-30#x#20202#甲银行.xlsx": "02541d0a4a074510a370b281f6b9ab302ae2daf0e48cb503c832ea3a583ff62f",
+        "previous/9144#2026-03-31#x#20202#甲银行.xlsx": "02541d0a4a074510a370b281f6b9ab302ae2daf0e48cb503c832ea3a583ff62f",
+        "s2_config_external_rule.xlsx": "cb9f630597c70774d8b19411d7e982262c0d658157dcbe13136eb23fdab41d18",
+        "external_normal.xlsx": "2691944ea17a8fd630008a18fd08d96fcea636e2d6dfa5b4d2a7fd72a684b740"
+      },
+      "python_service_ms": {
+        "rounds": [
+          41.92,
+          38.66,
+          47.51
+        ],
+        "median": 41.92,
+        "stage_median_ms": {
+          "complete": 0.05,
+          "config": 29.46,
+          "current": 1.23,
+          "export": 1.99,
+          "external": 0.12,
+          "external_read": 3.18,
+          "period": 0.17,
+          "previous": 1.08,
+          "rules": 0.02,
+          "save": 3.79,
+          "validate": 0.11
+        }
+      },
+      "rust_cli_ms": {
+        "wall_rounds_including_cli_startup": [
+          50.24,
+          52.55,
+          50.26
+        ],
+        "wall_median_including_cli_startup": 50.26,
+        "service_rounds_from_cli_progress": [
+          24.0,
+          24.0,
+          23.0
+        ],
+        "service_median_from_cli_progress": 24.0,
+        "stage_median_ms": {
+          "complete": 0.0,
+          "config": 3.0,
+          "current": 1.0,
+          "export": 2.0,
+          "external": 0.0,
+          "external_read": 1.0,
+          "period": 0.0,
+          "previous": 1.0,
+          "rules": 0.0,
+          "save": 15.0,
+          "validate": 1.0
+        }
+      },
+      "python_over_rust_wall": 0.834,
+      "python_over_rust_internal": 1.747,
+      "correctness": {
+        "warmup_expected_rule_result": {
+          "indicator_code": "20202001",
+          "report_value": 1234567.89,
+          "external_value": 1234567.89,
+          "absolute_difference": 0,
+          "level": null
+        },
+        "parity_rounds": [
+          {
+            "round": 1,
+            "summary_differences": 0,
+            "workbook_differences": 0,
+            "windows_extended_path_prefix_differences": 4,
+            "workbook_stats": {
+              "sheets": 3,
+              "cells": 292,
+              "numeric_cells": 35,
+              "formulas": 0,
+              "cell_styles": 0,
+              "column_widths": 0,
+              "hidden_rows": 0,
+              "worksheet_settings": 0
+            },
+            "expected_rule_result": {
+              "indicator_code": "20202001",
+              "report_value": 1234567.89,
+              "external_value": 1234567.89,
+              "absolute_difference": 0,
+              "level": null
+            },
+            "python_output_bytes": 7197,
+            "rust_output_bytes": 9220
+          },
+          {
+            "round": 2,
+            "summary_differences": 0,
+            "workbook_differences": 0,
+            "windows_extended_path_prefix_differences": 4,
+            "workbook_stats": {
+              "sheets": 3,
+              "cells": 292,
+              "numeric_cells": 35,
+              "formulas": 0,
+              "cell_styles": 0,
+              "column_widths": 0,
+              "hidden_rows": 0,
+              "worksheet_settings": 0
+            },
+            "expected_rule_result": {
+              "indicator_code": "20202001",
+              "report_value": 1234567.89,
+              "external_value": 1234567.89,
+              "absolute_difference": 0,
+              "level": null
+            },
+            "python_output_bytes": 7197,
+            "rust_output_bytes": 9220
+          },
+          {
+            "round": 3,
+            "summary_differences": 0,
+            "workbook_differences": 0,
+            "windows_extended_path_prefix_differences": 4,
+            "workbook_stats": {
+              "sheets": 3,
+              "cells": 292,
+              "numeric_cells": 35,
+              "formulas": 0,
+              "cell_styles": 0,
+              "column_widths": 0,
+              "hidden_rows": 0,
+              "worksheet_settings": 0
+            },
+            "expected_rule_result": {
+              "indicator_code": "20202001",
+              "report_value": 1234567.89,
+              "external_value": 1234567.89,
+              "absolute_difference": 0,
+              "level": null
+            },
+            "python_output_bytes": 7197,
+            "rust_output_bytes": 9220
+          }
+        ],
+        "all_rounds_zero_differences": true,
+        "input_hashes_unchanged": true
+      },
+      "process_peak_memory": {
+        "measurement": "OS peak working set high-water mark, sampled during a separate one-run process; process startup included",
+        "sampler_interval_ms": 5,
+        "python_process_peak_working_set_bytes": 40685568,
+        "rust_cli_process_peak_working_set_bytes": 13094912,
+        "rust_cli_status": "completed"
+      }
+    },
+    "exception": {
+      "external_file": "external_exception.xlsx",
+      "inputs": {
+        "current/9144#2026-06-30#x#20202#甲银行.xlsx": {
+          "bytes": 6033,
+          "sheets": [
+            {
+              "name": "20202",
+              "rows": 15,
+              "columns": 3,
+              "data_rows_excluding_header": 14
+            },
+            {
+              "name": "20203",
+              "rows": 5,
+              "columns": 3,
+              "data_rows_excluding_header": 4
+            }
+          ]
+        },
+        "previous/9144#2026-03-31#x#20202#甲银行.xlsx": {
+          "bytes": 6033,
+          "sheets": [
+            {
+              "name": "20202",
+              "rows": 15,
+              "columns": 3,
+              "data_rows_excluding_header": 14
+            },
+            {
+              "name": "20203",
+              "rows": 5,
+              "columns": 3,
+              "data_rows_excluding_header": 4
+            }
+          ]
+        },
+        "s2_config_external_rule.xlsx": {
+          "bytes": 8656,
+          "sheets": [
+            {
+              "name": "通用设置",
+              "rows": 10,
+              "columns": 3,
+              "data_rows_excluding_header": 9
+            },
+            {
+              "name": "指标参照",
+              "rows": 3,
+              "columns": 9,
+              "data_rows_excluding_header": 2
+            },
+            {
+              "name": "机构参照",
+              "rows": 2,
+              "columns": 7,
+              "data_rows_excluding_header": 1
+            },
+            {
+              "name": "环比策略",
+              "rows": 2,
+              "columns": 8,
+              "data_rows_excluding_header": 1
+            },
+            {
+              "name": "校验规则",
+              "rows": 1,
+              "columns": 9,
+              "data_rows_excluding_header": 0
+            },
+            {
+              "name": "外部核对规则",
+              "rows": 2,
+              "columns": 7,
+              "data_rows_excluding_header": 1
+            }
+          ]
+        },
+        "external_exception.xlsx": {
+          "bytes": 6161,
+          "sheets": [
+            {
+              "name": "集中系统数据",
+              "rows": 4,
+              "columns": 4,
+              "data_rows_excluding_header": 3
+            },
+            {
+              "name": "机构参照表",
+              "rows": 2,
+              "columns": 4,
+              "data_rows_excluding_header": 1
+            },
+            {
+              "name": "参照表",
+              "rows": 1,
+              "columns": 2,
+              "data_rows_excluding_header": 0
+            }
+          ]
+        }
+      },
+      "input_sha256_before": {
+        "current/9144#2026-06-30#x#20202#甲银行.xlsx": "02541d0a4a074510a370b281f6b9ab302ae2daf0e48cb503c832ea3a583ff62f",
+        "previous/9144#2026-03-31#x#20202#甲银行.xlsx": "02541d0a4a074510a370b281f6b9ab302ae2daf0e48cb503c832ea3a583ff62f",
+        "s2_config_external_rule.xlsx": "cb9f630597c70774d8b19411d7e982262c0d658157dcbe13136eb23fdab41d18",
+        "external_exception.xlsx": "a8f76d3f3c99533d88ac3a47e50e75d399adefa31181c1b59097507c9dfbde38"
+      },
+      "input_sha256_after": {
+        "current/9144#2026-06-30#x#20202#甲银行.xlsx": "02541d0a4a074510a370b281f6b9ab302ae2daf0e48cb503c832ea3a583ff62f",
+        "previous/9144#2026-03-31#x#20202#甲银行.xlsx": "02541d0a4a074510a370b281f6b9ab302ae2daf0e48cb503c832ea3a583ff62f",
+        "s2_config_external_rule.xlsx": "cb9f630597c70774d8b19411d7e982262c0d658157dcbe13136eb23fdab41d18",
+        "external_exception.xlsx": "a8f76d3f3c99533d88ac3a47e50e75d399adefa31181c1b59097507c9dfbde38"
+      },
+      "python_service_ms": {
+        "rounds": [
+          48.92,
+          41.42,
+          42.19
+        ],
+        "median": 42.19,
+        "stage_median_ms": {
+          "complete": 0.05,
+          "config": 29.36,
+          "current": 1.37,
+          "export": 2.32,
+          "external": 0.14,
+          "external_read": 3.8,
+          "period": 0.19,
+          "previous": 1.42,
+          "rules": 0.02,
+          "save": 3.92,
+          "validate": 0.12
+        }
+      },
+      "rust_cli_ms": {
+        "wall_rounds_including_cli_startup": [
+          56.11,
+          51.29,
+          51.56
+        ],
+        "wall_median_including_cli_startup": 51.56,
+        "service_rounds_from_cli_progress": [
+          24.0,
+          24.0,
+          23.0
+        ],
+        "service_median_from_cli_progress": 24.0,
+        "stage_median_ms": {
+          "complete": 0.0,
+          "config": 3.0,
+          "current": 1.0,
+          "export": 2.0,
+          "external": 0.0,
+          "external_read": 1.0,
+          "period": 0.0,
+          "previous": 1.0,
+          "rules": 0.0,
+          "save": 15.0,
+          "validate": 0.0
+        }
+      },
+      "python_over_rust_wall": 0.818,
+      "python_over_rust_internal": 1.758,
+      "correctness": {
+        "warmup_expected_rule_result": {
+          "indicator_code": "20202001",
+          "report_value": 1234567.89,
+          "external_value": 1234.5,
+          "absolute_difference": 1233333.39,
+          "level": "硬性"
+        },
+        "parity_rounds": [
+          {
+            "round": 1,
+            "summary_differences": 0,
+            "workbook_differences": 0,
+            "windows_extended_path_prefix_differences": 4,
+            "workbook_stats": {
+              "sheets": 3,
+              "cells": 292,
+              "numeric_cells": 35,
+              "formulas": 0,
+              "cell_styles": 0,
+              "column_widths": 0,
+              "hidden_rows": 0,
+              "worksheet_settings": 0
+            },
+            "expected_rule_result": {
+              "indicator_code": "20202001",
+              "report_value": 1234567.89,
+              "external_value": 1234.5,
+              "absolute_difference": 1233333.39,
+              "level": "硬性"
+            },
+            "python_output_bytes": 7219,
+            "rust_output_bytes": 9257
+          },
+          {
+            "round": 2,
+            "summary_differences": 0,
+            "workbook_differences": 0,
+            "windows_extended_path_prefix_differences": 4,
+            "workbook_stats": {
+              "sheets": 3,
+              "cells": 292,
+              "numeric_cells": 35,
+              "formulas": 0,
+              "cell_styles": 0,
+              "column_widths": 0,
+              "hidden_rows": 0,
+              "worksheet_settings": 0
+            },
+            "expected_rule_result": {
+              "indicator_code": "20202001",
+              "report_value": 1234567.89,
+              "external_value": 1234.5,
+              "absolute_difference": 1233333.39,
+              "level": "硬性"
+            },
+            "python_output_bytes": 7219,
+            "rust_output_bytes": 9257
+          },
+          {
+            "round": 3,
+            "summary_differences": 0,
+            "workbook_differences": 0,
+            "windows_extended_path_prefix_differences": 4,
+            "workbook_stats": {
+              "sheets": 3,
+              "cells": 292,
+              "numeric_cells": 35,
+              "formulas": 0,
+              "cell_styles": 0,
+              "column_widths": 0,
+              "hidden_rows": 0,
+              "worksheet_settings": 0
+            },
+            "expected_rule_result": {
+              "indicator_code": "20202001",
+              "report_value": 1234567.89,
+              "external_value": 1234.5,
+              "absolute_difference": 1233333.39,
+              "level": "硬性"
+            },
+            "python_output_bytes": 7219,
+            "rust_output_bytes": 9257
+          }
+        ],
+        "all_rounds_zero_differences": true,
+        "input_hashes_unchanged": true
+      },
+      "process_peak_memory": {
+        "measurement": "OS peak working set high-water mark, sampled during a separate one-run process; process startup included",
+        "sampler_interval_ms": 5,
+        "python_process_peak_working_set_bytes": 40710144,
+        "rust_cli_process_peak_working_set_bytes": 12378112,
+        "rust_cli_status": "completed"
+      }
+    }
+  },
+  "python_source_sha256_before": {
+    "core/src/base_audit/systems/s2_report_collection/service.py": "e81640910585d04b627c78dabc434028af52fbf386abbc321c5d84a5e099f127",
+    "core/src/base_audit/systems/s2_report_collection/external_engine.py": "4113ad8b3211ae6ee8b5227b5bbdc1f954dd24d836aae0199124d512e1420bdd",
+    "core/src/base_audit/systems/s2_report_collection/exporter.py": "ef99d056ba9038bc9aed8bd23d5d8d0d2813941ba54366c1136380ac70a2e02b"
+  },
+  "python_source_sha256_after": {
+    "core/src/base_audit/systems/s2_report_collection/service.py": "e81640910585d04b627c78dabc434028af52fbf386abbc321c5d84a5e099f127",
+    "core/src/base_audit/systems/s2_report_collection/external_engine.py": "4113ad8b3211ae6ee8b5227b5bbdc1f954dd24d836aae0199124d512e1420bdd",
+    "core/src/base_audit/systems/s2_report_collection/exporter.py": "ef99d056ba9038bc9aed8bd23d5d8d0d2813941ba54366c1136380ac70a2e02b"
+  }
+}

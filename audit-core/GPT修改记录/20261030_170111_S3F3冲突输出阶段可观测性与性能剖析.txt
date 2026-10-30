@@ -1,0 +1,19 @@
+变更日期：2026-10-30
+范围：S3-F3 机构反馈导入
+
+本轮使用 1,000 个目标键、两份对每个键均提交不同原因的反馈文件，补测 100% 冲突场景。三轮 Python/Rust 对拍中均得到 1,000 条冲突、0 条导入、0 条未匹配；冲突明细工作簿和目标工作簿值/结构差异均为 0。目标输入字节不变，备份与目标 SHA-256 一致，反馈输入哈希不变。该合成全冲突比例用于压力验证，不代表生产反馈分布。
+
+性能中位数：Python 服务 1,332.49 ms；Rust CLI 墙钟 149.89 ms（约 8.89×）；Rust 服务内部 120 ms。Rust 冲突表写出分别为 19、18、21 ms；进程树峰值工作集约 Python 41.04 MB、Rust 16.39 MB。
+
+为让批次报告保留这一阶段，`S3ExplanationFeedbackExecutionReport` 新增 `conflict_write_time_ms` 并随执行报告 JSON 输出。规划摘要中的既有冲突写出计时被传入复制和原地执行报告；冲突判断、报告格式、目标写回语义不变。新增断言确保冲突写出耗时不超过总耗时，并由冲突执行单测覆盖目标/反馈保护及备份。
+
+验证：S3-F3 库单测 7/7 通过；计划 CLI 集成测试 3/3 通过；Release `open-data-audit` 构建成功，SHA-256 为 `74c167b5a304d357bfd14f4dab3f65f173c63e8c45a0b631bf7323891148edef`。冲突 profiler 三轮对拍通过；Python AST 语法与报告 JSON 解析通过；`git diff --check` 通过（Git 提示相关文本文件将从 LF 转为 CRLF）。未运行全工作区测试，未 push、未 commit。当前分支 `main`，HEAD `7517a9c`。
+
+相关证据：
+- `audit-core/tests/compare/perf_s3f3_conflict_profile_20261030.py`
+- `audit-core/probe/reports/s3f3_conflict_profile_20261030.md`
+- `audit-core/probe/reports/s3f3_conflict_profile_20261030.json`
+- `audit-core/PERFORMANCE_BASELINE.md`
+- `audit-core/PERFORMANCE_HISTORY.md`
+- `audit-core/MIGRATION_INVENTORY.md`
+- `DEVELOPMENT_GOAL.md`

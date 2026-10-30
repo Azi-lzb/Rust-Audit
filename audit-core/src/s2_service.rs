@@ -7,8 +7,8 @@
 
 use crate::{
     s2_analysis::{build_analysis_result, first_records_by_logical_key, S2AnalysisResult},
-    s2_config::{load_config, S2AuditConfig},
-    s2_config_check::check_s2_config,
+    s2_config::S2AuditConfig,
+    s2_config_check::{check_s2_config, check_s2_config_and_load},
     s2_exporter::export_s2_report,
     s2_external::compare_external,
     s2_external_import::import_external_workbook,
@@ -90,7 +90,7 @@ pub fn run_s2_audit(
         format!("读取配置文件：{}", file_name(&request.config_path)),
     );
 
-    let config_report = check_s2_config(&request.config_path);
+    let (config_report, config) = check_s2_config_and_load(&request.config_path);
     if !config_report.passed {
         let details = config_report
             .issues
@@ -101,7 +101,7 @@ pub fn run_s2_audit(
             .join("；");
         return Err(anyhow!("审核配置存在阻断错误，不能执行报表规则：{details}"));
     }
-    let config = load_config(&request.config_path)?;
+    let config = config.ok_or_else(|| anyhow!("S2 配置通过校验但未生成运行时配置"))?;
     let import_config = config.import_config();
 
     emit_progress(

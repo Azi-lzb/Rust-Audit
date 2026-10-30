@@ -175,9 +175,11 @@ def build_s3_f5(root: Path, institutions: int, indicators: int, forms: int):
     for c, h in enumerate(["报表代码", "报表名称", "频度", "批次", "是否启用写入"]):
         list_sheet.cell(row=1, column=c + 1, value=h)
     for f in range(forms):
-        code = f"AF{f + 1:03d}"
+        # S3-F05 infers RMB/FX business class from the form-sheet name (A1/A2).
+        # Keep these synthetic forms on the RMB path so perf runs populate cells.
+        code = f"性能表A1-{f + 1:03d}"
         list_sheet.cell(row=f + 2, column=1, value=code)
-        list_sheet.cell(row=f + 2, column=2, value=f"性能基准表 {code}")
+        list_sheet.cell(row=f + 2, column=2, value=f"性能表{f + 1:03d}")
         list_sheet.cell(row=f + 2, column=3, value="月")
         list_sheet.cell(row=f + 2, column=4, value="1")
         list_sheet.cell(row=f + 2, column=5, value="是")
@@ -187,7 +189,7 @@ def build_s3_f5(root: Path, institutions: int, indicators: int, forms: int):
     settings.append(["空表删除", "是", ""])
     base_headers = ["余额人民币"]
     for f in range(forms):
-        code = f"AF{f + 1:03d}"
+        code = f"性能表A1-{f + 1:03d}"
         sheet = c33wb.create_sheet(code)
         headers = ["指标代码", "指标名称", "行序号", "余额人民币",
                    "上期-余额人民币", "增减额-余额人民币", "环比-余额人民币"]
