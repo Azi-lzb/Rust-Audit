@@ -59,11 +59,11 @@ fn run() -> Result<()> {
     if command == "recalculate-batch" {
         return run_recalculate_batch(args.collect());
     }
-    if command == "recalculate-batch" {
-        return run_recalculate_batch(args.collect());
-    }
     if command == "__recalculate-com-worker" {
         return run_com_worker(args.collect());
+    }
+    if command == "convert-batch" {
+        return run_convert_batch(args.collect());
     }
     ensure!(command == "convert", "unsupported command {command:?}");
     let mut values = BTreeMap::new();
@@ -676,7 +676,7 @@ fn run_recalculate_batch(arguments: Vec<String>) -> Result<()> {
         .max(recalculation_timeout());
     let convert_started = Instant::now();
     let (engine_name, stages) =
-        lo_batch::run_batch_convert(&prepared_pairs, guard.0.as_path(), batch_timeout)
+        lo_batch::run_batch_convert(&prepared_pairs, guard.0.as_path(), lo_batch::BatchTarget::Xlsx, batch_timeout)
             .context("batch LibreOffice conversion")?;
     let convert_ms = convert_started.elapsed().as_millis() as u64;
 
@@ -2466,4 +2466,305 @@ mod recalculation_tests {
             .and_then(|(_, fields)| fields.split_whitespace().next())
             .is_some_and(|state| state == "Z")
     }
+}
+
+/// 批次格式转换：`convert-batch --pairs <tsv> --to <xlsx|docx> --engine <auto|com|lo>`。
+/// 整个批次只创建一个引擎实例并顺序处理（rules/13 §4.5）：
+/// - Windows COM：一个 Word/Excel/WPS 会话贯穿整批，docx 文本校验也通过
+///   同一会话读取（移植自 Rust-Tools e2973e6 的 ConvertWord/ExtractWordText
+///   请求语义），PowerShell 桥不参与；
+/// - LibreOffice：一条 `--convert-to` 处理整批，docx 文本校验按批各提取
+///   一次（源文本一次、候选文本一次），而非每本两次冷启动。
+/// 每本仍执行既有验证：DOCX 包合法性 + 文本一致；工作簿按既有比较器。
+fn run_convert_batch(arguments: Vec<String>) -> Result<()> {
+    let mut values: BTreeMap<String, String> = BTreeMap::new();
+    let mut args = arguments.into_iter();
+    while let Some(key) = args.next() {
+        ensure!(key.starts_with("--"), "expected an option, got {key:?}");
+        let name = key.trim_start_matches('-').to_owned();
+        ensure!(
+            matches!(name.as_str(), "pairs" | "to" | "engine" | "mode"),
+            "unknown convert-batch option --{name}"
+        );
+        let value = args
+            .next()
+            .with_context(|| format!("{key} requires a value"))?;
+        values.insert(name, value);
+    }
+    let target = values.get("to").map(String::as_str).unwrap_or("");
+    ensure!(target == "xlsx" || target == "docx", "--to must be xlsx or docx");
+    let engine = values.get("engine").map(String::as_str).unwrap_or("auto");
+    ensure!(
+        engine == "auto" || engine == "com" || engine == "lo",
+        "--engine must be auto, com or lo"
+    );
+    let mode = values.get("mode").map(String::as_str).unwrap_or("fidelity");
+    ensure!(mode == "fidelity", "--mode must be fidelity");
+
+    let pairs_path = PathBuf::from(values.get("pairs").context("--pairs is required")?);
+    let content = fs::read_to_string(&pairs_path)
+        .with_context(|| format!("read convert pairs {}", pairs_path.display()))?;
+    let mut declared = Vec::new();
+    for line in content.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let mut parts = line.split('\t');
+        let input = parts.next().context("convert pair missing input")?;
+        let output = parts.next().context("convert pair missing output")?;
+        ensure!(
+            parts.next().is_none(),
+            "convert pair line has extra fields: {line:?}"
+        );
+        declared.push((PathBuf::from(input), PathBuf::from(output)));
+    }
+    ensure!(!declared.is_empty(), "convert pairs file is empty");
+    let source_ext = declared[0]
+        .0
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    for (input, output) in &declared {
+        ensure!(
+            input.is_file(),
+            "convert input does not exist: {}",
+            input.display()
+        );
+        ensure!(
+            !output.exists(),
+            "refusing to overwrite existing convert output: {}",
+            output.display()
+        );
+        let input_ext = input
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        ensure!(
+            input_ext == source_ext,
+            "batch inputs must share one source extension: {source_ext} vs {input_ext}"
+        );
+    }
+
+    let started = Instant::now();
+    let guard = TempDirGuard(unique_temp_dir(&env::temp_dir())?);
+    let use_com = cfg!(windows) && engine != "lo";
+
+    #[cfg(windows)]
+    let mut com_word: Option<excel_com::WordComSession> = None;
+    #[cfg(windows)]
+    let mut com_sheet: Option<excel_com::ExcelComSession> = None;
+    #[cfg(not(windows))]
+    {
+        let _ = use_com;
+    }
+
+    let mut books = Vec::with_capacity(declared.len());
+    let mut failures = 0usize;
+
+    // ---- Windows COM：批次自有实例，逐本转换 ----
+    if use_com {
+        for (index, (input, output)) in declared.iter().enumerate() {
+            let canonical = fs::canonicalize(input)
+                .with_context(|| format!("resolve convert input {}", input.display()))?;
+            let staged = guard.0.join(format!("book-{index:04}.{}", source_ext));
+            fs::copy(&canonical, &staged).with_context(|| {
+                format!(
+                    "stage convert input {} -> {}",
+                    canonical.display(),
+                    staged.display()
+                )
+            })?;
+            let attempt = (|| -> Result<serde_json::Value> {
+                #[cfg(windows)]
+                {
+                    let (engine_name, application, process_id) = if target == "docx" {
+                        if com_word.is_none() {
+                            com_word = Some(excel_com::WordComSession::create(&[
+                                "Word.Application",
+                                "kwps.Application",
+                                "KWPS.Application",
+                                "wps.Application",
+                            ])?);
+                        }
+                        let session = com_word.as_ref().expect("Word session ready");
+                        session.convert_to_docx(&staged, output)?;
+                        (
+                            "com",
+                            "Word/WPS Writer",
+                            Some(session.process_id()),
+                        )
+                    } else {
+                        if com_sheet.is_none() {
+                            let names: &[&str] = if source_ext == "et" {
+                                &["ket.Application", "KET.Application", "Excel.Application"]
+                            } else {
+                                &["Excel.Application", "ket.Application", "KET.Application"]
+                            };
+                            com_sheet = Some(excel_com::ExcelComSession::create(names)?);
+                        }
+                        let session = com_sheet.as_mut().expect("Excel session ready");
+                        session.convert_to_xlsx(&staged, output)?;
+                        let application = session.application_name();
+                        ( "com", application, session.process_id())
+                    };
+                    require_engine_output(output)?;
+                    let validation = validate_conversion(
+                        input,
+                        output,
+                        &source_ext,
+                        target,
+                        "com",
+                        &guard.0,
+                    )?;
+                    Ok(serde_json::json!({
+                        "index": index + 1,
+                        "status": "converted",
+                        "engine": engine_name,
+                        "application": application,
+                        "process_id": process_id,
+                        "validation": serde_json::from_str::<serde_json::Value>(&validation)
+                            .unwrap_or_else(|_| serde_json::json!({"detail": validation})),
+                    }))
+                }
+                #[cfg(not(windows))]
+                {
+                    bail!("native Office COM conversion is only available on Windows")
+                }
+            })();
+            match attempt {
+                Ok(book) => books.push(book),
+                Err(error) => {
+                    failures += 1;
+                    books.push(serde_json::json!({
+                        "index": index + 1,
+                        "status": "failed",
+                        "input": input.display().to_string(),
+                        "error": format!("{error:#}"),
+                    }));
+                }
+            }
+        }
+        let result = serde_json::json!({
+            "status": if failures == 0 { "converted" } else { "partial" },
+            "engine": "com",
+            "books": books,
+        });
+        println!("{}", serde_json::to_string(&result)?);
+        return Ok(());
+    }
+
+    // ---- LibreOffice：一条 --convert-to 处理整批 + 按批文本提取 ----
+    let mut staged = Vec::with_capacity(declared.len());
+    for (index, (input, _)) in declared.iter().enumerate() {
+        let canonical = fs::canonicalize(input)
+            .with_context(|| format!("resolve convert input {}", input.display()))?;
+        let staged_path = guard.0.join(format!("book-{index:04}.{}", source_ext));
+        fs::copy(&canonical, &staged_path).with_context(|| {
+            format!(
+                "stage convert input {} -> {}",
+                canonical.display(),
+                staged_path.display()
+            )
+        })?;
+        staged.push(staged_path);
+    }
+    let target_kind = if target == "docx" {
+        lo_batch::BatchTarget::Docx
+    } else {
+        lo_batch::BatchTarget::Xlsx
+    };
+    let convert_started = Instant::now();
+    let batch_timeout = recalculation_timeout()
+        .saturating_mul(declared.len() as u32)
+        .max(recalculation_timeout());
+    let pairs_for_convert: Vec<(PathBuf, PathBuf)> = staged
+        .iter()
+        .enumerate()
+        .map(|(index, staged_path)| (staged_path.clone(), declared[index].1.clone()))
+        .collect();
+    let (engine_name, batch_stages) =
+        lo_batch::run_batch_convert(&pairs_for_convert, guard.0.as_path(), target_kind, batch_timeout)
+            .context("batch LibreOffice conversion")?;
+    let convert_ms = convert_started.elapsed().as_millis() as u64;
+    // 逐本把批次输出发布到期望路径（硬链接、拒绝覆盖，同既有语义）。
+    for (index, (_, output)) in declared.iter().enumerate() {
+        let candidate = batch_stages
+            .get(index)
+            .and_then(|stage| stage.get("batch_output"))
+            .and_then(serde_json::Value::as_str)
+            .map(PathBuf::from)
+            .with_context(|| format!("batch did not produce output for book {}", index + 1))?;
+        publish_recalculated_output(&candidate, output)
+            .with_context(|| format!("publish converted book {}", index + 1))?;
+    }
+    let docx_texts = if target == "docx" {
+        let sources = lo_batch::run_batch_text_extract(
+            &staged,
+            guard.0.as_path(),
+            "sources",
+            batch_timeout,
+        )
+        .context("batch Word source text extraction")?;
+        let candidates: Vec<PathBuf> = declared.iter().map(|(_, output)| output.clone()).collect();
+        let candidate_texts = lo_batch::run_batch_text_extract(
+            &candidates,
+            guard.0.as_path(),
+            "candidates",
+            batch_timeout,
+        )
+        .context("batch Word candidate text extraction")?;
+        Some(
+            sources
+                .into_iter()
+                .zip(candidate_texts)
+                .collect::<Vec<(String, String)>>(),
+        )
+    } else {
+        None
+    };
+    for (index, (input, output)) in declared.iter().enumerate() {
+        let attempt = (|| -> Result<serde_json::Value> {
+            require_engine_output(output)?;
+            let validation = if let Some(texts) = &docx_texts {
+                let (source_text, candidate_text) = &texts[index];
+                ensure!(
+                    normalize_document_text(source_text)
+                        == normalize_document_text(candidate_text),
+                    "converted DOCX text content differs from the source document"
+                );
+                "{\"level\":\"docx_package_and_batched_text_content\"}".to_owned()
+            } else {
+                validate_conversion(input, output, &source_ext, target, "lo", &guard.0)?
+            };
+            Ok(serde_json::json!({
+                "index": index + 1,
+                "status": "converted",
+                "engine": engine_name,
+                "validation": serde_json::from_str::<serde_json::Value>(&validation)
+                    .unwrap_or_else(|_| serde_json::json!({"detail": validation})),
+            }))
+        })();
+        match attempt {
+            Ok(book) => books.push(book),
+            Err(error) => {
+                failures += 1;
+                books.push(serde_json::json!({
+                    "index": index + 1,
+                    "status": "failed",
+                    "input": input.display().to_string(),
+                    "error": format!("{error:#}"),
+                }));
+            }
+        }
+    }
+    let result = serde_json::json!({
+        "status": if failures == 0 { "converted" } else { "partial" },
+        "engine": engine_name,
+        "convert_ms": convert_ms,
+        "books": books,
+    });
+    println!("{}", serde_json::to_string(&result)?);
+    Ok(())
 }

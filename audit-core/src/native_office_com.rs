@@ -612,20 +612,28 @@ impl ExcelComSession {
 /// A private Word/WPS COM instance used for document conversion and checks.
 pub struct WordComSession {
     app: Option<Dispatch>,
+    /// 本会话创建（并拥有）的 Word/WPS 进程 ID，作为批次复用证据外露。
+    process_id: u32,
     _apartment: ComApartment,
 }
 
 impl WordComSession {
     pub fn create(application_names: &[&str]) -> Result<Self> {
-        let (apartment, app, _, _, _) = create_isolated_application(application_names)?;
+        let (apartment, app, _, process_id, _) = create_isolated_application(application_names)?;
         let session = Self {
             app: Some(app),
+            process_id,
             _apartment: apartment,
         };
         let app = session.app.as_ref().expect("COM app initialized");
         app.set("Visible", OwnedVariant::boolean(false))?;
         app.set("DisplayAlerts", OwnedVariant::i32(0))?;
         Ok(session)
+    }
+
+    /// 本会话拥有的 Word/WPS 进程 ID（批次会话复用证据）。
+    pub fn process_id(&self) -> u32 {
+        self.process_id
     }
 
     fn open_read_only(&self, input: &Path) -> Result<Dispatch> {
@@ -787,20 +795,41 @@ fn create_isolated_application(
     let apartment = ComApartment::initialize()?;
     let com_initialize_ms = com_initialize_started.elapsed().as_millis() as u64;
     let snapshot_started = Instant::now();
-    let processes_before = process_ids().context("无法确认启动前的 Office 进程清单")?;
+    let processes_before = process_names().context("无法确认启动前的 Office 进程清单")?;
     let process_snapshot_ms = snapshot_started.elapsed().as_millis() as u64;
     let (app, application_name, mut activation_timings, activation_started_unix_ms) =
         create_application(application_names)?;
     let hwnd_started = Instant::now();
-    let hwnd = app.get_i32("Hwnd").context("读取 Office COM 窗口句柄")?;
-    let mut process_id = 0_u32;
-    unsafe { GetWindowThreadProcessId(hwnd as u32 as usize as *mut c_void, &mut process_id) };
+    let hwnd_lookup = app.get_i32("Hwnd");
+    let process_id = match hwnd_lookup {
+        Ok(hwnd) => {
+            let mut process_id = 0_u32;
+            unsafe {
+                GetWindowThreadProcessId(hwnd as u32 as usize as *mut c_void, &mut process_id)
+            };
+            process_id
+        }
+        // Word/WPS Writer 没有 Hwnd 属性（实测 HRESULT 0x80020006）：
+        // 退化为启动前后进程快照差集 + 可执行名匹配（Rust-Tools e2973e6）。
+        Err(_) => {
+            let exe_names: &[&str] = if application_names
+                .iter()
+                .any(|name| name.eq_ignore_ascii_case("Word.Application"))
+            {
+                &["winword.exe", "wps.exe"]
+            } else {
+                &["excel.exe", "et.exe"]
+            };
+            owned_process_by_name_diff(&processes_before, exe_names)
+                .context("Word/WPS 实例进程归属确认失败")?
+        }
+    };
     let hwnd_process_lookup_ms = hwnd_started.elapsed().as_millis() as u64;
     ensure!(process_id != 0, "无法确认 Office COM 实例所属进程");
     let verification_started = Instant::now();
     let process_created = process_creation_ticks(process_id);
     ensure!(
-        !processes_before.contains(&process_id),
+        !processes_before.contains_key(&process_id),
         "Office COM 连接到了已存在的进程；为避免影响用户打开的 Office，已拒绝复用"
     );
     let process_verification_ms = verification_started.elapsed().as_millis() as u64;
@@ -868,6 +897,27 @@ fn wide(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
+/// 进程快照：PID → 小写可执行名（winword.exe / excel.exe 等）。
+fn process_names() -> Option<std::collections::HashMap<u32, String>> {
+    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+    if snapshot.is_null() || snapshot as isize == -1 {
+        return None;
+    }
+    let mut result = std::collections::HashMap::new();
+    let mut entry = PROCESSENTRY32W::default();
+    entry.dwSize = mem::size_of::<PROCESSENTRY32W>() as u32;
+    let mut found = unsafe { Process32FirstW(snapshot, &mut entry) } != 0;
+    while found {
+        let name = String::from_utf16_lossy(&entry.szExeFile)
+            .trim_end_matches(char::from(0))
+            .to_ascii_lowercase();
+        result.insert(entry.th32ProcessID, name);
+        found = unsafe { Process32NextW(snapshot, &mut entry) } != 0;
+    }
+    unsafe { CloseHandle(snapshot) };
+    Some(result)
+}
+
 fn process_ids() -> Option<std::collections::HashSet<u32>> {
     let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
     if snapshot.is_null() || snapshot as isize == -1 {
@@ -883,6 +933,31 @@ fn process_ids() -> Option<std::collections::HashSet<u32>> {
     }
     unsafe { CloseHandle(snapshot) };
     Some(result)
+}
+
+/// 在启动后快照里确认本任务新创建的 Office 进程：可执行名匹配且不在启动
+/// 前快照中；多于一个候选时无法唯一归属，保守报错（移植自
+/// Rust-Tools e2973e6 的进程探针思路，适配 Toolhelp 快照）。
+fn owned_process_by_name_diff(
+    before: &std::collections::HashMap<u32, String>,
+    exe_names: &[&str],
+) -> Result<u32> {
+    let after = process_names().context("无法确认启动后的 Office 进程清单")?;
+    let mut candidates: Vec<u32> = after
+        .iter()
+        .filter(|(process_id, name)| {
+            !before.contains_key(process_id)
+                && exe_names.iter().any(|exe| name == exe)
+        })
+        .map(|(process_id, _)| *process_id)
+        .collect();
+    candidates.sort_unstable();
+    ensure!(
+        candidates.len() == 1,
+        "无法唯一确认本任务创建的 Office 进程（候选 {} 个）",
+        candidates.len()
+    );
+    Ok(candidates[0])
 }
 
 fn creation_ticks_for_handle(handle: *mut c_void) -> Option<u64> {

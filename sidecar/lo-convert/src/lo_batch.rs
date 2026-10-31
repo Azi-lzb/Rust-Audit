@@ -119,6 +119,13 @@ impl LoWarmProfileSession {
         command.stderr(
             fs::OpenOptions::new().create(true).append(true).open(&convert_log)?,
         );
+        let convert_log = self.work_dir.join("session-convert.log");
+        command.stdout(
+            fs::OpenOptions::new().create(true).append(true).open(&convert_log)?,
+        );
+        command.stderr(
+            fs::OpenOptions::new().create(true).append(true).open(&convert_log)?,
+        );
         let status = run_with_timeout(&mut command, timeout, "会话内 LibreOffice 转换")?;
         ensure!(
             status.success(),
@@ -182,13 +189,45 @@ impl LoWarmProfileSession {
     }
 }
 
+/// 批次转换的目标类型：决定转换 filter、staging 扩展名与校验配套。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BatchTarget {
+    Xlsx,
+    Docx,
+}
+
+impl BatchTarget {
+    pub fn filter(self) -> &'static str {
+        match self {
+            BatchTarget::Xlsx => "xlsx:Calc MS Excel 2007 XML",
+            BatchTarget::Docx => "docx:Office Open XML Text",
+        }
+    }
+
+    pub fn staging_extension(self) -> &'static str {
+        match self {
+            BatchTarget::Xlsx => "xlsx",
+            BatchTarget::Docx => "docx",
+        }
+    }
+
+    /// 文本提取（docx 保真校验用）：整个批次各一次，而非每本两次。
+    pub fn text_filter(self) -> Option<&'static str> {
+        match self {
+            BatchTarget::Xlsx => None,
+            BatchTarget::Docx => Some("txt:Text"),
+        }
+    }
+}
+
 /// 批次转换：一次 soffice 启动顺序转换多个输入。`pairs` 为（已准备的输入
 /// 副本, 期望输出路径）；各输入文件名必须互不相同（同一 `--outdir` 以输入
-/// 文件名落盘）。返回每本结果；任一本缺少输出即返回 Err，由调用方决定逐
-/// 本回退。
+/// 文件名落盘）。`target` 决定 filter 与 staging 命名。返回每本结果；任一
+/// 本缺少输出即返回 Err，由调用方决定逐本回退。
 pub fn run_batch_convert(
     pairs: &[(PathBuf, PathBuf)],
     work_dir: &Path,
+    target: BatchTarget,
     timeout: Duration,
 ) -> Result<(String, Vec<Value>)> {
     ensure!(!pairs.is_empty(), "批次转换没有输入");
@@ -198,7 +237,13 @@ pub fn run_batch_convert(
     // 回各本；输出目录必须先清空同名残留。
     let mut expected = Vec::with_capacity(pairs.len());
     for (index, (input, _)) in pairs.iter().enumerate() {
-        let name = format!("book-{index:04}.xlsx");
+        let name = format!(
+            "book-{index:04}.{}",
+            input
+                .extension()
+                .and_then(|value| value.to_str())
+                .unwrap_or(target.staging_extension())
+        );
         let link = out_dir.join(&name);
         let _ = fs::remove_file(&link);
         fs::hard_link(input, &link).with_context(|| {
@@ -222,7 +267,7 @@ pub fn run_batch_convert(
             work_dir.join("profile").display()
         ))
         .arg("--convert-to")
-        .arg("xlsx:Calc MS Excel 2007 XML")
+        .arg(target.filter())
         .arg("--outdir")
         .arg(&out_dir);
     for (input, _) in pairs {
@@ -235,6 +280,13 @@ pub fn run_batch_convert(
             command.process_group(0);
         }
     }
+    let convert_log = work_dir.join("batch-convert.log");
+    command.stdout(
+        fs::OpenOptions::new().create(true).append(true).open(&convert_log)?,
+    );
+    command.stderr(
+        fs::OpenOptions::new().create(true).append(true).open(&convert_log)?,
+    );
     let convert_log = work_dir.join("batch-convert.log");
     command.stdout(
         fs::OpenOptions::new().create(true).append(true).open(&convert_log)?,
@@ -259,6 +311,71 @@ pub fn run_batch_convert(
     }
     let _ = started_at;
     Ok(("LibreOffice".to_owned(), stages))
+}
+
+/// 批内文本提取（docx 保真校验，移植自 Rust-Tools e2973e6）：整个批次各
+/// 一次 `--convert-to txt:Text`，而非每本两次冷启动。`inputs` 为已放入
+/// staging 的文档（文件名互不相同），返回与 inputs 等长的纯文本列表。
+pub fn run_batch_text_extract(
+    inputs: &[PathBuf],
+    work_dir: &Path,
+    group: &str,
+    timeout: Duration,
+) -> Result<Vec<String>> {
+    ensure!(!inputs.is_empty(), "批次文本提取没有输入");
+    let out_dir = work_dir.join(format!("text-{group}"));
+    fs::create_dir_all(&out_dir).context("创建批次文本输出目录")?;
+    let mut command = Command::new("soffice");
+    command
+        .args([
+            "--headless",
+            "--nologo",
+            "--nodefault",
+            "--nolockcheck",
+            "--nofirststartwizard",
+            "--norestore",
+        ])
+        .arg(format!(
+            "-env:UserInstallation=file://{}",
+            work_dir.join("profile").display()
+        ))
+        .arg("--convert-to")
+        .arg("txt:Text")
+        .arg("--outdir")
+        .arg(&out_dir);
+    for input in inputs {
+        command.arg(input);
+    }
+    {
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            command.process_group(0);
+        }
+    }
+    let convert_log = work_dir.join(format!("text-extract-{group}.log"));
+    command.stdout(
+        fs::OpenOptions::new().create(true).append(true).open(&convert_log)?,
+    );
+    command.stderr(
+        fs::OpenOptions::new().create(true).append(true).open(&convert_log)?,
+    );
+    let status = run_with_timeout(&mut command, timeout, "批次文本提取")?;
+    ensure!(status.success(), "批次文本提取失败（exit={status}）");
+    let mut texts = Vec::with_capacity(inputs.len());
+    for input in inputs {
+        let stem = input.file_stem().context("批次文本提取输入缺少文件名")?;
+        let text_path = out_dir.join(stem).with_extension("txt");
+        ensure!(
+            text_path.is_file(),
+            "批次文本提取未生成 {}",
+            text_path.display()
+        );
+        texts.push(fs::read_to_string(&text_path).with_context(|| {
+            format!("read extracted Word text {}", text_path.display())
+        })?);
+    }
+    Ok(texts)
 }
 
 /// 带超时地运行一个 soffice 命令；超时终止本任务创建的进程组。
