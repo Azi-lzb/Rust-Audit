@@ -930,3 +930,11 @@ Linux S1-F01 公式重算按 rules/13 §4.5 实现批次会话复用，替代“
 实测（WSL Ubuntu 24.04，LibreOffice 24.2.7.2，合成 400 行公式工作簿，预热 1 轮 + 3 测量轮，输入 SHA-256 前后一致，输出可用 openpyxl 重开且表名/公式数与输入一致）：2 本逐本 3.07s / 批次 3.69s（批次含 profile 初始化与 2s 沉降固定成本，约 3 本起收益为正）；10 本 15.34s → 4.29s（省 72%）；33 本 50.58s → 6.42s（省 87%，平均每本 1.53s → 0.19s）。批次内每本阶段计时不可得（convert-to 单进程顺序转换），按批记录 convert_ms 与逐本状态。报告见 `probe/reports/s1f1_lo_batch_convert_20261031.json`，复跑入口 `tests/compare/perf_s1f1_lo_batch_session_20261031.py` 与 `tests/compare/wsl_run_perf_full.sh`。
 
 验证与边界：Windows host 与 WSL Linux 双侧 `cargo check`/`cargo build --release` 通过；`cargo test -p lo-convert` 21/21、`audit-core --lib` 定向 s1_recalculation 5/5、s1_f1 4/4（2 ignored 为 Windows COM 前置）、served_page 1/1。未运行全 workspace 回归、真实机构输入与麒麟/UOS 目标机验证；WSL 实测不等同 Kylin/UOS 验收。未提交、未 push。
+
+### 2026-10-31 增量：doc→docx 转换现状记录与将来接入的复用方案（未实施）
+
+应用户要求核查 doc→docx 与 xls→xlsx 重算的调用模式差异，结论记录如下，供 D01 接入生产时使用。当前 **doc→docx 没有任何生产调用方**：audit-core 仅定义 `WordComSession`（供 lo-convert sidecar 的 Windows COM 分支引用），无 `lo-convert convert --to docx` 调用点；D01 在 rules/13 为“仅已登记方向”（unverified）；Windows 标准构建/打包不要求或包含 lo-convert。因此本次不修改代码，仅登记现状。
+
+现状（lo-convert sidecar 内，LO 路径）：每次 doc→docx 转换 = **3 次 soffice 冷启动、各自全新 profile**——1 次 `--convert-to docx:Office Open XML Text` 转换，加 `extract_word_text_lo` 对源/输出各 1 次 `--convert-to txt:Text` 文本校验。Windows 路径：每次转换创建一个 `Word.Application` 会话（WordComSession，Drop 即退出），同样未批次复用。两者均不符合 §4.5 的批次会话要求，与 xls→xlsx 重算修复前的形态一致。
+
+将来把 doc→docx 接入生产功能时的既定方案（工作量小，依赖已就位）：复用 `sidecar/lo-convert/src/lo_batch.rs` 的 `LoWarmProfileSession`——需小幅参数化（当前 filter/输出文件名写死 xlsx，需按目标类型选择 `docx:Office Open XML Text` 与 .docx 命名），转换与两次文本提取共用同一暖 profile，单次转换成本从 3 次冷启动降为约 1 次启动 + 3 次同进程内转换；Windows 侧 Word COM 改为批次会话（§4.5 同样要求 Word 会话按批复用）；多输入单实例批次（`run_batch_convert` 模式）同样适用于纯批量转换场景。接入时按 §4.5 与 rules/13 第 6 节对 D01 单独登记验收（当前 unverified），未验收前不得成为任何功能的默认路径。
