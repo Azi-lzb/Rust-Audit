@@ -288,7 +288,13 @@ impl AppSettings {
             fs::create_dir_all(parent)
                 .with_context(|| format!("创建设置目录：{}", parent.display()))?;
         }
-        let temporary = path.with_extension("json.tmp");
+        // 唯一临时名：并发调用方（多线程测试/多请求）共用同一目录时，
+        // 固定 tmp 名会让后到的 rename 找不到已被先到者改名的文件。
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|value| value.as_nanos())
+            .unwrap_or_default();
+        let temporary = path.with_extension(format!("json.tmp-{}-{nonce}", std::process::id()));
         fs::write(&temporary, serde_json::to_vec_pretty(&settings)?)
             .with_context(|| format!("写入设置临时文件：{}", temporary.display()))?;
         fs::rename(&temporary, &path)
@@ -442,6 +448,7 @@ mod tests {
             std::process::id(),
             nonce
         ));
+        let previous_state_dir = std::env::var("AUDIT_STATE_DIR").ok();
         std::env::set_var("AUDIT_STATE_DIR", &dir);
         let saved = AppSettings::store("wps", "umya").expect("valid selection must save");
         assert_eq!(saved.calc_engine.as_str(), "wps");
@@ -452,6 +459,9 @@ mod tests {
         // A rejected store must not overwrite the previously saved selection.
         assert_eq!(AppSettings::load().calc_engine.as_str(), "wps");
         std::env::remove_var("AUDIT_STATE_DIR");
+        if let Some(previous) = previous_state_dir {
+            std::env::set_var("AUDIT_STATE_DIR", previous);
+        }
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

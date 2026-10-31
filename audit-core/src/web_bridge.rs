@@ -128,6 +128,8 @@ struct UiState {
 
 impl AppState {
     fn new(config_path: PathBuf) -> Self {
+        #[cfg(test)]
+        tests::isolate_settings_state_dir();
         let config_path = config_path.to_string_lossy().into_owned();
         let s5_state = s5_web::initial_state(Path::new(&config_path));
         let central_common_config = Path::new(&config_path)
@@ -293,6 +295,9 @@ impl AppState {
                     .clone(),
             );
         // 恢复上一次会话保存的用户偏好与路径（无效路径仅清空自身字段）。
+        // 测试构建下跳过：并行测试会把各自选择的路径持久化到同一个测试
+        // 设置文件，恢复会把别的测试的临时路径回灌进本测试状态。
+        #[cfg(not(test))]
         crate::app_settings::apply_preferences_to_state(&mut state);
         Self {
             ui: Arc::new(Mutex::new(UiState {
@@ -7035,7 +7040,31 @@ mod tests {
         time::{Duration, SystemTime, UNIX_EPOCH},
     };
 
+    /// 把用户级设置文件（settings.json）隔离到测试专用目录：并发测试线程
+    /// 触碰白名单键都会触发持久化，不隔离会互相竞争并覆盖用户真实设置。
+    /// 整个测试进程只设定一次；并发写安全由 app_settings 的唯一 tmp 文件名
+    /// 与原子改名保证。
+    pub(crate) fn isolate_settings_state_dir() {
+        static ISOLATED: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+        // 仅在首个测试状态创建时设定一次；此后自行设置 AUDIT_STATE_DIR 的
+        // 测试（如高级设置持久化测试）拥有自己的目录，不再被本助手覆盖。
+        // 并发写安全由 app_settings 的唯一 tmp 文件名与原子改名保证。
+        ISOLATED.get_or_init(|| {
+            let nonce = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|value| value.as_nanos())
+                .unwrap_or_default();
+            let path = std::env::temp_dir().join(format!(
+                "audit-web-bridge-settings-{}-{nonce}",
+                std::process::id()
+            ));
+            std::env::set_var("AUDIT_STATE_DIR", &path);
+            path.to_string_lossy().into_owned()
+        });
+    }
+
     fn test_state() -> AppState {
+        isolate_settings_state_dir();
         AppState::new(PathBuf::from("missing-test-config.xlsx"))
     }
 
