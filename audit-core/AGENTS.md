@@ -8,6 +8,7 @@ The repository-root AGENTS.md is authoritative for independent development, buil
 - Use ../DEVELOPMENT_GOAL.md for current feature states and numbering, AUDIT_RUST_V2_BUSINESS_REQUIREMENTS.md for the confirmed business scope, and MIGRATION_INVENTORY.md for dated historical evidence. Update the current state when a feature changes; do not reinterpret older reports as acceptance of the current version.
 - Protect original files, configuration and templates. Real data stays local and ignored. Prefer new output paths and explicit failures over silent loss or false success. Conditional-format triggers and unsupported rules affecting business judgments must be reported.
 - Preserve S1's independent audit-copy/explicit recalculation requirements and S5's Rust direct-rule approach. Existing optional external engines must be capability-gated; they are not universal prerequisites for unrelated workflows.
+- When an Audit operation invokes Excel, WPS, or LibreOffice for conversion/calculation, follow `../rules/13_Rust_Excel读写修改与引擎路由规范.md` §4.5: reuse one owned engine session across sequential workbooks in a logical batch; prefer native Rust COM for validated Windows Excel/WPS operations and a reusable isolated UNO session for LibreOffice. Do not infer operation support from a different engine or benchmark.
 - Do not automatically resume deferred features, expand unrelated Excel capabilities, or start full-source/whole-project comparison. Check only the call chain and evidence relevant to the requested feature.
 
 ## Frontend and verification
