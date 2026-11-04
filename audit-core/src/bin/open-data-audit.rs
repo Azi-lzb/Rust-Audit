@@ -80,8 +80,9 @@ use std::{
     about = "Rust implementation of Open-Data-Audit workflows"
 )]
 struct Cli {
+    /// 省略子命令（例如双击 exe）时启动图形界面；命令行使用保持原语义。
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -970,7 +971,15 @@ fn main() {
 
 fn run() -> Result<()> {
     let cli = Cli::parse();
-    match cli.command {
+    // 双击 exe（无参数）默认启动 GUI，而不是打印帮助后退出。
+    let command = match cli.command {
+        Some(command) => command,
+        None => Command::Serve(ServeArgs {
+            port: 8750,
+            config: None,
+        }),
+    };
+    match command {
         Command::AcceptanceRun(arguments) => {
             let report = run_acceptance_manifest(&arguments.manifest, &arguments.output_dir)?;
             println!("{}", serde_json::to_string_pretty(&report)?);

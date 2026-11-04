@@ -65,12 +65,20 @@ pub fn resolve_default_config_path() -> Result<PathBuf> {
     }
 
     let current_directory = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let directories = vec![
+    // 双击 exe 启动时工作目录可能是任意位置，因此优先查找可执行文件同级
+    // 的 config/默认配置（发行包布局），再回退到源码树的相对路径。
+    let mut directories = Vec::new();
+    if let Ok(executable) = std::env::current_exe() {
+        if let Some(exe_directory) = executable.parent() {
+            directories.push(exe_directory.join("config/默认配置"));
+        }
+    }
+    directories.extend(vec![
         current_directory.join("audit-core/config-real"),
         current_directory.join("audit-core/config/默认配置"),
         current_directory.join("config-real"),
         current_directory.join("config/默认配置"),
-    ];
+    ]);
     #[cfg(target_os = "linux")]
     let directories = {
         let mut directories = directories;
