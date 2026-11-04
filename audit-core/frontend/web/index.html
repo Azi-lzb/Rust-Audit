@@ -312,10 +312,8 @@ select:disabled{opacity:.6;cursor:not-allowed}
 body[data-enabled-systems]:not(.distribution-ui-unlocked):not([data-enabled-systems~="S1"]) .sidenav-item[data-system="S1"],
 body[data-enabled-systems]:not(.distribution-ui-unlocked):not([data-enabled-systems~="S2"]) .sidenav-item[data-system="S2"],
 body[data-enabled-systems]:not(.distribution-ui-unlocked):not([data-enabled-systems~="S3"]) .sidenav-item[data-system="S3"],
-body[data-enabled-systems]:not(.distribution-ui-unlocked):not([data-enabled-systems~="S4"]) .sidenav-item[data-system="S4"],
 body[data-enabled-systems]:not(.distribution-ui-unlocked):not([data-enabled-systems~="S5"]) .sidenav-item[data-system="S5"],
 body.distribution-s1s2-only:not(.distribution-ui-unlocked) .sidenav-item[data-system="S3"],
-body.distribution-s1s2-only:not(.distribution-ui-unlocked) .sidenav-item[data-system="S4"],
 body.distribution-s1s2-only:not(.distribution-ui-unlocked) .sidenav-item[data-system="S5"]{display:none!important}
 body.distribution-ui-unlocked .sidenav-item[data-system]{display:flex!important}
 /* 报表采集系统页 */
@@ -770,10 +768,6 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
     S3 大集中统计系统
   </button>
-  <button type="button" class="sidenav-item" data-page="dijin" data-system="S4" onclick="openDijinWorkbench()" title="地金系统">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 10h1M14 10h1M9 14h1M14 14h1M10 21v-3h4v3"/></svg>
-    S4 地金系统
-  </button>
   <button type="button" class="sidenav-item" data-page="settings" onclick="openSettingsWorkbench()" title="设置中心">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1.51 1 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     设置中心
@@ -1068,15 +1062,6 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
     </div>
   </div>
 </section><!-- /page-central -->
-
-<section class="page" id="page-dijin">
-  <main class="layout">
-    <section class="card">
-      <h3>S4 地金系统</h3>
-      <p class="about-body">地金工具的功能与操作流程正在整理中。</p>
-    </section>
-  </main>
-</section>
 
 <section class="page" id="page-configured">
   <div id="s5-panel-f1">
@@ -1811,8 +1796,8 @@ function showSettingsPaneLoading(){
 }
 /* ---------- 主界面页面切换（逐笔统计 / 报表采集 / 设置中心） ---------- */
 let currentPage='audit';
-const developerPages={audit:'S1',collect:'S2',central:'S3',dijin:'S4',configured:'S5'};
-function isS1S2Edition(){return !isSystemVisible('S3')&&!isSystemVisible('S4')}
+const developerPages={audit:'S1',collect:'S2',central:'S3',configured:'S5'};
+function isS1S2Edition(){return !isSystemVisible('S3')}
 function loadDistributionConfig(){
   const node=document.getElementById('audit-distribution-config');
   if(node&&node.textContent){try{return JSON.parse(node.textContent)}catch(e){}}
@@ -1851,7 +1836,7 @@ function includesUndeliveredSystemInfo(text){
     if((system.contentKeywords||[]).some(keyword=>keyword&&value.toLowerCase().includes(String(keyword).toLowerCase())))return true;
   }
   if(systems.length)return false;
-  return (!isUpdateSystemIncluded('S3')||!isUpdateSystemIncluded('S4')||!isUpdateSystemIncluded('S5'))&&/\bS[345](?:\b|F\d|CFG)|(?:^|[^\d.])3\.[0-3](?=$|[^\d.])|大集中统计系统|地金|逐笔统计系统（配置版）|配置规则审核|模板公式审核|大集中比较|大集中指标查询|大集中通用配置|大集中执行比较|大集中本期数值核对|大集中指标比较拆分|两期数据\s*[⇨→]|比较文件\s*[⇨→]|机构说明\s*[⇨→]|本期数值核对|指标比较拆分/i.test(value);
+  return (!isUpdateSystemIncluded('S3')||!isUpdateSystemIncluded('S5'))&&/\bS[35](?:\b|F\d|CFG)|(?:^|[^\d.])3\.[0-3](?=$|[^\d.])|大集中统计系统|逐笔统计系统（配置版）|配置规则审核|模板公式审核|大集中比较|大集中指标查询|大集中通用配置|大集中执行比较|大集中本期数值核对|大集中指标比较拆分|两期数据\s*[⇨→]|比较文件\s*[⇨→]|机构说明\s*[⇨→]|本期数值核对|指标比较拆分/i.test(value);
 }
 function updateItemInfo(item){
   const value=String(item||'');
@@ -1866,13 +1851,13 @@ function updateItemVisible(item){
   return info.systems.some(isUpdateSystemIncluded);
 }
 function editionUpdateEntries(entries){
-  if(['S1','S2','S3','S4','S5'].every(isUpdateSystemIncluded))return entries;
+  if(['S1','S2','S3','S5'].every(isUpdateSystemIncluded))return entries;
   return entries.map(entry=>({...entry,groups:(entry.groups||[]).map(group=>({
     ...group,items:(group.items||[]).filter(updateItemVisible)
   })).filter(group=>group.items.length)})).filter(entry=>entry.groups.length);
 }
 function editionFaqItems(items){
-  if(['S1','S2','S3','S4','S5'].every(isSystemVisible))return items;
+  if(['S1','S2','S3','S5'].every(isSystemVisible))return items;
   const systems=DISTRIBUTION_CONFIG&&Array.isArray(DISTRIBUTION_CONFIG.systems)?DISTRIBUTION_CONFIG.systems:[];
   return items.map(item=>({...item,answer:!isSystemVisible('S3')&&item.answerS1S2?item.answerS1S2:item.answer}))
     .filter(item=>{
@@ -2690,7 +2675,7 @@ function renderGuide(){
 let FAQ_ALL=[];
 let FAQ_CATEGORY='全部';
 let FAQ_KEYWORD='';
-const FAQ_CATEGORY_ORDER=['全部','准备与数据','逐笔统计系统','报表采集系统','大集中统计系统','地金系统','通用'];
+const FAQ_CATEGORY_ORDER=['全部','准备与数据','逐笔统计系统','报表采集系统','大集中统计系统','通用'];
 function setFaqCategory(cat){
   FAQ_CATEGORY=cat;
   var body=document.getElementById('updatesBody');
@@ -3525,7 +3510,7 @@ let distributionUnlockClicks=[];
 function openAbout(){distributionUnlockClicks=[];document.getElementById('aboutMask').style.display='flex'}
 function closeAbout(){document.getElementById('aboutMask').style.display='none'}
 function registerDistributionUnlockClick(){
-  if(document.getElementById('aboutMask').style.display!=='flex'||['S1','S2','S3','S4','S5'].every(isSystemVisible))return;
+  if(document.getElementById('aboutMask').style.display!=='flex'||['S1','S2','S3','S5'].every(isSystemVisible))return;
   const now=Date.now();
   distributionUnlockClicks=distributionUnlockClicks.filter(t=>now-t<2000);
   distributionUnlockClicks.push(now);
@@ -3588,7 +3573,6 @@ let pendingConfirm=null;
 function openAuditEgg(){registerAuditEggClick();}
 function openCollectWorkbench(){requestSystemNavigation('S2','collect')}
 function openCentralWorkbench(){requestSystemNavigation('S3','central')}
-function openDijinWorkbench(){requestSystemNavigation('S4','dijin')}
 const CENTRAL_PATHS=[["centralCommonConfig","centralCommonConfigName"],["centralComparisonConfig","centralComparisonConfigName"],["centralCrossConfig","centralCrossConfigName"],["centralFormsConfig","centralFormsConfigName"],["centralCur","centralCurName"],["centralPre","centralPreName"],["centralOutput","centralOutputName"],["centralCrossCur","centralCrossCurName"],["centralCrossOutput","centralCrossOutputName"],["centralCompareFile","centralCompareFileName"],["centralExplainFile","centralExplainFileName"],["centralFormOutput","centralFormOutputName"]];
 function renderCentral(s){
   CENTRAL_PATHS.forEach(([key,id])=>{

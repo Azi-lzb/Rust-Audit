@@ -135,7 +135,7 @@ S3 的辅助配置检查入口已补齐：GUI 显示 3.0–3.3 四个检查按�
 
 ## 其他范围与交付
 
-- **S4：已明确暂缓。** 保留当前 Rust + HTML GUI；TUI 是可选未来方向，不在本轮实施。
+- **S4：已移除（2026-11-04）。** 此前无任何实现，仅前端占位页与导航按钮，已按用户要求删除；如恢复需重新立项。保留当前 Rust + HTML GUI；TUI 是可选未来方向，不在本轮实施。
 - 项目内置 Excel-Core 源码和独立 Cargo workspace；外部第三方 crates 仍需要相应 Cargo 缓存或正常依赖获取。旧 Python、Main 和 Codex 工作树不是构建或运行路径。可选外部计算引擎/隔离 worker 只用于其明确支持的功能，不能推断所有路径都可在无外部引擎时执行。
 - Windows：按 Excel 引擎 Goal 的最终复验再次运行 `build-release.bat`，成功生成主程序与更新后的重算 sidecar 并复制到 `dist`，日志 `F:\RustBuild\audit\release-excel-engine-s1f3-completion-20261029.log`；`open-data-audit.exe --version` 为 0.1.0。新 Release sidecar 的 Excel COM 合成 E2E 1/1 通过；F1 真实 Umya 探针 3/3、F3 Release 真实恢复探针 1/1 通过。ZIP `dist/open-data-audit-windows-x64-20261028-122102.zip` 仍是 2026-10-28 的包，未在本轮重打包。
 - Linux：`linux-x86_64` 生产能力证据已生成，未知平台继续失败关闭。最终 musl deb 为 `dist/linux-delivery/open-data-audit_0.1.0_amd64.deb`（13,498,066 字节），在 Debian GLIBC 2.28 / dpkg-deb 1.19.8 等价容器通过安装、静态链接、CLI、Web API、S3-F1/F2/F5 合成 CLI 冒烟；无 `soffice` 时重算侧车明确报错。麒麟 V10/UOS V20 实机尚未验收。
