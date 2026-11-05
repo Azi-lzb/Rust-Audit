@@ -721,7 +721,12 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
 .log-head{display:flex;align-items:center;gap:10px;margin:12px 0 7px}
 .log-head>span{font-size:12.5px;font-weight:600;color:var(--text-2)}
 .log-head .status{margin-left:auto;padding:3px 10px;font-size:11.5px;gap:6px}
-.log{box-sizing:border-box;width:100%;height:164px;resize:none;overflow:auto;background:var(--console-bg);color:var(--console-text);border:1px solid var(--console-border);border-radius:var(--radius-sm);padding:12px 14px;font:12px/1.7 Consolas,"Cascadia Code","Microsoft YaHei",monospace;user-select:text;-webkit-user-select:text}
+.log{box-sizing:border-box;width:100%;height:164px;resize:none;overflow-y:auto;overflow-x:auto;background:var(--console-bg);color:var(--console-text);border:1px solid var(--console-border);border-radius:var(--radius-sm);padding:12px 14px;font:12px/1.7 Consolas,"Cascadia Code","Microsoft YaHei",monospace;user-select:text;-webkit-user-select:text;white-space:pre-wrap;word-break:break-all}
+.log .log-line{margin:0 0 2px}
+.log .log-line.log-error{color:#e5484d;font-weight:600}
+.log .log-line.log-warn{color:#f5a623}
+.log .log-line.log-time{color:var(--text-2);opacity:.75;margin-right:6px}
+.log-copy-buffer{position:absolute;left:-9999px;top:0;width:1px;height:1px;opacity:0}
 /* ---------- 进度条：运行记录 与 黑框 之间，按任务事件衰减推进 ---------- */
 .progress{display:flex;align-items:center;gap:10px;margin:0 0 8px}
 .progress[hidden]{display:none}
@@ -1256,6 +1261,13 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
   <div class="log-head">
     <span>运行记录</span>
     <div class="status" id="status"><span class="status-dot"></span><span id="statusText">正在加载…</span></div>
+    <select class="gen-select" id="logLevelFilter" onchange="renderLog()" title="按级别筛选日志" style="padding:2px 6px;font-size:12px;height:26px">
+      <option value="all">全部级别</option>
+      <option value="warn">警告及以上</option>
+      <option value="error">仅错误</option>
+    </select>
+    <button class="btn tiny" onclick="saveLogToFile()">保存日志</button>
+    <button class="btn tiny" onclick="clearLogView()">清空显示</button>
     <button class="btn tiny" id="copyLog" onclick="copyLog()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg><span id="copyLabel">复制全部</span></button>
     <button class="btn tiny danger" id="cancelExecution" onclick="cancelExecution()" hidden>终止执行</button>
     <button class="btn tiny" onclick="openAbout()">关于</button>
@@ -1265,7 +1277,8 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
     <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
     <span class="progress-pct" id="progressPct"></span>
   </div>
-  <textarea class="log" id="log" readonly spellcheck="false"></textarea>
+  <div class="log" id="log" tabindex="0"></div>
+  <textarea id="logCopyBuffer" class="log-copy-buffer" aria-hidden="true"></textarea>
 </footer>
 
 <script>
@@ -4400,18 +4413,22 @@ async function startS1F3Recovery(){
 function startDagMerge(){setMergeMode(true,false);startDagFlow('dag:组合联合核查表')}
 async function copyLog(){
   const log=document.getElementById('log');
-  log.focus();
-  log.select();
-  try{log.setSelectionRange(0,log.value.length)}catch(e){}
+  const text=log.innerText||'';
   let ok=false;
-  try{ok=document.execCommand('copy')}catch(e){}
+  try{
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      await navigator.clipboard.writeText(text);
+      ok=true;
+    }
+  }catch(e){}
   if(!ok){
-    try{
-      if(navigator.clipboard&&navigator.clipboard.writeText){
-        await navigator.clipboard.writeText(log.value);
-        ok=true;
-      }
-    }catch(e){}
+    const buffer=document.getElementById('logCopyBuffer');
+    if(buffer){
+      buffer.value=text;
+      buffer.focus();buffer.select();
+      try{ok=document.execCommand('copy')}catch(e){}
+      buffer.value='';
+    }
   }
   const b=document.getElementById('copyLabel');
   b.textContent=ok?'已复制':'复制失败';
@@ -4424,21 +4441,54 @@ async function cancelExecution(){
   try{await bridge.api.cancel_execution()}catch(e){alert('终止请求失败：'+((e&&e.message)?e.message:String(e)))}
   await refresh();
 }
+/* 日志渲染：按级别着色与前缀；签名未变时跳过重建，避免 800ms 轮询全量重排。 */
 function renderLog(){
   const el=document.getElementById('log');
   const entries=(state.log||[]).slice();
+  const filter=document.getElementById('logLevelFilter');
+  const minLevel=filter?filter.value:'all';
+  const rank={all:0,warn:1,error:2};
   const isPerformanceLine=line=>/(耗时分解：|引擎生命周期：|非节点收尾：|引擎启动与流程收尾|已连接表格引擎：|正在启动表格引擎：|条件格式判定方式：|规则读取方式：|外部文件添加方式：|公式校验复制方式：|^\s*Renderer:|\bWriter:|\bCalculator:|^\s*总计\s)/.test(line);
-  const text=entries.map(entry=>{
+  const rendered=[];
+  for(const entry of entries){
     const lines=String(entry.text||'').split(/\r?\n/);
     const visible=entry.detail
       ?(showRunDetailLogs?lines:(showPerformanceDiagnostics?lines.filter(isPerformanceLine):[]))
       :lines;
-    return visible.filter(line=>showPerformanceDiagnostics||!isPerformanceLine(line)).join('\n');
-  }).filter(Boolean).join('\n\n');
-  if(text===el.value)return; // 内容未变时不重写，避免清掉用户的拖选和滚动位置
+    const body=visible.filter(line=>showPerformanceDiagnostics||!isPerformanceLine(line)).join('\n');
+    if(!body)continue;
+    const level=entry.level||'info';
+    if(rank[minLevel]&&rank[level]!==undefined&&rank[level]<rank[minLevel])continue;
+    rendered.push({level,body,time:entry.time||''});
+  }
+  const last=rendered.length?rendered[rendered.length-1]:null;
+  const signature=rendered.length+'|'+(last?last.body.slice(0,80)+'|'+(last.time||''):'');
+  if(el.dataset.signature===signature&&el.children.length)return;
   const atBottom=el.scrollTop+el.clientHeight>=el.scrollHeight-8;
-  el.value=text;
+  el.innerHTML=rendered.map(item=>
+    '<div class="log-line log-'+esc(item.level)+'">'
+    +(item.time?'<span class="log-time">['+esc(item.time)+']</span>':'')
+    +(item.level!=='info'?'<span class="log-time">['+esc(item.level.toUpperCase())+']</span>':'')
+    +esc(item.body)+'</div>'
+  ).join('');
+  el.dataset.signature=signature;
   if(atBottom)el.scrollTop=el.scrollHeight;
+}
+function clearLogView(){
+  const el=document.getElementById('log');
+  el.innerHTML='';
+  el.dataset.signature='';
+}
+function saveLogToFile(){
+  const el=document.getElementById('log');
+  const text=el.innerText||'';
+  const blob=new Blob([text],{type:'text/plain;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  const stamp=new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+  a.download='运行日志_'+stamp+'.txt';
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),3000);
 }
 function renderFiles(s){
   const list=document.getElementById('fileList'),files=s.sourceFiles||[];

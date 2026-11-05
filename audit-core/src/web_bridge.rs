@@ -569,6 +569,7 @@ fn dispatch_api(
         "toggle_period_output_pin" => toggle_period_output_pin(state),
         "browse_dir" => browse_dir(state, args),
         "start_period_compare_v2" => start_period_compare_v2(state),
+        "cancel_execution" => cancel_execution(state),
         "update" => update_state(state, args),
         _ => Err(ApiError::new(
             StatusCode::NOT_IMPLEMENTED,
@@ -2142,7 +2143,7 @@ fn start_s1_f1_workflow(state: &AppState, args: &[Value]) -> std::result::Result
         ui.value["busy"] = json!(false);
         ui.value["s1F1OutputPath"] = json!("");
         ui.value["status"] = json!("S1-F01 启动失败");
-        push_log(&mut ui.value, format!("启动 S1-F01 失败：{error}"));
+        push_error_log(&mut ui.value, format!("启动 S1-F01 失败：{error}"));
         return Err(ApiError::internal(format!("启动 S1-F01 失败：{error}")));
     }
     Ok(json!({"accepted": true}))
@@ -2211,7 +2212,7 @@ fn start_s1_f3_workflow(state: &AppState, args: &[Value]) -> std::result::Result
         let mut ui = state.lock();
         ui.value["busy"] = json!(false);
         ui.value["status"] = json!("S1-F3 启动失败");
-        push_log(&mut ui.value, format!("启动 S1-F3 失败：{error}"));
+        push_error_log(&mut ui.value, format!("启动 S1-F3 失败：{error}"));
         return Err(ApiError::internal(format!("启动 S1-F3 失败：{error}")));
     }
     Ok(json!({"accepted": true}))
@@ -2493,6 +2494,7 @@ fn run_s1_f3_worker_with_store(
 }
 
 fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest) {
+    let worker_started = Instant::now();
     let preflight_started = Instant::now();
     let mut files = Vec::with_capacity(request.source_files.len());
     let mut accepted = Vec::new();
@@ -2823,8 +2825,10 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest) {
                 )
             } else if output.result_path.is_some() {
                 format!(
-                    "S1-F01 审核完成：公式异常 {} 条、条件格式异常 {} 条；结果已保存",
-                    output.formula_issue_count, output.conditional_issue_count
+                    "S1-F01 审核完成：公式异常 {} 条、条件格式异常 {} 条；总耗时 {:.1} 秒；结果已保存",
+                    output.formula_issue_count,
+                    output.conditional_issue_count,
+                    worker_started.elapsed().as_secs_f32()
                 )
             } else {
                 format!(
@@ -4323,7 +4327,7 @@ fn start_dag_flow(state: &AppState, args: &[Value]) -> std::result::Result<Value
         let mut ui = state.lock();
         ui.value["busy"] = json!(false);
         ui.value["status"] = json!("S1-F02 汇总启动失败");
-        push_log(&mut ui.value, format!("启动 S1-F02 后台任务失败：{error}"));
+        push_error_log(&mut ui.value, format!("启动 S1-F02 后台任务失败：{error}"));
         return Err(ApiError::internal(format!(
             "启动 S1-F02 后台任务失败：{error}"
         )));
@@ -4721,7 +4725,7 @@ fn start_central_comparison(state: &AppState) -> std::result::Result<Value, ApiE
         let mut ui = state.lock();
         ui.value["busy"] = json!(false);
         ui.value["status"] = json!("大集中执行比较失败");
-        push_log(&mut ui.value, format!("启动 S3-F01 比较线程失败：{error}"));
+        push_error_log(&mut ui.value, format!("启动 S3-F01 比较线程失败：{error}"));
         return Err(ApiError::internal(format!(
             "启动 S3-F01 比较线程失败：{error}"
         )));
@@ -4809,7 +4813,7 @@ fn run_s3_execution_compare_worker(
         }
         Err(error) => {
             ui.value["status"] = json!("大集中执行比较失败");
-            push_log(
+            push_error_log(
                 &mut ui.value,
                 format!("S3-F01 执行比较失败，未报告成功结果：{error:#}"),
             );
@@ -4947,7 +4951,7 @@ fn start_central_explanation_export(state: &AppState) -> std::result::Result<Val
         let mut ui = state.lock();
         ui.value["busy"] = json!(false);
         ui.value["status"] = json!("指标说明导出失败");
-        push_log(&mut ui.value, format!("启动 S3-F02 导出线程失败：{error}"));
+        push_error_log(&mut ui.value, format!("启动 S3-F02 导出线程失败：{error}"));
         return Err(ApiError::internal(format!(
             "启动 S3-F02 导出线程失败：{error}"
         )));
@@ -4999,7 +5003,7 @@ fn run_s3_explanation_export_worker(
         }
         Err(error) => {
             ui.value["status"] = json!("指标说明导出失败");
-            push_log(&mut ui.value, format!("S3-F02 指标说明导出失败：{error:#}"));
+            push_error_log(&mut ui.value, format!("S3-F02 指标说明导出失败：{error:#}"));
             push_detail_log(
                 &mut ui.value,
                 format!(
@@ -5400,7 +5404,7 @@ fn start_central_indicator_split(state: &AppState) -> std::result::Result<Value,
         let mut ui = state.lock();
         ui.value["busy"] = json!(false);
         ui.value["status"] = json!("S3-F05 任务启动失败");
-        push_log(&mut ui.value, format!("启动 S3-F05 任务线程失败：{error}"));
+        push_error_log(&mut ui.value, format!("启动 S3-F05 任务线程失败：{error}"));
         return Err(ApiError::internal(format!(
             "启动 S3-F05 任务线程失败：{error}"
         )));
@@ -5878,7 +5882,7 @@ fn start_central_cross_period(state: &AppState) -> std::result::Result<Value, Ap
         let mut ui = state.lock();
         ui.value["busy"] = json!(false);
         ui.value["status"] = json!("本期数值核对失败");
-        push_log(&mut ui.value, format!("启动 S3-F04 任务线程失败：{error}"));
+        push_error_log(&mut ui.value, format!("启动 S3-F04 任务线程失败：{error}"));
         return Err(ApiError::internal(format!(
             "启动 S3-F04 任务线程失败：{error}"
         )));
@@ -5948,7 +5952,7 @@ fn run_s3_current_value_check_worker(
         }
         Err(error) => {
             ui.value["status"] = json!("本期数值核对失败");
-            push_log(&mut ui.value, format!("S3-F04 本期数值核对失败：{error:#}"));
+            push_error_log(&mut ui.value, format!("S3-F04 本期数值核对失败：{error:#}"));
             push_detail_log(
                 &mut ui.value,
                 format!(
@@ -6884,7 +6888,7 @@ fn refresh_period_pairs(state: &AppState) {
         }
         Err(error) => {
             ui.value["periodPairs"] = json!([]);
-            push_log(&mut ui.value, format!("两期文件配对失败：{error:#}"));
+            push_error_log(&mut ui.value, format!("两期文件配对失败：{error:#}"));
         }
     }
     if !warning.is_empty() && warning != old_warning {
@@ -6964,25 +6968,74 @@ fn period_path_label(kind: &str) -> &'static str {
     }
 }
 
-fn push_detail_log(state: &mut Value, message: String) {
+/// 运行日志环形缓冲上限。2000 条覆盖 S1 批量任务（33 文件 × 每文件多条）
+/// 加 S3 阶段明细，内存占用约 2MB 以内；旧的最早条目被挤出属预期行为。
+const LOG_CAPACITY: usize = 2000;
+
+/// 日志条目的显示时间（本地时区 HH:MM:SS）。
+fn log_timestamp() -> String {
+    chrono::Local::now().format("%H:%M:%S").to_string()
+}
+
+/// 统一的日志写入入口：`level` 取 "info"|"warn"|"error"；`detail` 条目
+/// 是开发诊断行（默认隐藏），级别照记以便筛选。
+fn push_log_entry(state: &mut Value, message: String, level: &str, detail: bool) {
     let Some(log) = state.get_mut("log").and_then(Value::as_array_mut) else {
         return;
     };
-    log.push(json!({"text": message, "detail": true}));
-    if log.len() > 200 {
-        let excess = log.len() - 200;
+    log.push(json!({
+        "text": message,
+        "detail": detail,
+        "level": level,
+        "time": log_timestamp(),
+    }));
+    if log.len() > LOG_CAPACITY {
+        let excess = log.len() - LOG_CAPACITY;
         log.drain(0..excess);
     }
 }
+
+fn push_detail_log(state: &mut Value, message: String) {
+    push_log_entry(state, message, "info", true);
+}
+
 fn push_log(state: &mut Value, message: String) {
-    let Some(log) = state.get_mut("log").and_then(Value::as_array_mut) else {
-        return;
-    };
-    log.push(json!({"text": message, "detail": false}));
-    if log.len() > 200 {
-        let excess = log.len() - 200;
-        log.drain(0..excess);
+    push_log_entry(state, message, "info", false);
+}
+
+/// 非致命异常、跳过文件、兼容性问题：醒目但不中断。
+fn push_warn_log(state: &mut Value, message: String) {
+    push_log_entry(state, message, "warn", false);
+}
+
+/// 任务失败、文件处理失败、关键操作异常。
+fn push_error_log(state: &mut Value, message: String) {
+    push_log_entry(state, message, "error", false);
+}
+
+/// 终止请求：S1/S2/S3 的业务 worker 内部没有取消检查点（Excel 重算、
+/// 批量写入均为不可中断的外部调用），无法安全中途终止。此处如实告知，
+/// 不伪造取消成功，也不把失败掩盖为正常结束。
+fn cancel_execution(state: &AppState) -> std::result::Result<Value, ApiError> {
+    let busy = state.lock().value["busy"] == true;
+    if !busy {
+        return Ok(json!({
+            "requested": false,
+            "message": "当前没有正在运行的任务。"
+        }));
     }
+    {
+        let mut ui = state.lock();
+        push_warn_log(
+            &mut ui.value,
+            "已收到终止请求；当前版本的任务在文件处理中途不可安全终止，请等待当前文件完成。任务结束后会给出完整结果摘要。"
+                .to_owned(),
+        );
+    }
+    Ok(json!({
+        "requested": false,
+        "message": "当前版本不支持中途终止：文件处理中断会导致输出不完整。请等待当前文件处理完成。"
+    }))
 }
 
 #[derive(Debug)]
@@ -7045,11 +7098,16 @@ mod tests {
     /// 整个测试进程只设定一次；并发写安全由 app_settings 的唯一 tmp 文件名
     /// 与原子改名保证。
     pub(crate) fn isolate_settings_state_dir() {
-        static ISOLATED: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-        // 仅在首个测试状态创建时设定一次；此后自行设置 AUDIT_STATE_DIR 的
-        // 测试（如高级设置持久化测试）拥有自己的目录，不再被本助手覆盖。
-        // 并发写安全由 app_settings 的唯一 tmp 文件名与原子改名保证。
-        ISOLATED.get_or_init(|| {
+        static ISOLATED: std::sync::Once = std::sync::Once::new();
+        // 首个测试状态创建时才设定隔离目录；已自行设置 AUDIT_STATE_DIR 的
+        // 测试（如高级设置持久化测试）拥有自己的目录，本助手绝不覆盖——
+        // 否则该测试写入自己的 state_dir 而 AppSettings::store 落到别处，
+        // 持久化断言随机失败。并发写安全由 app_settings 的唯一 tmp 文件名
+        // 与原子改名保证。
+        ISOLATED.call_once(|| {
+            if std::env::var_os("AUDIT_STATE_DIR").is_some() {
+                return;
+            }
             let nonce = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|value| value.as_nanos())
@@ -7059,7 +7117,6 @@ mod tests {
                 std::process::id()
             ));
             std::env::set_var("AUDIT_STATE_DIR", &path);
-            path.to_string_lossy().into_owned()
         });
     }
 
