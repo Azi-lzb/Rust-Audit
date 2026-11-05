@@ -718,6 +718,10 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
 .status.error .status-dot{background:var(--danger)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
 #statusText{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.current-work{display:inline-flex;align-items:center;gap:8px;max-width:46%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:12px;color:var(--text-2);border:1px solid var(--border);border-radius:999px;padding:2px 10px}
+.current-work b{color:var(--text);font-weight:600}
+.current-work .cw-file{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.current-work[hidden]{display:none}
 .log-head{display:flex;align-items:center;gap:10px;margin:12px 0 7px}
 .log-head>span{font-size:12.5px;font-weight:600;color:var(--text-2)}
 .log-head .status{margin-left:auto;padding:3px 10px;font-size:11.5px;gap:6px}
@@ -1261,6 +1265,7 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
   <div class="log-head">
     <span>运行记录</span>
     <div class="status" id="status"><span class="status-dot"></span><span id="statusText">正在加载…</span></div>
+    <span class="current-work" id="currentWork" hidden></span>
     <select class="gen-select" id="logLevelFilter" onchange="renderLog()" title="按级别筛选日志" style="padding:2px 6px;font-size:12px;height:26px">
       <option value="all">全部级别</option>
       <option value="warn">警告及以上</option>
@@ -4442,6 +4447,37 @@ async function cancelExecution(){
   await refresh();
 }
 /* 日志渲染：按级别着色与前缀；签名未变时跳过重建，避免 800ms 轮询全量重排。 */
+/* 当前处理对象条：文件名截断、悬停看全路径；无 Sheet 不虚构。 */
+let CURRENT_WORK_SIGNATURE='';
+function renderCurrentWork(s){
+  const el=document.getElementById('currentWork');
+  if(!el)return;
+  const work=s.currentWork;
+  if(!work||!work.feature){
+    if(el.hidden)return;
+    el.hidden=true;el.innerHTML='';CURRENT_WORK_SIGNATURE='';return;
+  }
+  const signature=JSON.stringify(work);
+  if(signature===CURRENT_WORK_SIGNATURE)return;
+  CURRENT_WORK_SIGNATURE=signature;
+  const parts=[];
+  parts.push('<b>'+esc(String(work.feature))+'</b>');
+  if(work.stage)parts.push(esc(String(work.stage)));
+  if(work.workbook)parts.push('<span class="cw-file" title="'+esc(String(work.workbook))+'">'+esc(shortName(String(work.workbook)))+'</span>');
+  if(work.sheet)parts.push(esc(String(work.sheet)));
+  if(work.index&&work.total)parts.push(esc(work.index+'/'+work.total));
+  else if(work.done!==undefined){const counts=[];
+    counts.push('成功 '+(work.done||0));
+    if(work.failed)counts.push('失败 '+work.failed);
+    if(work.skipped)counts.push('跳过 '+work.skipped);
+    if(work.waitingManualRecalc)counts.push('待重算 '+work.waitingManualRecalc);
+    parts.push(esc(counts.join(' / ')));}
+  if(work.error)parts.push('<span class="log-line log-error">'+esc(String(work.error))+'</span>');
+  el.innerHTML=parts.join('<span class="log-time">·</span>');
+  el.hidden=false;
+  el.title=parts.map(p=>p.replace(/<[^>]+>/g,'')).join(' · ');
+}
+
 function renderLog(){
   const el=document.getElementById('log');
   const entries=(state.log||[]).slice();
@@ -4636,6 +4672,7 @@ async function refresh(){
   else if(/就绪|完成|通过|已生成|共汇总/.test(s.status))statusEl.classList.add('success');
   else if(/失败|异常|错误/.test(s.status))statusEl.classList.add('error');
   const st=document.getElementById('statusText');st.textContent=s.status;st.title=s.status;
+  renderCurrentWork(s);
   syncGeneralControls();
   setCustomCardVisibility();
   const pinEl=document.getElementById('outputPin');
