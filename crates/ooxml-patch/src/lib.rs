@@ -1246,9 +1246,11 @@ fn strict_sheet_parts_from_zip(
 /// Restore source legacy-comment VML after a workbook editor rewrites it.
 ///
 /// This is deliberately limited to comment drawings made entirely of note
-/// shapes. It preserves the editor's comment XML and replaces only the VML
-/// part for a worksheet whose comment references are unchanged. Unsupported
-/// or mixed VML drawings fail closed instead of silently dropping shapes.
+/// shapes. It preserves the editor's comment XML and replaces the VML part
+/// when comment references are unchanged. If a structural edit moved comments,
+/// it keeps the editor's VML only after validating that its note positions
+/// match the rewritten comment references. Unsupported or mixed VML drawings
+/// fail closed instead of silently dropping shapes.
 pub fn restore_legacy_comment_vml(
     source: impl AsRef<Path>,
     editor_output: impl AsRef<Path>,
@@ -1349,10 +1351,45 @@ fn restore_legacy_comment_vml_selected(
                     format!("editor output did not preserve comments on worksheet {sheet_name:?}")
                 })?;
         let output_comment_refs = comment_references(&mut output_zip, &output_comments_part)?;
-        ensure!(
-            output_comment_refs == source_comment_refs,
-            "editor output comment references changed on worksheet {sheet_name:?}"
-        );
+        let output_vml_part =
+            relationship_target_part(&mut output_zip, output_sheet_part, "/vmlDrawing")?
+                .with_context(|| {
+                    format!(
+                        "editor output did not preserve comment VML on worksheet {sheet_name:?}"
+                    )
+                })?;
+        let output_vml = read_zip_part(&mut output_zip, &output_vml_part)
+            .with_context(|| format!("read editor comment VML part {output_vml_part}"))?;
+        validate_note_only_vml(&output_vml, output_comment_refs.len(), &output_vml_part)?;
+        if output_comment_refs != source_comment_refs {
+            ensure!(
+                !restore_comment_xml,
+                "editor output moved comments on imported worksheet {sheet_name:?}; source comments can only be restored when cell positions are unchanged"
+            );
+            let source_texts = comment_texts(&mut source_zip, &source_comments_part)?
+                .into_values()
+                .collect::<Vec<_>>();
+            let output_texts = comment_texts(&mut output_zip, &output_comments_part)?
+                .into_values()
+                .collect::<Vec<_>>();
+            let mut source_texts = source_texts;
+            let mut output_texts = output_texts;
+            source_texts.sort();
+            output_texts.sort();
+            ensure!(
+                output_texts == source_texts,
+                "editor output changed comment text while moving comments on worksheet {sheet_name:?}"
+            );
+            let vml_comment_refs = vml_note_references(&output_vml, &output_vml_part)?;
+            ensure!(
+                vml_comment_refs == output_comment_refs,
+                "editor output VML note positions do not match moved comment references on worksheet {sheet_name:?}"
+            );
+            // The editor has already moved both the comments and their VML
+            // anchors. Replacing its drawing with the source VML would restore
+            // stale coordinates, so leave this sheet's validated VML intact.
+            continue;
+        }
         if restore_comment_xml {
             let source_comment_texts = comment_texts(&mut source_zip, &source_comments_part)?;
             let output_comment_texts = comment_texts(&mut output_zip, &output_comments_part)?;
@@ -1368,17 +1405,6 @@ fn restore_legacy_comment_vml_selected(
                 bail!("multiple worksheets resolve to output comments part {output_comments_part}");
             }
         }
-        let output_vml_part =
-            relationship_target_part(&mut output_zip, output_sheet_part, "/vmlDrawing")?
-                .with_context(|| {
-                    format!(
-                        "editor output did not preserve comment VML on worksheet {sheet_name:?}"
-                    )
-                })?;
-        let output_vml = read_zip_part(&mut output_zip, &output_vml_part)
-            .with_context(|| format!("read editor comment VML part {output_vml_part}"))?;
-        validate_note_only_vml(&output_vml, output_comment_refs.len(), &output_vml_part)?;
-
         if replacements
             .insert(output_vml_part.clone(), source_vml)
             .is_some()
@@ -1576,6 +1602,78 @@ fn validate_note_only_vml(bytes: &[u8], expected_notes: usize, part: &str) -> Re
         "VML part {part} contains a non-comment drawing object"
     );
     Ok(())
+}
+
+fn vml_note_references(bytes: &[u8], part: &str) -> Result<BTreeSet<String>> {
+    const EXCEL_NS: &str = "urn:schemas-microsoft-com:office:excel";
+    let document = Document::parse(
+        std::str::from_utf8(bytes).with_context(|| format!("{part} must be UTF-8"))?,
+    )
+    .with_context(|| format!("parse legacy comment drawing {part}"))?;
+    let client_data = document
+        .descendants()
+        .filter(|node| {
+            node.is_element()
+                && node.tag_name().namespace() == Some(EXCEL_NS)
+                && node.tag_name().name() == "ClientData"
+        })
+        .collect::<Vec<_>>();
+    let mut references = BTreeSet::new();
+    for note in client_data {
+        ensure!(
+            note.attribute("ObjectType") == Some("Note"),
+            "VML part {part} contains a non-comment drawing object"
+        );
+        let coordinate = |name: &str| -> Result<u32> {
+            let values = note
+                .children()
+                .filter(|node| {
+                    node.is_element()
+                        && node.tag_name().namespace() == Some(EXCEL_NS)
+                        && node.tag_name().name() == name
+                })
+                .collect::<Vec<_>>();
+            ensure!(
+                values.len() == 1,
+                "VML note in {part} must contain exactly one {name} coordinate"
+            );
+            values[0]
+                .text()
+                .context("VML note coordinate has no text")?
+                .parse::<u32>()
+                .with_context(|| format!("invalid VML note {name} coordinate in {part}"))
+        };
+        // Excel stores VML note coordinates as zero-based indexes.
+        let row = coordinate("Row")?
+            .checked_add(1)
+            .context("VML note row coordinate overflows")?;
+        let column = coordinate("Column")?
+            .checked_add(1)
+            .context("VML note column coordinate overflows")?;
+        let reference = a1_cell_from_indices(row, column)?;
+        ensure!(
+            references.insert(reference.clone()),
+            "duplicate VML note position {reference} in {part}"
+        );
+    }
+    ensure!(!references.is_empty(), "VML part {part} contains no note positions");
+    Ok(references)
+}
+
+fn a1_cell_from_indices(row: u32, column: u32) -> Result<String> {
+    ensure!(
+        (1..=1_048_576).contains(&row) && (1..=16_384).contains(&column),
+        "cell position is outside the XLSX worksheet grid"
+    );
+    let mut value = column;
+    let mut letters = Vec::new();
+    while value > 0 {
+        let remainder = (value - 1) % 26;
+        letters.push((b'A' + remainder as u8) as char);
+        value = (value - 1) / 26;
+    }
+    letters.reverse();
+    Ok(format!("{}{}", letters.into_iter().collect::<String>(), row))
 }
 
 fn rewrite_package_parts(
@@ -4525,8 +4623,12 @@ mod comment_vml_restore_tests {
     }
 
     fn note_vml(object_type: &str) -> String {
+        note_vml_at(object_type, 3, 2)
+    }
+
+    fn note_vml_at(object_type: &str, row: u32, column: u32) -> String {
         format!(
-            r#"<xml xmlns:v="urn:schemas-microsoft-com:vml" xmlns:x="urn:schemas-microsoft-com:office:excel"><v:shape id="note1"><x:ClientData ObjectType="{object_type}"><x:Row>3</x:Row><x:Column>2</x:Column></x:ClientData></v:shape></xml>"#
+            r#"<xml xmlns:v="urn:schemas-microsoft-com:vml" xmlns:x="urn:schemas-microsoft-com:office:excel"><v:shape id="note1"><x:ClientData ObjectType="{object_type}"><x:Row>{row}</x:Row><x:Column>{column}</x:Column></x:ClientData></v:shape></xml>"#
         )
     }
 
@@ -4710,6 +4812,40 @@ mod comment_vml_restore_tests {
         )
         .is_err());
         assert!(!unsupported_output.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn keeps_editor_vml_when_structural_edit_moves_comment_and_anchor_together() -> Result<()> {
+        let directory = TestDirectory::new()?;
+        let source = directory.path("source.xlsx");
+        let candidate = directory.path("candidate.xlsx");
+        let output = directory.path("patched.xlsx");
+        write_package(
+            &source,
+            false,
+            "C4",
+            "tester",
+            "note text",
+            &note_vml_at("Note", 3, 2),
+        )?;
+        write_package(
+            &candidate,
+            true,
+            "D5",
+            "rewritten-author",
+            "note text",
+            &note_vml_at("Note", 4, 3),
+        )?;
+
+        let report = restore_legacy_comment_vml(&source, &candidate, &output)?;
+
+        assert!(report.restored_sheets.is_empty());
+        assert!(!output.exists());
+        assert_eq!(
+            read_part(&candidate, "xl/drawings/vmlDrawing1.vml")?,
+            note_vml_at("Note", 4, 3).as_bytes()
+        );
         Ok(())
     }
 
