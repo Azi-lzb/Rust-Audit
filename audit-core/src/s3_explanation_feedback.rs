@@ -245,6 +245,7 @@ pub fn plan_explanation_feedback_import(
         candidate_output_path,
         plan_output_path,
         true,
+        None,
     )
     .map(|(summary, _)| summary)
 }
@@ -255,6 +256,7 @@ fn plan_explanation_feedback_import_internal(
     candidate_output_path: impl AsRef<Path>,
     plan_output_path: impl AsRef<Path>,
     persist_plan: bool,
+    mut on_progress: Option<&mut dyn FnMut(&str)>,
 ) -> Result<(S3ExplanationFeedbackPlanSummary, Option<ExcelEditPlan>)> {
     let started = Instant::now();
     let target_path = target_path.as_ref();
@@ -317,11 +319,17 @@ fn plan_explanation_feedback_import_internal(
         .map(|path| sha256_file(path))
         .collect::<Result<Vec<_>>>()?;
 
+    if let Some(callback) = on_progress.as_deref_mut() {
+        callback(&format!("读取目标说明工作簿：{}", target_path.display()));
+    }
     let target_read_started = Instant::now();
     let target_sheets = read_value_columns_with_iso_dates(target_path, usize::MAX)
         .with_context(|| format!("读取目标说明工作簿：{}", target_path.display()))?;
     let target_read_time_ms = target_read_started.elapsed().as_millis();
     let target_sheet = find_explanation_sheet(target_sheets)?;
+    if let Some(callback) = on_progress.as_deref_mut() {
+        callback(&format!("目标说明工作表={} 已读取", target_sheet.name));
+    }
     let target_headers = target_sheet.headers()?;
 
     let mut targets = HashMap::<Identity, Vec<TargetRow>>::new();
@@ -340,10 +348,25 @@ fn plan_explanation_feedback_import_internal(
     let feedback_read_started = Instant::now();
     let mut feedback_order = Vec::<Identity>::new();
     let mut feedback_by_key = HashMap::<Identity, BTreeMap<String, BTreeSet<String>>>::new();
-    for feedback_path in feedback_paths {
+    for (index, feedback_path) in feedback_paths.iter().enumerate() {
+        if let Some(callback) = on_progress.as_deref_mut() {
+            callback(&format!(
+                "读取机构反馈 [{}/{}]：{}",
+                index + 1,
+                feedback_paths.len(),
+                feedback_path.display()
+            ));
+        }
         let sheets = read_value_columns_with_iso_dates(feedback_path, usize::MAX)
             .with_context(|| format!("读取机构反馈工作簿：{}", feedback_path.display()))?;
         let sheet = find_explanation_sheet(sheets)?;
+        if let Some(callback) = on_progress.as_deref_mut() {
+            callback(&format!(
+                "机构反馈文件={} 工作表={} 已读取",
+                feedback_path.display(),
+                sheet.name
+            ));
+        }
         let headers = sheet.headers()?;
         let source_name = feedback_path
             .file_name()
@@ -373,6 +396,9 @@ fn plan_explanation_feedback_import_internal(
         }
     }
     let feedback_read_time_ms = feedback_read_started.elapsed().as_millis();
+    if let Some(callback) = on_progress.as_deref_mut() {
+        callback("按机构、指标和数据值匹配反馈原因并检测冲突");
+    }
 
     let mut imported = 0usize;
     let mut unmatched = 0usize;
@@ -492,6 +518,11 @@ fn plan_explanation_feedback_import_internal(
     let mut snapshots = snapshots.into_iter();
     let target_snapshot = snapshots.next().expect("target snapshot exists");
     let feedback_snapshots = snapshots.collect::<Vec<_>>();
+    if persist_plan {
+        if let Some(callback) = on_progress.as_deref_mut() {
+            callback("写入反馈冲突报告与回写计划");
+        }
+    }
     let (document, execution_edit_plan) = if persist_plan {
         (
             Some(PlanDocument {
@@ -611,6 +642,25 @@ pub fn execute_explanation_feedback_import_to_copy(
     output_directory: impl AsRef<Path>,
     modifier: &ExcelModifier,
 ) -> Result<S3ExplanationFeedbackExecutionReport> {
+    execute_explanation_feedback_import_to_copy_with_progress(
+        target_path,
+        feedback_paths,
+        output_directory,
+        modifier,
+        |_| {},
+    )
+}
+
+pub fn execute_explanation_feedback_import_to_copy_with_progress<F>(
+    target_path: impl AsRef<Path>,
+    feedback_paths: &[PathBuf],
+    output_directory: impl AsRef<Path>,
+    modifier: &ExcelModifier,
+    mut on_progress: F,
+) -> Result<S3ExplanationFeedbackExecutionReport>
+where
+    F: FnMut(&str),
+{
     let started = Instant::now();
     let target_path = target_path.as_ref();
     let output_directory = output_directory.as_ref();
@@ -645,12 +695,14 @@ pub fn execute_explanation_feedback_import_to_copy(
     let staging = S3FeedbackStagingDirectory::create(&output_directory)?;
     let candidate_path = staging.path().join("反馈写回结果.xlsx");
     let plan_path = staging.path().join("反馈写回计划.json");
+    on_progress("构建回写方案：读取目标与反馈工作簿、匹配说明行");
     let (summary, edit_plan) = plan_explanation_feedback_import_internal(
         target_path,
         feedback_paths,
         &candidate_path,
         &plan_path,
         false,
+        Some(&mut on_progress),
     )
     .context("规划 S3-F03 机构说明回写")?;
 
@@ -662,6 +714,7 @@ pub fn execute_explanation_feedback_import_to_copy(
                 .collect::<Result<Vec<_>>>()?,
         "S3-F03 规划期间输入工作簿发生变化，未应用回写"
     );
+    on_progress("写入候选说明工作簿");
     let writeback_started = Instant::now();
     let edit = if let Some(edit_plan) = edit_plan {
         let edit = modifier.execute(&edit_plan).with_context(|| {
@@ -695,7 +748,9 @@ pub fn execute_explanation_feedback_import_to_copy(
         "S3-F03 写入期间源说明或反馈文件发生变化，候选结果已丢弃"
     );
     let writeback_time_ms = writeback_started.elapsed().as_millis();
+    on_progress("验证目标与反馈输入未变化");
     publish_staged_file(&candidate_path, &output_path)?;
+    on_progress(&format!("发布回写结果：{}", output_path.display()));
     Ok(S3ExplanationFeedbackExecutionReport {
         output_workbook: output_path,
         backup_workbook: None,
@@ -725,8 +780,21 @@ pub fn execute_explanation_feedback_import(
     feedback_paths: &[PathBuf],
     modifier: &ExcelModifier,
 ) -> Result<S3ExplanationFeedbackExecutionReport> {
+    execute_explanation_feedback_import_with_progress(target_path, feedback_paths, modifier, |_| {})
+}
+
+pub fn execute_explanation_feedback_import_with_progress<F>(
+    target_path: impl AsRef<Path>,
+    feedback_paths: &[PathBuf],
+    modifier: &ExcelModifier,
+    mut on_progress: F,
+) -> Result<S3ExplanationFeedbackExecutionReport>
+where
+    F: FnMut(&str),
+{
     let started = Instant::now();
     let target_path = target_path.as_ref();
+    on_progress("校验原地更新目标和机构反馈文件");
     ensure_workbook_path(target_path, true)?;
     ensure!(
         target_path
@@ -769,11 +837,12 @@ pub fn execute_explanation_feedback_import(
         .with_context(|| format!("读取目标说明文件属性：{}", target_path.display()))?
         .permissions();
 
-    let staged_report = execute_explanation_feedback_import_to_copy(
+    let staged_report = execute_explanation_feedback_import_to_copy_with_progress(
         &target_path,
         &feedback_paths,
         staging.path(),
         modifier,
+        &mut on_progress,
     )
     .context("生成 S3-F03 原地写回候选文件")?;
     let candidate_path = staged_report.output_workbook;
@@ -784,6 +853,7 @@ pub fn execute_explanation_feedback_import(
     fs::set_permissions(&candidate_path, target_permissions.clone())
         .with_context(|| format!("保留目标说明文件权限：{}", candidate_path.display()))?;
 
+    on_progress("校验目标与反馈输入未被并发修改");
     let current_hashes = std::iter::once(target_path.clone())
         .chain(feedback_paths.iter().cloned())
         .map(|path| sha256_file(&path))
@@ -793,6 +863,7 @@ pub fn execute_explanation_feedback_import(
         "S3-F03 写回前目标说明或反馈输入发生变化，未更新目标文件"
     );
 
+    on_progress("备份原目标说明文件并校验备份");
     let backup_path = create_feedback_backup(&target_path, &target_permissions)?;
     ensure!(
         sha256_file(&backup_path)? == before_hashes[0],
@@ -814,6 +885,7 @@ pub fn execute_explanation_feedback_import(
             .file_name()
             .context("S3-F03 目标说明文件缺少文件名")?,
     );
+    on_progress("原地替换目标说明文件（保留备份并启用回滚保护）");
     let rollback_cleanup_warning = publish_candidate_in_place(
         &candidate_path,
         &target_path,
@@ -821,6 +893,10 @@ pub fn execute_explanation_feedback_import(
         &backup_path,
         &mut staging,
     )?;
+    on_progress(&format!(
+        "机构反馈已写回目标说明文件；原文件备份：{}",
+        backup_path.display()
+    ));
 
     Ok(S3ExplanationFeedbackExecutionReport {
         output_workbook: target_path,

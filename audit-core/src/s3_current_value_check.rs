@@ -456,6 +456,29 @@ pub fn run_current_value_check_files(
     log_path: Option<&Path>,
     scope_matches: impl FnMut(&str, &str) -> bool,
 ) -> Result<S3CurrentValueCheckReport> {
+    run_current_value_check_files_with_progress(
+        current_paths,
+        previous_paths,
+        config_paths,
+        output_path,
+        log_path,
+        scope_matches,
+        |_| {},
+    )
+}
+
+pub fn run_current_value_check_files_with_progress<F>(
+    current_paths: &[PathBuf],
+    previous_paths: &[PathBuf],
+    config_paths: &[PathBuf],
+    output_path: impl AsRef<Path>,
+    log_path: Option<&Path>,
+    scope_matches: impl FnMut(&str, &str) -> bool,
+    mut on_progress: F,
+) -> Result<S3CurrentValueCheckReport>
+where
+    F: FnMut(&str),
+{
     let total_started = Instant::now();
     ensure!(!current_paths.is_empty(), "本期数值核对：请先选择数据文件");
     let output_path = resolve_new_xlsx_path(output_path.as_ref(), "本期数值核对结果")?;
@@ -469,11 +492,16 @@ pub fn run_current_value_check_files(
         );
     }
 
+    on_progress("读取 3.0 通用配置和 3.2 本期核对规则");
     let config_started = Instant::now();
     let config = load_current_value_check_config(config_paths)?;
     let config_read_time_ms = config_started.elapsed().as_millis();
     let conversion_factor = unit_factor(&config.source_unit) / unit_factor(&config.target_unit);
 
+    on_progress(&format!(
+        "读取本期数据文件：{}",
+        current_paths.iter().map(|path| path.display().to_string()).collect::<Vec<_>>().join("、")
+    ));
     let input_started = Instant::now();
     let current = load_central_dataset(current_paths, conversion_factor, &config.exempt_indicators)
         .context("读取本期数据失败")?;
@@ -489,6 +517,7 @@ pub fn run_current_value_check_files(
     let previous_records = previous.as_ref().map_or(0, |dataset| dataset.records.len());
     let input_read_time_ms = input_started.elapsed().as_millis();
 
+    on_progress("执行本期数值规则核对");
     let calculation_started = Instant::now();
     let mut result = run_current_value_check(
         &current,
@@ -547,6 +576,7 @@ pub fn run_current_value_check_files(
         ],
     );
 
+    on_progress(&format!("写入并验证数值核对结果：{}", output_path.display()));
     let workbook_started = Instant::now();
     write_check_workbook(&output_path, &result.rows)?;
     validate_check_workbook(&output_path, result.rows.len())?;
@@ -554,6 +584,7 @@ pub fn run_current_value_check_files(
         write_log_workbook(path, &result.logs)?;
     }
     let workbook_write_time_ms = workbook_started.elapsed().as_millis();
+    on_progress(&format!("数值核对结果已保存：{}", output_path.display()));
 
     let mut input_paths = current_paths.to_vec();
     input_paths.extend_from_slice(previous_paths);

@@ -722,9 +722,18 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
 .current-work b{color:var(--text);font-weight:600}
 .current-work .cw-file{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .current-work[hidden]{display:none}
-.log-head{display:flex;align-items:center;gap:10px;margin:12px 0 7px}
+.log-head{display:flex;align-items:center;gap:8px;margin:12px 0 7px;flex-wrap:wrap}
+.log-head>span:first-child{flex:none}
 .log-head>span{font-size:12.5px;font-weight:600;color:var(--text-2)}
-.log-head .status{margin-left:auto;padding:3px 10px;font-size:11.5px;gap:6px}
+.log-head .status{flex:1 1 190px;min-width:120px;max-width:none;margin-left:auto;padding:3px 10px;font-size:11.5px;gap:6px}
+.log-head .current-work{flex:0 1 240px;max-width:240px}
+.log-head #logLevelFilter{box-sizing:border-box;width:112px;min-width:112px;flex:0 0 112px;padding-right:22px!important}
+.log-head>.btn{flex:0 0 auto}
+.run-summary{margin:0 0 7px;padding:7px 10px;border:1px solid var(--accent-border);border-radius:8px;background:var(--accent-soft);color:var(--text);font-size:12px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
+.run-summary[hidden]{display:none}
+.run-summary b{color:var(--accent);margin-right:6px}
+.log-jump{display:none;position:sticky;float:right;bottom:8px;margin:-36px 12px 8px 0;z-index:1;box-shadow:var(--shadow-card)}
+.log-jump.visible{display:inline-flex}
 .log{box-sizing:border-box;width:100%;height:164px;resize:none;overflow-y:auto;overflow-x:auto;background:var(--console-bg);color:var(--console-text);border:1px solid var(--console-border);border-radius:var(--radius-sm);padding:12px 14px;font:12px/1.7 Consolas,"Cascadia Code","Microsoft YaHei",monospace;user-select:text;-webkit-user-select:text;white-space:pre-wrap;word-break:break-all}
 .log .log-line{margin:0 0 2px}
 .log .log-line.log-error{color:#e5484d;font-weight:600}
@@ -756,6 +765,8 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
   .settings-dialog{width:calc(100vw - 24px);height:92vh;max-height:none;min-height:0}
   .settings-pane{padding:14px 14px}
   .flow-editor{grid-template-columns:1fr}
+  .log-head .status{flex:1 1 220px}
+  .log-head .current-work{flex:0 1 220px;max-width:220px}
 }
 </style>
 </head>
@@ -1273,10 +1284,12 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
     </select>
     <button class="btn tiny" onclick="saveLogToFile()">保存日志</button>
     <button class="btn tiny" onclick="clearLogView()">清空显示</button>
+    <button class="btn tiny log-jump" id="logJumpLatest" onclick="jumpToLatestLog()">跳转最新日志</button>
     <button class="btn tiny" id="copyLog" onclick="copyLog()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg><span id="copyLabel">复制全部</span></button>
     <button class="btn tiny danger" id="cancelExecution" onclick="cancelExecution()" hidden>终止执行</button>
     <button class="btn tiny" onclick="openAbout()">关于</button>
   </div>
+  <div class="run-summary" id="runSummary" role="status" aria-live="polite" hidden></div>
   <div class="progress" id="progress" hidden>
     <span class="progress-detail" id="progressDetail" hidden></span>
     <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
@@ -1363,6 +1376,9 @@ let state={},lastAction='';
    maxPct   busy 期间允许达到的上限，完成时才补到 100%            */
 const PROGRESS={decay:.80,holdMs:1400,maxPct:99.5};
 let run=null,runTimer=null,prevLogTail='';
+let LOG_RENDER_STATE={version:null,baseFirstSeq:null,lastSeq:0,filterKey:''};
+let LOG_CLEARED_THROUGH_SEQ=0;
+let unseenLogCount=0;
 // 页面明细与已有性能摘要分别显示；运行日志 Excel 由后端独立开关控制。
 let showRunDetailLogs=false;
 let showPerformanceDiagnostics=false;
@@ -4465,6 +4481,7 @@ function renderCurrentWork(s){
   if(work.stage)parts.push(esc(String(work.stage)));
   if(work.workbook)parts.push('<span class="cw-file" title="'+esc(String(work.workbook))+'">'+esc(shortName(String(work.workbook)))+'</span>');
   if(work.sheet)parts.push(esc(String(work.sheet)));
+  if(work.detail&&work.detail!==work.workbook)parts.push(esc(String(work.detail)));
   if(work.index&&work.total)parts.push(esc(work.index+'/'+work.total));
   else if(work.done!==undefined){const counts=[];
     counts.push('成功 '+(work.done||0));
@@ -4478,43 +4495,89 @@ function renderCurrentWork(s){
   el.title=parts.map(p=>p.replace(/<[^>]+>/g,'')).join(' · ');
 }
 
+function logIsAtBottom(el){return el.scrollHeight-el.scrollTop-el.clientHeight<=8}
+function logFilterKey(){
+  const filter=document.getElementById('logLevelFilter');
+  return (filter?filter.value:'all')+'|'+(showRunDetailLogs?'detail':'normal')+'|'+(showPerformanceDiagnostics?'perf':'no-perf')+'|'+LOG_CLEARED_THROUGH_SEQ;
+}
+function visibleLogBody(entry){
+  const lines=String(entry.text||'').split(/\r?\n/);
+  const isPerformanceLine=line=>/(耗时分解：|引擎生命周期：|非节点收尾：|引擎启动与流程收尾|已连接表格引擎：|正在启动表格引擎：|条件格式判定方式：|规则读取方式：|外部文件添加方式：|公式校验复制方式：|^\s*Renderer:|\bWriter:|\bCalculator:|^\s*总计\s)/.test(line);
+  const visible=entry.detail?(showRunDetailLogs?lines:(showPerformanceDiagnostics?lines.filter(isPerformanceLine):[])):lines;
+  const body=visible.filter(line=>showPerformanceDiagnostics||!isPerformanceLine(line)).join('\n');
+  const filter=document.getElementById('logLevelFilter');
+  const rank={all:0,warn:1,error:2};
+  const minLevel=filter?filter.value:'all';
+  const level=entry.level||'info';
+  if(rank[minLevel]&&rank[level]!==undefined&&rank[level]<rank[minLevel])return null;
+  return body||null;
+}
+function logEntryHtml(entry){
+  const body=visibleLogBody(entry);
+  if(!body)return '';
+  const level=entry.level||'info';
+  return '<div class="log-line log-'+esc(level)+'" data-seq="'+esc(entry.seq)+'">'
+    +(entry.time?'<span class="log-time">['+esc(entry.time)+']</span>':'')
+    +(level!=='info'?'<span class="log-time">['+esc(level.toUpperCase())+']</span>':'')
+    +esc(body)+'</div>';
+}
+
 function renderLog(){
   const el=document.getElementById('log');
-  const entries=(state.log||[]).slice();
-  const filter=document.getElementById('logLevelFilter');
-  const minLevel=filter?filter.value:'all';
-  const rank={all:0,warn:1,error:2};
-  const isPerformanceLine=line=>/(耗时分解：|引擎生命周期：|非节点收尾：|引擎启动与流程收尾|已连接表格引擎：|正在启动表格引擎：|条件格式判定方式：|规则读取方式：|外部文件添加方式：|公式校验复制方式：|^\s*Renderer:|\bWriter:|\bCalculator:|^\s*总计\s)/.test(line);
-  const rendered=[];
-  for(const entry of entries){
-    const lines=String(entry.text||'').split(/\r?\n/);
-    const visible=entry.detail
-      ?(showRunDetailLogs?lines:(showPerformanceDiagnostics?lines.filter(isPerformanceLine):[]))
-      :lines;
-    const body=visible.filter(line=>showPerformanceDiagnostics||!isPerformanceLine(line)).join('\n');
-    if(!body)continue;
-    const level=entry.level||'info';
-    if(rank[minLevel]&&rank[level]!==undefined&&rank[level]<rank[minLevel])continue;
-    rendered.push({level,body,time:entry.time||''});
+  const source=(state.log||[]).slice();
+  const entries=source.map((entry,index)=>({...entry,seq:Number(entry.seq)||index+1}));
+  const firstSeq=entries.length?entries[0].seq:null;
+  const lastSeq=entries.length?entries[entries.length-1].seq:0;
+  const version=Number(state.logVersion)||lastSeq;
+  const filterKey=logFilterKey();
+  const signature=String(version)+'|'+filterKey;
+  if(el.dataset.signature===signature)return;
+  const atBottom=logIsAtBottom(el);
+  const oldScrollTop=el.scrollTop;
+  const anchor=[...el.querySelectorAll('.log-line')].find(line=>line.getBoundingClientRect().bottom>el.getBoundingClientRect().top);
+  const anchorSeq=anchor?anchor.dataset.seq:null;
+  const anchorTop=anchor?anchor.getBoundingClientRect().top:null;
+  const canAppend=LOG_RENDER_STATE.filterKey===filterKey
+    &&LOG_RENDER_STATE.baseFirstSeq===firstSeq
+    &&LOG_RENDER_STATE.version!==null
+    &&version>LOG_RENDER_STATE.version
+    &&LOG_RENDER_STATE.lastSeq>0;
+  let appended=0;
+  if(canAppend){
+    for(const entry of entries){
+      if(entry.seq<=LOG_RENDER_STATE.lastSeq||entry.seq<=LOG_CLEARED_THROUGH_SEQ)continue;
+      const html=logEntryHtml(entry);
+      if(html){el.insertAdjacentHTML('beforeend',html);appended++}
+    }
+  }else{
+    el.innerHTML=entries.filter(entry=>entry.seq>LOG_CLEARED_THROUGH_SEQ).map(logEntryHtml).join('');
   }
-  const last=rendered.length?rendered[rendered.length-1]:null;
-  const signature=rendered.length+'|'+(last?last.body.slice(0,80)+'|'+(last.time||''):'');
-  if(el.dataset.signature===signature&&el.children.length)return;
-  const atBottom=el.scrollTop+el.clientHeight>=el.scrollHeight-8;
-  el.innerHTML=rendered.map(item=>
-    '<div class="log-line log-'+esc(item.level)+'">'
-    +(item.time?'<span class="log-time">['+esc(item.time)+']</span>':'')
-    +(item.level!=='info'?'<span class="log-time">['+esc(item.level.toUpperCase())+']</span>':'')
-    +esc(item.body)+'</div>'
-  ).join('');
   el.dataset.signature=signature;
   if(atBottom)el.scrollTop=el.scrollHeight;
 }
 function clearLogView(){
   const el=document.getElementById('log');
+  const entries=state.log||[];
+  LOG_CLEARED_THROUGH_SEQ=entries.reduce((max,entry,index)=>Math.max(max,Number(entry.seq)||index+1),0);
+  const firstSeq=entries.length?(Number(entries[0].seq)||1):null;
+  const lastSeq=entries.length?(Number(entries[entries.length-1].seq)||entries.length):0;
+  const version=Number(state.logVersion)||lastSeq;
+  const filterKey=logFilterKey();
   el.innerHTML='';
   el.dataset.signature='';
 }
+function renderRunSummary(s){
+  const el=document.getElementById('runSummary');
+  if(!el)return;
+  const summary=s.lastRunSummary;
+  const signature=summary?JSON.stringify(summary):'';
+  if(el.dataset.signature===signature)return;
+  el.dataset.signature=signature;
+  if(!summary||!summary.text){el.hidden=true;el.textContent='';return}
+  el.textContent=(summary.feature||'任务')+' · '+(summary.time||'')+'\n'+summary.text;
+  el.hidden=false;
+}
+document.getElementById('log').addEventListener('scroll',updateLogJumpButton,{passive:true});
 function saveLogToFile(){
   const el=document.getElementById('log');
   const text=el.innerText||'';
@@ -4673,6 +4736,7 @@ async function refresh(){
   else if(/失败|异常|错误/.test(s.status))statusEl.classList.add('error');
   const st=document.getElementById('statusText');st.textContent=s.status;st.title=s.status;
   renderCurrentWork(s);
+  renderRunSummary(s);
   syncGeneralControls();
   setCustomCardVisibility();
   const pinEl=document.getElementById('outputPin');

@@ -27,7 +27,7 @@ use crate::{
         workbook_recovery_fingerprints, S1RecoveryFile, S1RecoveryManifest, S1RecoveryStatus,
         S1RecoveryStore, S1RecoveryTaskSummary,
     },
-    s1_region_summary::{s1_region_summary_source_workbooks, summarize_s1_named_regions_selected},
+    s1_region_summary::{s1_region_summary_source_workbooks, summarize_s1_named_regions_selected_with_progress},
     s1_result_workbook::{write_s1_result_workbook, S1_RESULT_SHEET},
     s1_structure_compare::{
         compare_s1_source_structure, read_s1_structure_template_with_required_sheets,
@@ -44,12 +44,13 @@ use crate::{
     s2_config_check::check_s2_config,
     s2_service::{run_s2_audit, s2_engine_for_stage, S2ProgressEvent, S2RunRequest},
     s3_current_value_check::{
-        input_reader_for_paths, python_regex_scope_matcher, run_current_value_check_files,
+        input_reader_for_paths, python_regex_scope_matcher,
+        run_current_value_check_files_with_progress,
     },
     s3_execution_compare::{run_execution_compare_files, S3ExpressionSchema},
-    s3_explanation_export::export_selected_explanations,
-    s3_explanation_feedback::execute_explanation_feedback_import,
-    s3_indicator_split::execute_indicator_comparison_split,
+    s3_explanation_export::export_selected_explanations_with_progress,
+    s3_explanation_feedback::execute_explanation_feedback_import_with_progress,
+    s3_indicator_split::execute_indicator_comparison_split_with_progress,
     s5_config_check::validate_s5_config,
     s5_web::{self, S5WebRunRequest},
 };
@@ -73,7 +74,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex, MutexGuard},
     thread,
-    time::Instant,
+    time::{Duration, Instant},
 };
 use tokio::{net::TcpListener, runtime::Builder};
 
@@ -171,6 +172,8 @@ impl AppState {
             "cancelRequested": false,
             "status": "Rust 迁移版已启动；当前接通报表采集 S2 功能",
             "log": [],
+            "logVersion": 0,
+            "lastRunSummary": Value::Null,
             "filePickerMode": "自动",
             "filePickerModeOptions": ["自动", "系统原生", "浏览器内置"],
             "uiTheme": "日间",
@@ -2107,6 +2110,7 @@ fn start_s1_f1_workflow(state: &AppState, args: &[Value]) -> std::result::Result
             ));
         }
         ui.value["busy"] = json!(true);
+        clear_run_summary(&mut ui.value);
         ui.value["status"] = json!("正在识别 S1-F01 模板并检查表结构……");
         ui.value["s1F1OutputPath"] = json!("");
         ui.value["s1F1Preflight"] = json!({});
@@ -2138,7 +2142,7 @@ fn start_s1_f1_workflow(state: &AppState, args: &[Value]) -> std::result::Result
     let worker_state = state.clone();
     if let Err(error) = thread::Builder::new()
         .name("audit-s1-f1-workflow".to_owned())
-        .spawn(move || run_s1_f1_worker(worker_state, request))
+        .spawn(move || run_s1_f1_worker(worker_state, request, request_preparation_started))
     {
         let mut ui = state.lock();
         ui.value["busy"] = json!(false);
@@ -2166,6 +2170,7 @@ fn list_s1_f3_tasks(state: &AppState) -> std::result::Result<Value, ApiError> {
 }
 
 fn start_s1_f3_workflow(state: &AppState, args: &[Value]) -> std::result::Result<Value, ApiError> {
+    let task_started = Instant::now();
     let run_id = arg_string(args, 0)
         .filter(|value| !value.trim().is_empty())
         .map(str::to_owned)
@@ -2197,7 +2202,9 @@ fn start_s1_f3_workflow(state: &AppState, args: &[Value]) -> std::result::Result
             ));
         }
         ui.value["busy"] = json!(true);
+        clear_run_summary(&mut ui.value);
         ui.value["status"] = json!("正在验证 S1-F3 人工重算副本并恢复审核……");
+        ui.value["currentWork"] = json!({"feature":"S1-F03","stage":"加载恢复清单"});
         push_log(
             &mut ui.value,
             format!("S1-F3 开始恢复：run_id={run_id}，file_id={file_id}"),
@@ -2208,7 +2215,7 @@ fn start_s1_f3_workflow(state: &AppState, args: &[Value]) -> std::result::Result
     let worker_file_id = file_id.clone();
     if let Err(error) = thread::Builder::new()
         .name("audit-s1-f3-recovery".to_owned())
-        .spawn(move || run_s1_f3_worker(worker_state, worker_run_id, worker_file_id))
+        .spawn(move || run_s1_f3_worker(worker_state, worker_run_id, worker_file_id, task_started))
     {
         let mut ui = state.lock();
         ui.value["busy"] = json!(false);
@@ -2228,8 +2235,14 @@ fn s1_recovery_result_path(manifest: &S1RecoveryManifest, input_sha256: &str) ->
         .join(format!("汇总核查表校验_恢复_{run_key}_{input_key}.xlsx"))
 }
 
-fn run_s1_f3_worker(state: AppState, run_id: String, file_id: String) {
-    run_s1_f3_worker_with_store(state, run_id, file_id, S1RecoveryStore::user_default());
+fn run_s1_f3_worker(state: AppState, run_id: String, file_id: String, task_started: Instant) {
+    run_s1_f3_worker_with_store_started(
+        state,
+        run_id,
+        file_id,
+        S1RecoveryStore::user_default(),
+        task_started,
+    );
 }
 
 fn run_s1_f3_worker_with_store(
@@ -2238,6 +2251,17 @@ fn run_s1_f3_worker_with_store(
     file_id: String,
     store_result: Result<S1RecoveryStore>,
 ) {
+    run_s1_f3_worker_with_store_started(state, run_id, file_id, store_result, Instant::now());
+}
+
+fn run_s1_f3_worker_with_store_started(
+    state: AppState,
+    run_id: String,
+    file_id: String,
+    store_result: Result<S1RecoveryStore>,
+    task_started: Instant,
+) {
+    let mut active_workbook = String::new();
     let result = (|| -> Result<(S1RecoveryManifest, PathBuf, S1ResultWriteSummary)> {
         let store = store_result
             .as_ref()
@@ -2252,6 +2276,8 @@ fn run_s1_f3_worker_with_store(
             manifest.files[file_index].status.is_pending(),
             "所选 S1-F3 工作簿已不处于待恢复状态"
         );
+        active_workbook = manifest.files[file_index].source_file.display().to_string();
+        s1_f3_publish_stage(&state, &active_workbook, "验证审核副本与模板配置");
         manifest.files[file_index].status = S1RecoveryStatus::ReadyToResume;
         manifest.files[file_index].reason = Some("正在验证人工重算后的审核副本".to_owned());
         store.save(&mut manifest)?;
@@ -2335,9 +2361,12 @@ fn run_s1_f3_worker_with_store(
             );
         }
         let recalculated_workbook =
+            {
+                s1_f3_publish_stage(&state, &active_workbook, "读取人工重算后的公式结果");
             excel_reader::read_workbook_with_unknown_error_tokens_as_text(&audit_copy)
                 .context("读取 S1-F3 人工重算副本的公式结果")?
-                .workbook;
+                .workbook
+            };
         let result_coverage = excel_reader::formula_result_value_coverage(&recalculated_workbook);
         if result_coverage.formula_cell_count != formula_count
             || result_coverage.typed_result_cell_count != formula_count
@@ -2395,6 +2424,7 @@ fn run_s1_f3_worker_with_store(
         manifest.files[file_index].status = S1RecoveryStatus::ReadyToResume;
         store.save(&mut manifest)?;
 
+        s1_f3_publish_stage(&state, &active_workbook, "汇总审核异常并写入最终结果");
         let summary = match write_s1_recovery_manifest_result(&store, &mut manifest) {
             Ok(summary) => summary,
             Err(error) => {
@@ -2427,6 +2457,7 @@ fn run_s1_f3_worker_with_store(
 
     let mut ui = state.lock();
     ui.value["busy"] = json!(false);
+    ui.value["currentWork"] = Value::Null;
     match result {
         Ok((manifest, result_path, summary)) => {
             ui.value["s1F1OutputPath"] = json!(result_path.to_string_lossy());
@@ -2464,6 +2495,19 @@ fn run_s1_f3_worker_with_store(
                     result_path.display()
                 ),
             );
+            publish_run_summary(
+                &mut ui.value,
+                "S1-F03",
+                format!(
+                    "恢复工作簿 {}；公式异常 {} 条；条件格式异常 {} 条；结果文件 {}；剩余待处理 {} 个；总耗时 {}。",
+                    active_workbook,
+                    summary.formula_issue_count,
+                    summary.conditional_issue_count,
+                    result_path.display(),
+                    manifest.files.iter().filter(|file| file.status.is_pending()).count(),
+                    format_elapsed(task_started.elapsed())
+                ),
+            );
         }
         Err(error) => {
             let reason = format!("{error:#}");
@@ -2490,12 +2534,41 @@ fn run_s1_f3_worker_with_store(
                 &mut ui.value,
                 format!("S1-F3 恢复失败，可在修复后重试：{reason}"),
             );
+            publish_run_summary(
+                &mut ui.value,
+                "S1-F03",
+                format!(
+                    "恢复工作簿 {}；任务失败；结果未生成；总耗时 {}；原因：{reason}。",
+                    if active_workbook.is_empty() { "未能从恢复清单定位" } else { active_workbook.as_str() },
+                    format_elapsed(task_started.elapsed())
+                ),
+            );
         }
     }
 }
 
-fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest) {
-    let worker_started = Instant::now();
+fn s1_f3_publish_stage(state: &AppState, workbook: &str, stage: &str) {
+    let mut ui = state.lock();
+    ui.value["currentWork"] = json!({
+        "feature": "S1-F03",
+        "workbook": workbook,
+        "stage": stage,
+    });
+    push_log(
+        &mut ui.value,
+        format!("S1-F03 文件={} 阶段={stage}", workbook),
+    );
+}
+
+fn s1_f1_end_to_end_total_us(task_started: Instant) -> u128 {
+    task_started.elapsed().as_micros()
+}
+
+fn run_s1_f1_worker(
+    state: AppState,
+    request: S1F1PreflightRequest,
+    task_started: Instant,
+) {
     let work_slot: CurrentWorkSlot = std::sync::Arc::new(std::sync::Mutex::new(json!({
         "feature": "S1-F01",
         "total": request.source_files.len(),
@@ -2520,12 +2593,41 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest) {
     >::new();
     let mut structure_passed = 0usize;
     let mut skipped = 0usize;
-    for source in &request.source_files {
+    for (source_index, source) in request.source_files.iter().enumerate() {
         let template_match_started = Instant::now();
         let source_name = source
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_else(|| source.display().to_string());
+        let source_label = source
+            .strip_prefix(&request.source_directory)
+            .unwrap_or(source)
+            .to_string_lossy()
+            .into_owned();
+        {
+            let mut ui = state.lock();
+            push_log(
+                &mut ui.value,
+                format!(
+                    "S1-F01 [{}/{}] 开始模板匹配与表结构检查：{}",
+                    source_index + 1,
+                    request.source_files.len(),
+                    source_label
+                ),
+            );
+        }
+        current_work_update(
+            &work_slot,
+            json!({
+                "feature": "S1-F01",
+                "workbook": source_name.clone(),
+                "sheet": Value::Null,
+                "stage": "匹配模板并检查表结构",
+                "index": source_index + 1,
+                "total": request.source_files.len(),
+            }),
+        );
+        current_work_publish(&state, &work_slot);
         let template_result = if let Some(template) = request.manual_template.as_ref() {
             Ok((template.clone(), "使用手动选择模板".to_owned()))
         } else {
@@ -2561,12 +2663,23 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest) {
                     Ok(path) => path,
                     Err(error) => {
                         skipped += 1;
-                        files.push(json!({
+                        let report = json!({
                             "sourceFile": source_name,
                             "status": "skipped_template_unavailable",
                             "template": template_path,
                             "reason": format!("无法读取匹配模板：{error}")
-                        }));
+                        });
+                        let mut ui = state.lock();
+                        push_warn_log(
+                            &mut ui.value,
+                            format!(
+                                "S1-F01 文件={} 阶段=模板预检 已跳过：{}",
+                                source_label,
+                                report["reason"].as_str().unwrap_or("未提供原因")
+                            ),
+                        );
+                        drop(ui);
+                        files.push(report);
                         continue;
                     }
                 };
@@ -2667,6 +2780,23 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest) {
                 }
             }
         };
+        let status = file_report["status"].as_str().unwrap_or("未知状态");
+        let reason = file_report["reason"].as_str().unwrap_or("");
+        let message = format!(
+            "S1-F01 [{}/{}] 文件={} 阶段=模板匹配与表结构检查 结果={}{}",
+            source_index + 1,
+            request.source_files.len(),
+            source_label,
+            status,
+            if reason.is_empty() { String::new() } else { format!("；原因：{reason}") }
+        );
+        let mut ui = state.lock();
+        if status.starts_with("skipped") {
+            push_warn_log(&mut ui.value, message);
+        } else {
+            push_log(&mut ui.value, message);
+        }
+        drop(ui);
         files.push(file_report);
     }
     let preflight_timings = json!({
@@ -2695,6 +2825,14 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest) {
     });
 
     if structure_passed == 0 {
+        current_work_finish(&state, &work_slot);
+        let end_to_end_total_us = s1_f1_end_to_end_total_us(task_started);
+        let end_to_end_total_seconds = end_to_end_total_us as f64 / 1_000_000.0;
+        let performance_timings = json!({
+            "request": request_timings,
+            "preflight": preflight_timings,
+            "endToEndTotalUs": end_to_end_total_us
+        });
         let mut ui = state.lock();
         ui.value["busy"] = json!(false);
         ui.value["s1F1OutputPath"] = json!("");
@@ -2710,22 +2848,40 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest) {
             "externalData": request.external_data,
             "recalculationSidecarFound": request.sidecar_path.is_some(),
             "recalculationSidecar": request.sidecar_path,
-            "performanceTimings": {"request": request_timings, "preflight": preflight_timings}
+            "performanceTimings": performance_timings
         });
         ui.value["status"] = json!(format!(
-            "S1-F01 预检结束：结构通过 0 个、跳过 {} 个；未生成审核结果",
-            skipped
+            "S1-F01 预检结束：结构通过 0 个、跳过 {} 个；未生成审核结果；总用时 {:.1} 秒",
+            skipped, end_to_end_total_seconds
         ));
         for file in files {
             let name = file["sourceFile"].as_str().unwrap_or("未知文件");
             let reason = file["reason"].as_str().unwrap_or("未提供原因");
-            push_log(&mut ui.value, format!("{name}：{reason}"));
+            push_warn_log(
+                &mut ui.value,
+                format!("S1-F01 文件={name} 阶段=模板/表结构预检 已跳过：{reason}"),
+            );
         }
         push_log(
             &mut ui.value,
             format!(
                 "S1-F01 未生成审核结果；预期路径：{}",
                 request.planned_result_path.display()
+            ),
+        );
+        push_log(
+            &mut ui.value,
+            format!("S1-F01 总用时：{end_to_end_total_seconds:.1} 秒"),
+        );
+        publish_run_summary(
+            &mut ui.value,
+            "S1-F01",
+            format!(
+                "工作簿总数 {}；结构通过 0；跳过 {}；失败 0；未生成审核副本和结果；输出目录 {}；总耗时 {}。",
+                request.source_files.len(),
+                skipped,
+                request.output_directory.display(),
+                format_elapsed(task_started.elapsed())
             ),
         );
         return;
@@ -2743,10 +2899,12 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest) {
         );
     }
 
-    let work_slot_for_exec = work_slot.clone();
     match execute_s1_f1_workflow(&request, &accepted, Some(work_slot.clone()), Some(&state)) {
         Ok(output) => {
-            // 最终统计随 currentWork 发布；随后清空"正在处理"对象。
+            let end_to_end_total_us = s1_f1_end_to_end_total_us(task_started);
+            let end_to_end_total_seconds = end_to_end_total_us as f64 / 1_000_000.0;
+            // 最终统计随 currentWork 发布；随后清空"正在处理"对象，
+            // 避免任务结束后仍显示旧文件。
             let reviewed = output
                 .file_results
                 .iter()
@@ -2824,24 +2982,32 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest) {
                 let name = file["sourceFile"].as_str().unwrap_or("未知文件");
                 let status = file["status"].as_str().unwrap_or("未知状态");
                 let reason = file["reason"].as_str().unwrap_or("");
-                push_log(
-                    &mut ui.value,
-                    format!(
-                        "{name}：{status}{}",
-                        if reason.is_empty() {
-                            String::new()
-                        } else {
-                            format!("；{reason}")
-                        }
-                    ),
+                let message = format!(
+                    "S1-F01 {name}：{status}{}",
+                    if reason.is_empty() {
+                        String::new()
+                    } else {
+                        format!("；阶段/原因：{reason}")
+                    }
                 );
+                let normalized_status = status.to_ascii_lowercase();
+                if normalized_status.contains("fail")
+                    || normalized_status.contains("waiting_manual_recalc")
+                {
+                    push_error_log(&mut ui.value, message);
+                } else if normalized_status.starts_with("skipped") {
+                    push_warn_log(&mut ui.value, message);
+                } else {
+                    push_log(&mut ui.value, message);
+                }
             }
             ui.value["status"] = json!(if output.waiting_manual_recalc > 0 {
                 format!(
-                    "S1-F01 部分完成：{} 个待人工重算、{} 个部分审核、{} 个失败；已生成结果 {}",
+                    "S1-F01 部分完成：{} 个待人工重算、{} 个部分审核、{} 个失败；总用时 {:.1} 秒；已生成结果 {}",
                     output.waiting_manual_recalc,
                     output.partial_files,
                     output.failed_files,
+                    end_to_end_total_seconds,
                     output
                         .result_path
                         .as_ref()
@@ -2853,12 +3019,12 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest) {
                     "S1-F01 审核完成：公式异常 {} 条、条件格式异常 {} 条；总耗时 {:.1} 秒；结果已保存",
                     output.formula_issue_count,
                     output.conditional_issue_count,
-                    worker_started.elapsed().as_secs_f32()
+                    end_to_end_total_seconds
                 )
             } else {
                 format!(
-                    "S1-F01 未生成核查表：待恢复 {} 个、失败 {} 个；审核副本与状态已保留",
-                    output.waiting_manual_recalc, output.failed_files
+                    "S1-F01 未生成核查表：待恢复 {} 个、失败 {} 个；总用时 {:.1} 秒；审核副本与状态已保留",
+                    output.waiting_manual_recalc, output.failed_files, end_to_end_total_seconds
                 )
             });
             if let Some(result_path) = output.result_path.as_ref() {
@@ -2876,7 +3042,7 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest) {
             push_detail_log(
                 &mut ui.value,
                 format!(
-                    "S1-F01 正式审核结束：数据期={}；审核副本={}；公式异常={}；条件格式异常={}；读取历史行={}；本期合计={}；真实重算引擎={}；结果工作表={}；输出={}；待人工重算={}；部分完成={}；失败={}。原始源文件保持只读。",
+                    "S1-F01 正式审核结束：数据期={}；审核副本={}；公式异常={}；条件格式异常={}；读取历史行={}；本期合计={}；真实重算引擎={}；结果工作表={}；输出={}；待人工重算={}；部分完成={}；失败={}；总用时={:.1} 秒。原始源文件保持只读。",
                     output.period,
                     output.audit_copies.len(),
                     output.formula_issue_count,
@@ -2888,11 +3054,31 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest) {
                     output.result_path.as_ref().map(|path| path.display().to_string()).unwrap_or_else(|| "无".to_owned()),
                     output.waiting_manual_recalc,
                     output.partial_files,
-                    output.failed_files
+                    output.failed_files,
+                    end_to_end_total_seconds
+                ),
+            );
+            publish_run_summary(
+                &mut ui.value,
+                "S1-F01",
+                format!(
+                    "工作簿总数 {}；成功 {}；部分完成 {}；待人工重算 {}；失败 {}；跳过 {}；生成审核副本 {} 个；结果 {}；输出目录 {}；总耗时 {}。",
+                    request.source_files.len(),
+                    succeeded,
+                    output.partial_files,
+                    output.waiting_manual_recalc,
+                    output.failed_files,
+                    skipped,
+                    output.audit_copies.len(),
+                    output.result_path.as_ref().map(|path| path.display().to_string()).unwrap_or_else(|| "未生成".to_owned()),
+                    request.output_directory.display(),
+                    format_elapsed(task_started.elapsed())
                 ),
             );
         }
         Err(error) => {
+            let end_to_end_total_us = s1_f1_end_to_end_total_us(task_started);
+            let end_to_end_total_seconds = end_to_end_total_us as f64 / 1_000_000.0;
             current_work_update(
                 &work_slot,
                 json!({"stage": "失败", "error": format!("{error:.500}")}),
@@ -2930,7 +3116,8 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest) {
                 "recalculationSidecar": request.sidecar_path,
                 "performanceTimings": {
                     "request": request_timings,
-                    "preflight": preflight_timings
+                    "preflight": preflight_timings,
+                    "endToEndTotalUs": end_to_end_total_us
                 },
                 "error": reason
             });
@@ -2949,7 +3136,10 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest) {
                     );
                 }
             }
-            ui.value["status"] = json!("S1-F01 正式审核失败；未生成审核结果");
+            ui.value["status"] = json!(format!(
+                "S1-F01 正式审核失败；未生成审核结果；总用时 {:.1} 秒",
+                end_to_end_total_seconds
+            ));
             push_log(
                 &mut ui.value,
                 format!(
@@ -2957,10 +3147,27 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest) {
                     request.planned_result_path.display()
                 ),
             );
+            push_log(
+                &mut ui.value,
+                format!("S1-F01 总用时：{end_to_end_total_seconds:.1} 秒"),
+            );
             push_detail_log(
                 &mut ui.value,
                 format!(
-                    "S1-F01 正式审核失败；本次新建审核目录已清理；原始源文件保持只读；未发布部分结果。阻断原因：{reason}"
+                    "S1-F01 正式审核失败；本次新建审核目录已清理；原始源文件保持只读；未发布部分结果；总用时={end_to_end_total_seconds:.1} 秒。阻断原因：{reason}"
+                ),
+            );
+            publish_run_summary(
+                &mut ui.value,
+                "S1-F01",
+                format!(
+                    "工作簿总数 {}；成功 0；部分完成 0；失败 {}；跳过 {}；审核结果未生成；输出目录 {}；总耗时 {}；原因：{}。",
+                    request.source_files.len(),
+                    structure_passed,
+                    skipped,
+                    request.output_directory.display(),
+                    format_elapsed(task_started.elapsed()),
+                    reason
                 ),
             );
         }
@@ -3414,7 +3621,7 @@ fn execute_s1_f1_workflow(
         None
     };
     let session_initialization_us = session_initialization_started.elapsed().as_micros();
-    let mut output = execute_s1_f1_workflow_with_dependencies(
+    let mut output = execute_s1_f1_workflow_with_progress(
         request,
         accepted,
         None,
@@ -3457,6 +3664,46 @@ fn execute_s1_f1_workflow(
                 )
             }
         },
+        |item, index, stage| {
+            let Some(slot) = work_slot.as_ref() else {
+                return;
+            };
+            let sheet = item.and_then(s1_f1_current_sheet);
+            current_work_update(
+                slot,
+                json!({
+                    "feature": "S1-F01",
+                    "workbook": item.and_then(|item| item.source.file_name().map(|name| name.to_string_lossy().into_owned())),
+                    "sheet": sheet.clone(),
+                    "stage": stage,
+                    "index": index,
+                    "total": accepted.len(),
+                }),
+            );
+            if let Some(app) = state {
+                current_work_publish(app, slot);
+                let workbook = item.map(|item| {
+                    item.source
+                        .strip_prefix(&request.source_directory)
+                        .unwrap_or(&item.source)
+                        .to_string_lossy()
+                        .into_owned()
+                });
+                let sheet = sheet.as_deref().map(|name| format!(" 工作表={name}"));
+                let mut ui = app.lock();
+                push_log(
+                    &mut ui.value,
+                    format!(
+                        "S1-F01 [{} / {}] 文件={}{} 阶段={}",
+                        index.map_or_else(|| "?".to_owned(), |value| value.to_string()),
+                        accepted.len(),
+                        workbook.as_deref().unwrap_or("未知文件"),
+                        sheet.unwrap_or_default(),
+                        stage
+                    ),
+                );
+            }
+        },
     )?;
     let session_shutdown_started = Instant::now();
     drop(recalculation_session);
@@ -3470,11 +3717,12 @@ fn execute_s1_f1_workflow(
     Ok(output)
 }
 
-fn execute_s1_f1_workflow_with_dependencies<F>(
+fn execute_s1_f1_workflow_with_progress<F, P>(
     request: &S1F1PreflightRequest,
     accepted: &[S1F1AcceptedSource],
     recovery_store: Option<S1RecoveryStore>,
     mut copy_executor: F,
+    mut publish_stage: P,
 ) -> Result<S1F1WorkflowOutput>
 where
     F: FnMut(
@@ -3483,6 +3731,7 @@ where
         &Path,
         &ExcelModifier,
     ) -> Result<S1FormulaCopyOutcome>,
+    P: FnMut(Option<&S1F1AcceptedSource>, Option<usize>, &str),
 {
     let workflow_started = Instant::now();
     anyhow::ensure!(
@@ -3598,7 +3847,8 @@ where
     let mut issue_extraction_other_us = 0u128;
     let mut file_timings = Vec::with_capacity(accepted.len());
 
-    for item in accepted {
+    for (accepted_index, item) in accepted.iter().enumerate() {
+        publish_stage(Some(item), Some(accepted_index + 1), "复制公式并重算");
         let file_id = stable_file_id(&item.source);
         let file_index = manifest
             .files
@@ -3623,6 +3873,7 @@ where
         };
         match outcome {
             Ok(S1FormulaCopyOutcome::WaitingManualRecalc(copy)) => {
+                publish_stage(Some(item), Some(accepted_index + 1), "检查待人工重算副本");
                 let editor_elapsed_us = copy.edit.elapsed_ms.saturating_mul(1_000);
                 excel_core_edit_us += editor_elapsed_us;
                 let copy_other_us = file_copy_executor_us.saturating_sub(editor_elapsed_us);
@@ -3696,6 +3947,7 @@ where
                 store.save(&mut manifest)?;
             }
             Ok(S1FormulaCopyOutcome::Recalculated(execution)) => {
+                publish_stage(Some(item), Some(accepted_index + 1), "验证公式重算结果");
                 let editor_elapsed_us = execution.edit.elapsed_ms.saturating_mul(1_000);
                 let recalculation_elapsed_us =
                     execution.recalculation.elapsed_ms.saturating_mul(1_000);
@@ -3748,6 +4000,11 @@ where
                     Some(semantic_fingerprint);
                 manifest.files[file_index].recalculation_engine =
                     Some(execution.recalculation.engine.clone());
+                publish_stage(
+                    Some(item),
+                    Some(accepted_index + 1),
+                    "提取公式与条件格式异常",
+                );
                 let extraction_started = Instant::now();
                 let extracted =
                     extract_s1_audit_copy(item, &item.source, &audit_workbook, &metadata);
@@ -3871,6 +4128,7 @@ where
     });
     let result_merge_write_started = Instant::now();
     if has_extractable_files {
+        publish_stage(None, None, "汇总并写入审核结果");
         match write_s1_manifest_result(&manifest, &request.planned_result_path) {
             Ok(summary) => {
                 result_path = Some(summary.path.clone());
@@ -3976,6 +4234,18 @@ where
         result_error,
         performance_timings,
     })
+}
+
+/// The S1 formula-copy edit plan builds template ImportRange target_sheet
+/// values directly from these same cached copy-range definitions. Reuse the
+/// preflight plan here instead of opening a workbook again for the status bar.
+fn s1_f1_current_sheet(item: &S1F1AcceptedSource) -> Option<String> {
+    item.preflight
+        .rule_plan
+        .definition
+        .copy_ranges
+        .first()
+        .map(|range| range.sheet_name.clone())
 }
 
 fn s1_f1_template_preflight(
@@ -4337,6 +4607,7 @@ fn start_dag_flow(state: &AppState, args: &[Value]) -> std::result::Result<Value
             ));
         }
         ui.value["busy"] = json!(true);
+        clear_run_summary(&mut ui.value);
         ui.value["status"] = json!("正在汇总校验结果说明，请勿关闭窗口……");
         ui.value["template"] = json!(template_path.to_string_lossy());
         ui.value["auditSummaryOutput"] = json!(output_workbook.to_string_lossy());
@@ -4367,6 +4638,7 @@ fn start_dag_flow(state: &AppState, args: &[Value]) -> std::result::Result<Value
                 output_workbook,
                 history_workbook,
                 selected_files,
+                task_started,
             )
         })
     {
@@ -4388,10 +4660,12 @@ fn run_s1_region_summary_worker(
     output_workbook: PathBuf,
     history_workbook: PathBuf,
     selected_files: Vec<PathBuf>,
+    task_started: Instant,
 ) {
     let started = Instant::now();
     let feature_names = ["任意行汇总".to_owned()];
-    let result = summarize_s1_named_regions_selected(
+    let progress_state = state.clone();
+    let result = summarize_s1_named_regions_selected_with_progress(
         &template_path,
         &input_dir,
         &output_workbook,
@@ -4400,6 +4674,11 @@ fn run_s1_region_summary_worker(
         &feature_names,
         true,
         &selected_files,
+        |stage| {
+            let mut ui = progress_state.lock();
+            ui.value["currentWork"] = json!({"feature":"S1-F02","stage":stage});
+            push_log(&mut ui.value, format!("S1-F02 阶段：{stage}"));
+        },
     );
     let mut ui = state.lock();
     ui.value["busy"] = json!(false);
@@ -4446,6 +4725,21 @@ fn run_s1_region_summary_worker(
                     started.elapsed().as_millis()
                 ),
             );
+            publish_run_summary(
+                &mut ui.value,
+                "S1-F02",
+                format!(
+                    "工作簿总数 {}；结构通过 {}；部分继续 {}；跳过 {}；输出工作表 {} 张、数据 {} 行；结果文件 {}；总耗时 {}。",
+                    summary.source_workbooks,
+                    summary.structure_preflight_passed_workbooks,
+                    summary.structure_preflight_partial_workbooks,
+                    summary.structure_preflight_skipped_workbooks,
+                    summary.output_sheets,
+                    summary.data_rows,
+                    summary.output_path.display(),
+                    format_elapsed(task_started.elapsed())
+                ),
+            );
         }
         Err(error) => {
             ui.value["status"] = json!("S1-F02 汇总失败");
@@ -4458,6 +4752,17 @@ fn run_s1_region_summary_worker(
                 format!(
                     "S1-F02 失败：reader=calamine+namespace_aware_ooxml；writer=rust_xlsxwriter；elapsed_ms={}；error={error:#}",
                     started.elapsed().as_millis()
+                ),
+            );
+            publish_run_summary(
+                &mut ui.value,
+                "S1-F02",
+                format!(
+                    "输入工作簿 {}；任务失败；结果文件未确认发布（预期路径 {}）；输出目录 {}；总耗时 {}；原因：{error:#}。",
+                    selected_files.len(),
+                    output_workbook.display(),
+                    output_workbook.parent().unwrap_or(Path::new(".")).display(),
+                    format_elapsed(task_started.elapsed())
                 ),
             );
         }
@@ -4592,6 +4897,7 @@ fn choose_central(state: &AppState, args: &[Value]) -> std::result::Result<Value
 }
 
 fn start_central_comparison(state: &AppState) -> std::result::Result<Value, ApiError> {
+    let task_started = Instant::now();
     let (current_file, previous_file, common_config, feature_config, output_directory, schema) = {
         let ui = state.lock();
         if ui.value["busy"] == true {
@@ -4736,12 +5042,18 @@ fn start_central_comparison(state: &AppState) -> std::result::Result<Value, ApiE
             ));
         }
         ui.value["busy"] = json!(true);
+        clear_run_summary(&mut ui.value);
         ui.value["status"] = json!("正在执行大集中比较，请勿关闭窗口……");
+        ui.value["currentWork"] = json!({
+            "feature": "S3-F01",
+            "workbook": current_file.display().to_string(),
+            "stage": "准备执行比较",
+        });
         push_log(&mut ui.value, "S3-F01 开始大集中执行比较".to_owned());
         push_detail_log(
             &mut ui.value,
             format!(
-                "S3-F01 开始：input_reader={input_reader}，config_reader=Calamine，writer=rust_xlsxwriter，expression=Rust local ({schema_name})；本期 {}；上期 {}；3.0配置 {}；3.1配置 {}；输出 {}",
+                "S3-F01 开始：input_reader={input_reader}，config_reader=Calamine，writer=rust_xlsxwriter，expression=内置求值（{schema_name}）；本期 {}；上期 {}；3.0配置 {}；3.1配置 {}；输出 {}",
                 current_file.display(),
                 previous_file.display(),
                 common_config.display(),
@@ -4765,11 +5077,13 @@ fn start_central_comparison(state: &AppState) -> std::result::Result<Value, ApiE
                 schema,
                 input_reader,
                 schema_name,
+                task_started,
             )
         })
     {
         let mut ui = state.lock();
         ui.value["busy"] = json!(false);
+        ui.value["currentWork"] = Value::Null;
         ui.value["status"] = json!("大集中执行比较失败");
         push_error_log(&mut ui.value, format!("启动 S3-F01 比较线程失败：{error}"));
         return Err(ApiError::internal(format!(
@@ -4790,11 +5104,11 @@ fn run_s3_execution_compare_worker(
     schema: S3ExpressionSchema,
     input_reader: String,
     schema_name: &'static str,
+    task_started: Instant,
 ) {
     let started = Instant::now();
-    let current_file_name = current_file
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned());
+    let current_file_display = current_file.display().to_string();
+    let previous_file_display = previous_file.display().to_string();
     let current_paths = [current_file];
     let previous_paths = [previous_file];
     let progress_state = state.clone();
@@ -4810,10 +5124,16 @@ fn run_s3_execution_compare_worker(
             ui.value["status"] = json!(format!("S3-F01：{step}"));
             ui.value["currentWork"] = json!({
                 "feature": "S3-F01",
-                "workbook": current_file_name,
+                "workbook": current_file_display.clone(),
                 "stage": step,
             });
-            push_log(&mut ui.value, format!("S3-F01：{step}"));
+            push_log(
+                &mut ui.value,
+                format!(
+                    "S3-F01 阶段：文件={}；{step}",
+                    current_file_display
+                ),
+            );
             push_detail_log(
                 &mut ui.value,
                 format!("S3-F01 阶段：{step}；expression={schema_name}"),
@@ -4822,13 +5142,9 @@ fn run_s3_execution_compare_worker(
     );
     let mut ui = state.lock();
     ui.value["busy"] = json!(false);
+    ui.value["currentWork"] = Value::Null;
     match result {
         Ok(report) => {
-            ui.value["currentWork"] = json!({
-                "feature": "S3-F01",
-                "stage": "完成",
-                "rows": report.rows,
-            });
             let output = report.output_path.to_string_lossy().into_owned();
             ui.value["centralCompareFile"] = json!(output);
             if ui.value["centralFormOutputAuto"] == true {
@@ -4869,18 +5185,45 @@ fn run_s3_execution_compare_worker(
                     started.elapsed().as_millis()
                 ),
             );
+            publish_run_summary(
+                &mut ui.value,
+                "S3-F01",
+                format!(
+                    "本期文件 {}；上期文件 {}；比较行 {}；表达式错误 {}；结果文件 {}；总耗时 {}。",
+                    current_file_display,
+                    previous_file_display,
+                    report.rows,
+                    report.expression_errors,
+                    report.output_path.display(),
+                    format_elapsed(task_started.elapsed())
+                ),
+            );
         }
         Err(error) => {
             ui.value["status"] = json!("大集中执行比较失败");
             push_error_log(
                 &mut ui.value,
-                format!("S3-F01 执行比较失败，未报告成功结果：{error:#}"),
+                format!(
+                    "S3-F01 文件={} 阶段=执行比较 失败，未报告成功结果：{error:#}",
+                    current_file_display
+                ),
             );
             push_detail_log(
                 &mut ui.value,
                 format!(
-                    "S3-F01 失败：reader={input_reader}，config_reader=Calamine，writer=rust_xlsxwriter，expression=Rust local ({schema_name})，任务总计={} ms，错误={error:#}",
+                    "S3-F01 失败：reader={input_reader}，config_reader=Calamine，writer=rust_xlsxwriter，expression=内置求值（{schema_name}），任务总计={} ms，错误={error:#}",
                     started.elapsed().as_millis()
+                ),
+            );
+            publish_run_summary(
+                &mut ui.value,
+                "S3-F01",
+                format!(
+                    "本期文件 {}；上期文件 {}；任务失败；比较结果未生成；输出文件 {}；总耗时 {}；原因：{error:#}。",
+                    current_file_display,
+                    previous_file_display,
+                    output_workbook.display(),
+                    format_elapsed(task_started.elapsed())
                 ),
             );
         }
@@ -4888,6 +5231,7 @@ fn run_s3_execution_compare_worker(
 }
 
 fn start_central_explanation_export(state: &AppState) -> std::result::Result<Value, ApiError> {
+    let task_started = Instant::now();
     let (comparison_file, config_workbook, output_directory) = {
         let ui = state.lock();
         if ui.value["busy"] == true {
@@ -4981,9 +5325,11 @@ fn start_central_explanation_export(state: &AppState) -> std::result::Result<Val
             ));
         }
         ui.value["busy"] = json!(true);
+        clear_run_summary(&mut ui.value);
         ui.value["status"] = json!("正在导出选定指标说明……");
         ui.value["currentWork"] = json!({
             "feature": "S3-F02",
+            "workbook": comparison_file.file_name().map(|name| name.to_string_lossy().into_owned()),
             "stage": "导出说明",
         });
         push_log(&mut ui.value, "S3-F02 开始导出选定指标说明".to_owned());
@@ -5008,11 +5354,13 @@ fn start_central_explanation_export(state: &AppState) -> std::result::Result<Val
                 comparison_file,
                 Some(config_workbook),
                 thread_output,
+                task_started,
             )
         })
     {
         let mut ui = state.lock();
         ui.value["busy"] = json!(false);
+        ui.value["currentWork"] = Value::Null;
         ui.value["status"] = json!("指标说明导出失败");
         push_error_log(&mut ui.value, format!("启动 S3-F02 导出线程失败：{error}"));
         return Err(ApiError::internal(format!(
@@ -5027,15 +5375,27 @@ fn run_s3_explanation_export_worker(
     comparison_file: PathBuf,
     config_workbook: Option<PathBuf>,
     output_workbook: PathBuf,
+    task_started: Instant,
 ) {
     let started = Instant::now();
-    let result = export_selected_explanations(
+    let progress_state = state.clone();
+    let result = export_selected_explanations_with_progress(
         &comparison_file,
         &output_workbook,
         config_workbook.as_deref(),
+        |stage| {
+            let mut ui = progress_state.lock();
+            ui.value["currentWork"] = json!({
+                "feature": "S3-F02",
+                "workbook": comparison_file.to_string_lossy(),
+                "stage": stage,
+            });
+            push_log(&mut ui.value, format!("S3-F02 阶段：{stage}"));
+        },
     );
     let mut ui = state.lock();
     ui.value["busy"] = json!(false);
+    ui.value["currentWork"] = Value::Null;
     match result {
         Ok(report) => {
             let output = report.output_workbook.to_string_lossy().into_owned();
@@ -5063,15 +5423,43 @@ fn run_s3_explanation_export_worker(
                     started.elapsed().as_millis()
                 ),
             );
+            publish_run_summary(
+                &mut ui.value,
+                "S3-F02",
+                format!(
+                    "输入工作簿 {}；选中说明行 {} 条；结果文件 {}；总耗时 {}。",
+                    comparison_file.display(),
+                    report.selected_rows,
+                    report.output_workbook.display(),
+                    format_elapsed(task_started.elapsed())
+                ),
+            );
         }
         Err(error) => {
             ui.value["status"] = json!("指标说明导出失败");
-            push_error_log(&mut ui.value, format!("S3-F02 指标说明导出失败：{error:#}"));
+            let file_name = comparison_file
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| comparison_file.display().to_string());
+            push_error_log(
+                &mut ui.value,
+                format!("S3-F02 文件={file_name} 阶段=导出说明 失败：{error:#}"),
+            );
             push_detail_log(
                 &mut ui.value,
                 format!(
                     "S3-F02 失败：reader=Calamine，writer=rust_xlsxwriter，任务总计={} ms，错误={error:#}",
                     started.elapsed().as_millis()
+                ),
+            );
+            publish_run_summary(
+                &mut ui.value,
+                "S3-F02",
+                format!(
+                    "输入工作簿 {}；任务失败；结果未生成；输出目录 {}；总耗时 {}；原因：{error:#}。",
+                    comparison_file.display(),
+                    output_workbook.parent().unwrap_or(Path::new(".")).display(),
+                    format_elapsed(task_started.elapsed())
                 ),
             );
         }
@@ -5082,6 +5470,7 @@ fn start_central_explanation_feedback_import(
     state: &AppState,
     args: &[Value],
 ) -> std::result::Result<Value, ApiError> {
+    let task_started = Instant::now();
     let (target_workbook, feedback_workbooks) = {
         let ui = state.lock();
         if ui.value["busy"] == true {
@@ -5155,6 +5544,7 @@ fn start_central_explanation_feedback_import(
             ));
         }
         ui.value["busy"] = json!(true);
+        clear_run_summary(&mut ui.value);
         ui.value["status"] = json!("正在匹配并写回机构说明……");
         push_log(
             &mut ui.value,
@@ -5184,6 +5574,7 @@ fn start_central_explanation_feedback_import(
                 target_workbook,
                 feedback_workbooks,
                 modifier,
+                task_started,
             )
         })
     {
@@ -5206,10 +5597,24 @@ fn run_s3_explanation_feedback_worker(
     target_workbook: PathBuf,
     feedback_workbooks: Vec<PathBuf>,
     modifier: ExcelModifier,
+    task_started: Instant,
 ) {
     let started = Instant::now();
-    let result =
-        execute_explanation_feedback_import(&target_workbook, &feedback_workbooks, &modifier);
+    let progress_state = state.clone();
+    let result = execute_explanation_feedback_import_with_progress(
+        &target_workbook,
+        &feedback_workbooks,
+        &modifier,
+        |stage| {
+            let mut ui = progress_state.lock();
+            ui.value["currentWork"] = json!({
+                "feature": "S3-F03",
+                "workbook": target_workbook.to_string_lossy(),
+                "stage": stage,
+            });
+            push_log(&mut ui.value, format!("S3-F03 阶段：{stage}"));
+        },
+    );
     let mut ui = state.lock();
     ui.value["busy"] = json!(false);
     match result {
@@ -5258,6 +5663,20 @@ fn run_s3_explanation_feedback_worker(
                     report.output_workbook.display()
                 ),
             );
+            publish_run_summary(
+                &mut ui.value,
+                "S3-F03",
+                format!(
+                    "目标说明文件 {}；反馈文件 {} 个；写入 {} 条；未匹配 {} 条；冲突 {} 条；目标已原地更新；备份 {}；总耗时 {}。",
+                    report.output_workbook.display(),
+                    feedback_workbooks.len(),
+                    report.imported,
+                    report.unmatched,
+                    report.conflicts,
+                    report.backup_workbook.as_ref().map(|path| path.display().to_string()).unwrap_or_else(|| "未生成".to_owned()),
+                    format_elapsed(task_started.elapsed())
+                ),
+            );
             if let Some(path) = &report.backup_workbook {
                 push_detail_log(
                     &mut ui.value,
@@ -5276,6 +5695,16 @@ fn run_s3_explanation_feedback_worker(
                 format!(
                     "S3-F03 失败，未报告成功；反馈输入保持不变；若更新阶段需要恢复，错误信息包含备份/恢复路径；任务总计={} ms；错误={error:#}",
                     started.elapsed().as_millis()
+                ),
+            );
+            publish_run_summary(
+                &mut ui.value,
+                "S3-F03",
+                format!(
+                    "目标说明文件 {}；反馈文件 {} 个；原目标未报告更新成功；总耗时 {}；错误：{error:#}。",
+                    target_workbook.display(),
+                    feedback_workbooks.len(),
+                    format_elapsed(task_started.elapsed())
                 ),
             );
         }
@@ -5349,6 +5778,7 @@ fn s3_production_modifier(feature: &str) -> std::result::Result<ExcelModifier, A
 
 
 fn start_central_indicator_split(state: &AppState) -> std::result::Result<Value, ApiError> {
+    let task_started = Instant::now();
     let (comparison_file, common_config, forms_config, output_directory) = {
         let ui = state.lock();
         if ui.value["busy"] == true {
@@ -5432,10 +5862,12 @@ fn start_central_indicator_split(state: &AppState) -> std::result::Result<Value,
             ));
         }
         ui.value["busy"] = json!(true);
+        clear_run_summary(&mut ui.value);
         ui.value["centralFormOutputLastResult"] = json!("");
         ui.value["status"] = json!("正在生成 S3-F05 金融表单……");
         ui.value["currentWork"] = json!({
             "feature": "S3-F05",
+            "workbook": comparison_file.file_name().map(|name| name.to_string_lossy().into_owned()),
             "stage": "生成金融表单",
         });
         push_log(&mut ui.value, "S3-F05 开始生成机构金融表单".to_owned());
@@ -5465,11 +5897,13 @@ fn start_central_indicator_split(state: &AppState) -> std::result::Result<Value,
                 forms_config,
                 output_directory,
                 modifier,
+                task_started,
             )
         })
     {
         let mut ui = state.lock();
         ui.value["busy"] = json!(false);
+        ui.value["currentWork"] = Value::Null;
         ui.value["status"] = json!("S3-F05 任务启动失败");
         push_error_log(&mut ui.value, format!("启动 S3-F05 任务线程失败：{error}"));
         return Err(ApiError::internal(format!(
@@ -5719,17 +6153,29 @@ fn run_s3_indicator_split_worker(
     forms_config: PathBuf,
     output_directory: PathBuf,
     modifier: ExcelModifier,
+    task_started: Instant,
 ) {
     let started = Instant::now();
-    let result = execute_indicator_comparison_split(
+    let progress_state = state.clone();
+    let result = execute_indicator_comparison_split_with_progress(
         &comparison_file,
         &forms_config,
         &common_config,
         &output_directory,
         &modifier,
+        |stage| {
+            let mut ui = progress_state.lock();
+            ui.value["currentWork"] = json!({
+                "feature": "S3-F05",
+                "workbook": comparison_file.to_string_lossy(),
+                "stage": stage,
+            });
+            push_log(&mut ui.value, format!("S3-F05 阶段：{stage}"));
+        },
     );
     let mut ui = state.lock();
     ui.value["busy"] = json!(false);
+    ui.value["currentWork"] = Value::Null;
     match result {
         Ok(report) => {
             let output = report.output_directory.to_string_lossy().into_owned();
@@ -5770,10 +6216,30 @@ fn run_s3_indicator_split_worker(
                     report.output_directory.display()
                 ),
             );
+            publish_run_summary(
+                &mut ui.value,
+                "S3-F05",
+                format!(
+                    "比较行 {}；机构 {} 家；匹配指标 {}；生成工作簿 {} 个；输出目录 {}；总耗时 {}。",
+                    report.comparison_rows,
+                    report.institution_count,
+                    report.matched_indicators,
+                    report.output_files.len(),
+                    report.output_directory.display(),
+                    format_elapsed(task_started.elapsed())
+                ),
+            );
         }
         Err(error) => {
             ui.value["status"] = json!("S3-F05 失败");
-            push_log(&mut ui.value, format!("S3-F05 未生成金融表单：{error:#}"));
+            let file_name = comparison_file
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| comparison_file.display().to_string());
+            push_error_log(
+                &mut ui.value,
+                format!("S3-F05 文件={file_name} 阶段=拆分金融表单 失败：{error:#}"),
+            );
             push_detail_log(
                 &mut ui.value,
                 format!(
@@ -5781,11 +6247,22 @@ fn run_s3_indicator_split_worker(
                     started.elapsed().as_millis()
                 ),
             );
+            publish_run_summary(
+                &mut ui.value,
+                "S3-F05",
+                format!(
+                    "输入比较文件 {}；批次失败；未发布输出；输出根目录 {}；总耗时 {}；原因：{error:#}。",
+                    comparison_file.display(),
+                    output_directory.display(),
+                    format_elapsed(task_started.elapsed())
+                ),
+            );
         }
     }
 }
 
 fn start_central_cross_period(state: &AppState) -> std::result::Result<Value, ApiError> {
+    let task_started = Instant::now();
     let (current_file, config_workbooks, output_directory, write_flow_logs) = {
         let ui = state.lock();
         if ui.value["busy"] == true {
@@ -5917,9 +6394,11 @@ fn start_central_cross_period(state: &AppState) -> std::result::Result<Value, Ap
             ));
         }
         ui.value["busy"] = json!(true);
+        clear_run_summary(&mut ui.value);
         ui.value["status"] = json!("正在执行本期数值核对，请勿关闭窗口……");
         ui.value["currentWork"] = json!({
             "feature": "S3-F04",
+            "workbook": current_file.file_name().map(|name| name.to_string_lossy().into_owned()),
             "stage": "数值核对",
         });
         push_log(&mut ui.value, "S3-F04 开始本期数值核对".to_owned());
@@ -5947,11 +6426,13 @@ fn start_central_cross_period(state: &AppState) -> std::result::Result<Value, Ap
                 config_workbooks,
                 output_workbook,
                 log_workbook,
+                task_started,
             )
         })
     {
         let mut ui = state.lock();
         ui.value["busy"] = json!(false);
+        ui.value["currentWork"] = Value::Null;
         ui.value["status"] = json!("本期数值核对失败");
         push_error_log(&mut ui.value, format!("启动 S3-F04 任务线程失败：{error}"));
         return Err(ApiError::internal(format!(
@@ -5967,19 +6448,31 @@ fn run_s3_current_value_check_worker(
     config_workbooks: Vec<PathBuf>,
     output_workbook: PathBuf,
     log_workbook: Option<PathBuf>,
+    task_started: Instant,
 ) {
     let started = Instant::now();
     let input_reader = input_reader_for_paths(std::slice::from_ref(&current_file));
-    let result = run_current_value_check_files(
+    let progress_state = state.clone();
+    let result = run_current_value_check_files_with_progress(
         std::slice::from_ref(&current_file),
         &[],
         &config_workbooks,
         &output_workbook,
         log_workbook.as_deref(),
         python_regex_scope_matcher(),
+        |stage| {
+            let mut ui = progress_state.lock();
+            ui.value["currentWork"] = json!({
+                "feature": "S3-F04",
+                "workbook": current_file.file_name().map(|name| name.to_string_lossy().into_owned()),
+                "stage": stage,
+            });
+            push_log(&mut ui.value, format!("S3-F04 阶段：文件={}；{}", current_file.display(), stage));
+        },
     );
     let mut ui = state.lock();
     ui.value["busy"] = json!(false);
+    ui.value["currentWork"] = Value::Null;
     match result {
         Ok(report) => {
             let output = report.output_workbook.to_string_lossy().into_owned();
@@ -6020,15 +6513,46 @@ fn run_s3_current_value_check_worker(
                     started.elapsed().as_millis()
                 ),
             );
+            publish_run_summary(
+                &mut ui.value,
+                "S3-F04",
+                format!(
+                    "输入文件 {}；规则 {} 条（启用 {}）；输入记录 {}；结果行 {}；输出文件 {}；总耗时 {}。",
+                    current_file.display(),
+                    report.total_rules,
+                    report.enabled_rules,
+                    report.current_records,
+                    report.rows,
+                    report.output_workbook.display(),
+                    format_elapsed(task_started.elapsed())
+                ),
+            );
         }
         Err(error) => {
             ui.value["status"] = json!("本期数值核对失败");
-            push_error_log(&mut ui.value, format!("S3-F04 本期数值核对失败：{error:#}"));
+            let file_name = current_file
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| current_file.display().to_string());
+            push_error_log(
+                &mut ui.value,
+                format!("S3-F04 文件={file_name} 阶段=本期数值核对 失败：{error:#}"),
+            );
             push_detail_log(
                 &mut ui.value,
                 format!(
                     "S3-F04 失败：reader={input_reader}，writer=rust_xlsxwriter，任务总计={} ms，错误={error:#}",
                     started.elapsed().as_millis()
+                ),
+            );
+            publish_run_summary(
+                &mut ui.value,
+                "S3-F04",
+                format!(
+                    "输入文件 {}；任务失败；结果未生成；输出目录 {}；总耗时 {}；原因：{error:#}。",
+                    current_file.display(),
+                    output_workbook.parent().unwrap_or(Path::new(".")).display(),
+                    format_elapsed(task_started.elapsed())
                 ),
             );
         }
@@ -6456,6 +6980,7 @@ fn browse_dir(_state: &AppState, args: &[Value]) -> std::result::Result<Value, A
 
 fn start_period_compare_v2(state: &AppState) -> std::result::Result<Value, ApiError> {
     let request = {
+    let task_started = Instant::now();
         let mut ui = state.lock();
         if ui.value["busy"] == true {
             return Ok(json!(false));
@@ -6520,6 +7045,7 @@ fn start_period_compare_v2(state: &AppState) -> std::result::Result<Value, ApiEr
             .map(PathBuf::from)
             .unwrap_or_else(|| current_path.join("执行结果"));
         ui.value["busy"] = json!(true);
+        clear_run_summary(&mut ui.value);
         ui.value["cancelRequested"] = json!(false);
         ui.value["periodSummary"] = json!({});
         ui.value["status"] = json!("正在检查审核配置……");
@@ -6528,7 +7054,7 @@ fn start_period_compare_v2(state: &AppState) -> std::result::Result<Value, ApiEr
             "percent": 0, "current": 0, "total": 0,
             "message": "准备执行 Rust S2 审核", "elapsedSeconds": 0
         });
-        ui.started_at = Some(Instant::now());
+        ui.started_at = Some(task_started);
         let request = S2RunRequest {
             current_directory: current_path,
             previous_directory: previous_path,
@@ -6551,7 +7077,7 @@ fn start_period_compare_v2(state: &AppState) -> std::result::Result<Value, ApiEr
     let worker_state = state.clone();
     thread::Builder::new()
         .name("audit-s2-service".to_owned())
-        .spawn(move || run_s2_worker(worker_state, request))
+        .spawn(move || run_s2_worker(worker_state, request, task_started)
         .map_err(|error| {
             let mut ui = state.lock();
             ui.value["busy"] = json!(false);
@@ -6561,10 +7087,24 @@ fn start_period_compare_v2(state: &AppState) -> std::result::Result<Value, ApiEr
     Ok(json!(true))
 }
 
-fn run_s2_worker(state: AppState, request: S2RunRequest) {
-    let worker_started = Instant::now();
+fn run_s2_worker(state: AppState, request: S2RunRequest, task_started: Instant)
     let mut active_stage: Option<(String, String, Instant)> = None;
+    let mut active_workbook: Option<String> = None;
+    let mut last_logged_workbook: Option<String> = None;
     let mut on_progress = |event: S2ProgressEvent| {
+        let event_workbook = if matches!(event.stage.as_str(), "current" | "previous")
+            && Path::new(&event.message)
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| {
+                    extension.eq_ignore_ascii_case("xls") || extension.eq_ignore_ascii_case("xlsx")
+                })
+        {
+            Some(event.message.clone())
+        } else {
+            None
+        };
+        active_workbook = event_workbook.clone();
         let stage_changed = active_stage
             .as_ref()
             .map(|(stage, _, _)| stage != &event.stage)
@@ -6572,7 +7112,7 @@ fn run_s2_worker(state: AppState, request: S2RunRequest) {
         let mut ui = state.lock();
         if stage_changed {
             if let Some((stage, engine, started)) = active_stage.take() {
-                push_detail_log(
+                push_log(
                     &mut ui.value,
                     format!(
                         "S2 阶段完成：stage={stage} engine={engine} elapsed_ms={}",
@@ -6581,14 +7121,31 @@ fn run_s2_worker(state: AppState, request: S2RunRequest) {
                 );
             }
             let engine = s2_engine_for_stage(&event.stage).unwrap_or("未映射");
-            push_detail_log(
+            push_log(
                 &mut ui.value,
                 format!(
-                    "S2 阶段开始：stage={} label={} engine={} progress={}/{}",
-                    event.stage, event.label, engine, event.current, event.total
+                    "S2 阶段开始：{}；stage={}；engine={}；进度={}/{}；{}",
+                    event.label,
+                    event.stage,
+                    engine,
+                    event.current,
+                    event.total,
+                    event.message
                 ),
             );
             active_stage = Some((event.stage.clone(), engine.to_owned(), Instant::now()));
+        }
+        if let Some(workbook) = event_workbook.as_ref() {
+            if last_logged_workbook.as_deref() != Some(workbook.as_str()) {
+                push_log(
+                    &mut ui.value,
+                    format!(
+                        "S2 工作簿 {}/{}：{}；当前阶段={}",
+                        event.current, event.total, workbook, event.label
+                    ),
+                );
+                last_logged_workbook = Some(workbook.clone());
+            }
         }
         let stage_elapsed = active_stage
             .as_ref()
@@ -6599,26 +7156,30 @@ fn run_s2_worker(state: AppState, request: S2RunRequest) {
             "feature": "S2-F01",
             "stage": event.label,
             "stageKey": event.stage,
+            "workbook": event_workbook,
+            "detail": event.message,
             "index": event.current,
             "total": event.total,
         });
         ui.value["periodProgress"] = progress_value(
             &event,
             "running",
-            worker_started.elapsed().as_secs_f64(),
+            task_started.elapsed().as_secs_f64(),
             stage_elapsed,
         );
     };
     let result = run_s2_audit(&request, Some(&mut on_progress));
     drop(on_progress);
+    let failed_file = active_workbook.clone();
+    let failed_stage = active_stage.as_ref().map(|(stage, _, _)| stage.clone());
     let mut ui = state.lock();
     ui.value["busy"] = json!(false);
-    ui.value["currentWork"] = json!({"feature": "S2-F01", "stage": "完成"});
+    ui.value["currentWork"] = Value::Null;
     ui.started_at = None;
     match result {
         Ok(result) => {
             if let Some((stage, engine, started)) = active_stage.take() {
-                push_detail_log(
+                push_log(
                     &mut ui.value,
                     format!(
                         "S2 阶段完成：stage={stage} engine={engine} elapsed_ms={}",
@@ -6642,7 +7203,7 @@ fn run_s2_worker(state: AppState, request: S2RunRequest) {
                 "status": "completed", "stage": "completed", "label": "审核完成",
                 "percent": 100, "current": 1, "total": 1,
                 "message": format!("报告已生成：{report_path}"),
-                "elapsedSeconds": worker_started.elapsed().as_secs_f64()
+                "elapsedSeconds": task_started.elapsed().as_secs_f64()
             });
             ui.value["status"] = json!("跨期比较完成：已生成审核结果");
             push_detail_log(
@@ -6650,14 +7211,26 @@ fn run_s2_worker(state: AppState, request: S2RunRequest) {
                 format!(
                     "S2 任务完成：reader=Calamine writer=rust_xlsxwriter findings={} total_ms={}",
                     summary.total_findings,
-                    worker_started.elapsed().as_millis()
+                    task_started.elapsed().as_millis()
                 ),
             );
             push_log(&mut ui.value, format!("审核完成：{}", report_path));
+            let final_summary = format!(
+                "机构 {} 家；表单 {} 张；指标 {} 个；异常 {} 条（总计 {} 条发现）；结果文件 {}；总耗时 {}。",
+                summary.institutions,
+                summary.forms,
+                summary.indicators,
+                summary.abnormal_findings,
+                summary.total_findings,
+                report_path,
+                format_elapsed(task_started.elapsed())
+            );
+            ui.value["status"] = json!(format!("跨期比较完成；总耗时 {}", format_elapsed(task_started.elapsed())));
+            publish_run_summary(&mut ui.value, "S2-F01", final_summary);
         }
         Err(error) => {
             if let Some((stage, engine, started)) = active_stage.take() {
-                push_detail_log(
+                push_log(
                     &mut ui.value,
                     format!(
                         "S2 阶段失败：stage={stage} engine={engine} elapsed_ms={}",
@@ -6665,22 +7238,44 @@ fn run_s2_worker(state: AppState, request: S2RunRequest) {
                     ),
                 );
             }
-            let message = format!("跨期比较失败：{error:#}");
+            let message = format!(
+                "S2-F01{}{} 跨期比较失败：{error:#}",
+                failed_file
+                    .as_deref()
+                    .map(|file| format!(" 文件={file}"))
+                    .unwrap_or_default(),
+                failed_stage
+                    .as_deref()
+                    .map(|stage| format!(" 阶段={stage}"))
+                    .unwrap_or_default()
+            );
             ui.value["periodProgress"] = json!({
                 "status": "failed", "stage": "failed", "label": "审核失败",
                 "percent": 0, "current": 0, "total": 0,
                 "message": message,
-                "elapsedSeconds": worker_started.elapsed().as_secs_f64()
+                "elapsedSeconds": task_started.elapsed().as_secs_f64()
             });
             ui.value["status"] = json!("跨期比较失败");
             push_detail_log(
                 &mut ui.value,
                 format!(
                     "S2 任务失败：total_ms={} error={error:#}",
-                    worker_started.elapsed().as_millis()
+                    task_started.elapsed().as_millis()
                 ),
             );
-            push_log(&mut ui.value, message);
+            push_error_log(&mut ui.value, message);
+            publish_run_summary(
+                &mut ui.value,
+                "S2-F01",
+                format!(
+                    "任务失败；位置={}；结果未生成；总耗时 {}；原因：{error:#}。",
+                    failed_file
+                        .as_deref()
+                        .map(|file| format!("文件 {file}，阶段 {}", failed_stage.as_deref().unwrap_or("未知阶段")))
+                        .unwrap_or_else(|| "未能定位到工作簿".to_owned()),
+                    format_elapsed(task_started.elapsed())
+                ),
+            );
         }
     }
 }
@@ -7059,10 +7654,25 @@ fn log_timestamp() -> String {
 /// 统一的日志写入入口：`level` 取 "info"|"warn"|"error"；`detail` 条目
 /// 是开发诊断行（默认隐藏），级别照记以便筛选。
 fn push_log_entry(state: &mut Value, message: String, level: &str, detail: bool) {
+    let is_repeated_tail = state
+        .get("log")
+        .and_then(Value::as_array)
+        .and_then(|entries| entries.last())
+        .is_some_and(|entry| {
+            entry["text"].as_str() == Some(message.as_str())
+                && entry["level"].as_str() == Some(level)
+                && entry["detail"].as_bool() == Some(detail)
+        });
+    if is_repeated_tail {
+        return;
+    }
+    let sequence = state["logVersion"].as_u64().unwrap_or_default() + 1;
+    state["logVersion"] = json!(sequence);
     let Some(log) = state.get_mut("log").and_then(Value::as_array_mut) else {
         return;
     };
     log.push(json!({
+        "seq": sequence,
         "text": message,
         "detail": detail,
         "level": level,
@@ -7090,6 +7700,35 @@ fn push_warn_log(state: &mut Value, message: String) {
 /// 任务失败、文件处理失败、关键操作异常。
 fn push_error_log(state: &mut Value, message: String) {
     push_log_entry(state, message, "error", false);
+}
+
+fn clear_run_summary(state: &mut Value) {
+    state["lastRunSummary"] = Value::Null;
+}
+
+fn publish_run_summary(state: &mut Value, feature: &str, summary: String) {
+    state["lastRunSummary"] = json!({
+        "feature": feature,
+        "text": summary,
+        "time": log_timestamp(),
+    });
+    push_log(state, format!("{feature} 最终摘要：{summary}"));
+}
+
+fn format_elapsed(elapsed: Duration) -> String {
+    let total_ms = elapsed.as_millis();
+    if total_ms >= 60_000 {
+        format!("{}分{:.1}秒", total_ms / 60_000, (total_ms % 60_000) as f64 / 1_000.0)
+    } else if total_ms < 1_000 {
+        let total_ms = (elapsed.as_secs_f64() * 1_000.0).round() as u64;
+        if total_ms == 0 {
+            "小于 1 毫秒".to_owned()
+        } else {
+            format!("{total_ms} 毫秒")
+        }
+    } else {
+        format!("{:.1}秒", total_ms as f64 / 1_000.0)
+    }
 }
 
 /// "当前处理对象"共享槽：worker 在业务线程直接更新，800ms 轮询把
@@ -7184,10 +7823,11 @@ impl IntoResponse for ApiError {
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_s1_f3_recovery_state, browse_dir, cached_s1_f1_template_preflight, dispatch_api,
-        execute_s1_f1_workflow_with_dependencies, extract_s1_audit_copy_with_conditional_extractor,
-        progress_value, render_index, run_s1_f3_worker_with_store, s1_f1_template_preflight,
-        run_s1_f1_for_acceptance,
+        apply_s1_f3_recovery_state, browse_dir, cached_s1_f1_template_preflight,
+        execute_s1_f1_workflow_with_progress, extract_s1_audit_copy_with_conditional_extractor,
+        format_elapsed, progress_value, publish_run_summary, push_log, render_index,
+        run_s1_f3_worker_with_store, s1_f1_template_preflight, run_s1_f1_for_acceptance,
+        s1_f1_current_sheet, LOG_CAPACITY,
         write_s1_recovery_manifest_result, AppState, S1F1AcceptedSource, S1F1OutputDirectoryGuard,
         S1F1PreflightRequest,
     };
@@ -7243,6 +7883,47 @@ mod tests {
         AppState::new(PathBuf::from("missing-test-config.xlsx"))
     }
 
+    #[test]
+    fn run_log_keeps_append_sequence_and_final_summary_beyond_ring_buffer() {
+        let mut state = json!({"log": [], "logVersion": 0, "lastRunSummary": null});
+        super::push_log(&mut state, "同一阶段".to_owned());
+        super::push_log(&mut state, "同一阶段".to_owned());
+        assert_eq!(state["log"].as_array().unwrap().len(), 1);
+        assert_eq!(state["logVersion"], 1);
+
+        for index in 0..super::LOG_CAPACITY + 1 {
+            super::push_log(&mut state, format!("阶段 {index}"));
+        }
+        super::publish_run_summary(
+            &mut state,
+            "S3-F05",
+            "生成工作簿 2 个；总耗时 31 毫秒。".to_owned(),
+        );
+
+        let entries = state["log"].as_array().unwrap();
+        assert_eq!(entries.len(), super::LOG_CAPACITY);
+        assert!(entries
+            .windows(2)
+            .all(|pair| pair[0]["seq"].as_u64() < pair[1]["seq"].as_u64()));
+        assert!(entries
+            .last()
+            .unwrap()["text"]
+            .as_str()
+            .unwrap()
+            .contains("S3-F05 最终摘要"));
+        assert_eq!(
+            state["lastRunSummary"]["text"],
+            "生成工作簿 2 个；总耗时 31 毫秒。"
+        );
+    }
+
+    #[test]
+    fn elapsed_time_format_does_not_round_short_runs_to_zero_seconds() {
+        assert_eq!(super::format_elapsed(Duration::from_millis(37)), "37 毫秒");
+        assert_eq!(super::format_elapsed(Duration::ZERO), "小于 1 毫秒");
+        assert_eq!(super::format_elapsed(Duration::from_millis(1_234)), "1.2秒");
+        assert_eq!(super::format_elapsed(Duration::from_millis(61_200)), "1分1.2秒");
+    }
     #[test]
     fn s1_output_directory_tracks_input_until_explicitly_pinned() {
         let state = test_state();
@@ -7772,7 +8453,8 @@ mod tests {
             source_directory_scan_us: 0,
         };
         let store = S1RecoveryStore::new(state_dir);
-        let output = execute_s1_f1_workflow_with_dependencies(
+        let mut current_work_stages = Vec::new();
+        let output = execute_s1_f1_workflow_with_progress(
             &request,
             &accepted,
             Some(store.clone()),
@@ -7819,8 +8501,39 @@ mod tests {
                     }
                 }
             },
+            |item, index, stage| {
+                current_work_stages.push((
+                    item.map(|item| {
+                        item.source
+                            .file_name()
+                            .unwrap()
+                            .to_string_lossy()
+                            .into_owned()
+                    }),
+                    item.and_then(s1_f1_current_sheet),
+                    index,
+                    stage.to_owned(),
+                ));
+            },
         )?;
 
+        assert!(current_work_stages
+            .iter()
+            .any(|(workbook, sheet, index, stage)| {
+                workbook.as_deref() == Some("机构甲_2026-07_自动重算.xlsx")
+                    && sheet.is_some()
+                    && *index == Some(1)
+                    && stage == "复制公式并重算"
+            }));
+        assert!(current_work_stages
+            .iter()
+            .any(|(_, _, _, stage)| stage == "验证公式重算结果"));
+        assert!(current_work_stages
+            .iter()
+            .any(|(_, _, _, stage)| stage == "提取公式与条件格式异常"));
+        assert!(current_work_stages
+            .iter()
+            .any(|(_, _, _, stage)| stage == "汇总并写入审核结果"));
         assert_eq!(output.waiting_manual_recalc, 1);
         assert_eq!(output.partial_files, 0);
         assert_eq!(output.failed_files, 0);
@@ -9318,22 +10031,21 @@ mod tests {
             let engine = crate::s2_service::s2_engine_for_stage(stage).unwrap();
             assert!(
                 logs.iter().any(|entry| {
-                    entry["detail"] == true
-                        && entry["text"].as_str().is_some_and(|text| {
-                            text.contains(&format!("S2 阶段开始：stage={stage}"))
-                                && text.contains(&format!("engine={engine}"))
-                        })
+                    entry["text"].as_str().is_some_and(|text| {
+                        text.contains("S2 阶段开始：")
+                            && text.contains(&format!("stage={stage}"))
+                            && text.contains(&format!("engine={engine}"))
+                    })
                 }),
                 "missing start detail for S2 stage {stage}"
             );
             assert!(
                 logs.iter().any(|entry| {
-                    entry["detail"] == true
-                        && entry["text"].as_str().is_some_and(|text| {
-                            text.contains(&format!("S2 阶段完成：stage={stage}"))
-                                && text.contains(&format!("engine={engine}"))
-                                && text.contains("elapsed_ms=")
-                        })
+                    entry["text"].as_str().is_some_and(|text| {
+                        text.contains(&format!("S2 阶段完成：stage={stage}"))
+                            && text.contains(&format!("engine={engine}"))
+                            && text.contains("elapsed_ms=")
+                    })
                 }),
                 "missing completion detail for S2 stage {stage}"
             );

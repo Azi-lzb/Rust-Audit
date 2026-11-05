@@ -420,6 +420,27 @@ pub fn execute_indicator_comparison_split(
     output_root: impl AsRef<Path>,
     modifier: &ExcelModifier,
 ) -> Result<S3IndicatorSplitExecutionReport> {
+    execute_indicator_comparison_split_with_progress(
+        comparison_path,
+        financial_template_path,
+        common_config_path,
+        output_root,
+        modifier,
+        |_| {},
+    )
+}
+
+pub fn execute_indicator_comparison_split_with_progress<F>(
+    comparison_path: impl AsRef<Path>,
+    financial_template_path: impl AsRef<Path>,
+    common_config_path: impl AsRef<Path>,
+    output_root: impl AsRef<Path>,
+    modifier: &ExcelModifier,
+    mut on_progress: F,
+) -> Result<S3IndicatorSplitExecutionReport>
+where
+    F: FnMut(&str),
+{
     let comparison_path = comparison_path.as_ref();
     let financial_template_path = financial_template_path.as_ref();
     let common_config_path = common_config_path.as_ref();
@@ -438,10 +459,13 @@ pub fn execute_indicator_comparison_split(
         .with_context(|| format!("解析 S3-F05 输出目录：{}", output_root.display()))?;
     ensure!(output_root.is_dir(), "S3-F05 输出路径不是目录");
 
+    on_progress(&format!("读取 3.3 金融表单配置：{}", financial_template_path.display()));
     let template = load_indicator_split_template(financial_template_path)?;
+    on_progress(&format!("读取 3.0 通用警戒配置：{}", common_config_path.display()));
     let alert_bands =
         crate::s3_execution_compare::load_indicator_split_alert_bands(common_config_path)
             .context("读取 S3-F05 大集中通用配置中的环比预警区间")?;
+    on_progress(&format!("读取比较文件并规划机构表单：{}", comparison_path.display()));
     let plan = plan_indicator_comparison_split(comparison_path, &template, &alert_bands)?;
     ensure!(
         !plan.organizations.is_empty(),
@@ -458,6 +482,7 @@ pub fn execute_indicator_comparison_split(
         );
     }
 
+    on_progress(&format!("检查金融表单模板结构：{}", template.path.display()));
     let workbook_profile = inspect_xlsx_profile(&template.path)
         .with_context(|| format!("检查 S3-F05 金融表单模板：{}", template.path.display()))?;
     ensure!(
@@ -472,6 +497,14 @@ pub fn execute_indicator_comparison_split(
 
     for (index, institution) in plan.organizations.iter().enumerate() {
         let staged_output = staging.path().join(&institution.output_file_name);
+        on_progress(&format!(
+            "生成金融表单 [{}/{}] 机构={}（{}）；输出={}；准备 Excel-Core 编辑计划",
+            index + 1,
+            plan.organizations.len(),
+            institution.institution_name,
+            institution.institution_code,
+            staged_output.display()
+        ));
         let edit_plan = build_indicator_split_edit_plan(
             &template.path,
             &staged_output,
@@ -490,12 +523,20 @@ pub fn execute_indicator_comparison_split(
             "S3-F05 Excel-Core 未生成请求的金融表单：{}",
             staged_output.display()
         );
+        on_progress(&format!(
+            "金融表单已生成并验证 [{}/{}]：{}",
+            index + 1,
+            plan.organizations.len(),
+            staged_output.display()
+        ));
         output_names.push(institution.output_file_name.clone());
         edit_reports.push(report);
     }
 
     let editing_time_ms = edit_started.elapsed().as_millis();
+    on_progress(&format!("发布全部机构表单目录：{}", final_directory.display()));
     let output_directory = staging.publish(&final_directory)?;
+    on_progress(&format!("机构表单批次已发布：{}", output_directory.display()));
     let output_files = output_names
         .iter()
         .map(|name| output_directory.join(name))

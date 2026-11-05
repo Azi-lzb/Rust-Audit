@@ -179,7 +179,35 @@ pub fn summarize_s1_named_regions_selected(
     recursive: bool,
     selected_source_files: &[PathBuf],
 ) -> Result<S1RegionSummarySummary> {
+    summarize_s1_named_regions_selected_with_progress(
+        template_path,
+        input_dir,
+        output_path,
+        mapping_config,
+        history_workbook_path,
+        feature_names,
+        recursive,
+        selected_source_files,
+        |_| {},
+    )
+}
+
+pub fn summarize_s1_named_regions_selected_with_progress<F>(
+    template_path: impl AsRef<Path>,
+    input_dir: impl AsRef<Path>,
+    output_path: impl AsRef<Path>,
+    mapping_config: Option<&Path>,
+    history_workbook_path: Option<&Path>,
+    feature_names: &[String],
+    recursive: bool,
+    selected_source_files: &[PathBuf],
+    mut on_progress: F,
+) -> Result<S1RegionSummarySummary>
+where
+    F: FnMut(&str),
+{
     let started = Instant::now();
+    on_progress("校验模板、源目录、历史配置与输出位置");
     let template_path = fs::canonicalize(template_path.as_ref()).with_context(|| {
         format!(
             "读取 S1-F02 汇总模板失败：{}",
@@ -218,6 +246,7 @@ pub fn summarize_s1_named_regions_selected(
 
     let discovery_started = Instant::now();
     let mut sources = discover_source_workbooks(&input_dir, recursive)?;
+    on_progress(&format!("源目录扫描完成：发现 {} 个候选工作簿", sources.len()));
     if !selected_source_files.is_empty() {
         let selected = selected_source_files
             .iter()
@@ -249,6 +278,7 @@ pub fn summarize_s1_named_regions_selected(
     let discovery_time_ms = discovery_started.elapsed().as_millis();
 
     let template_started = Instant::now();
+    on_progress(&format!("读取汇总模板及命名区域：{}", template_path.display()));
     let template = read_workbook(&template_path)
         .with_context(|| format!("读取 S1-F02 汇总模板值失败：{}", template_path.display()))?;
     let defined_names = read_defined_names(&template_path)
@@ -279,6 +309,7 @@ pub fn summarize_s1_named_regions_selected(
     let template_read_time_ms = template_started.elapsed().as_millis();
 
     let structure_preflight_started = Instant::now();
+    on_progress("根据模板命名区域检查源工作簿表结构");
     let mut summary_data_ranges = Vec::new();
     let mut summary_header_ranges = Vec::new();
     for mapping in &selected_mappings {
@@ -336,7 +367,13 @@ pub fn summarize_s1_named_regions_selected(
     let mut structure_preflight_skipped_details = Vec::new();
     if let Some(structure_template) = structure_template.as_ref() {
         let mut accepted_sources = Vec::with_capacity(sources.len());
-        for source_path in &sources {
+        for (source_index, source_path) in sources.iter().enumerate() {
+            on_progress(&format!(
+                "结构预检 [{}/{}] 文件={}",
+                source_index + 1,
+                sources.len(),
+                source_path.display()
+            ));
             structure_preflight_checked_workbooks += 1;
             match compare_s1_summary_source_structure(source_path, structure_template) {
                 Ok(result) => {
@@ -391,7 +428,13 @@ pub fn summarize_s1_named_regions_selected(
         Vec::<(&PathBuf, WorkbookDump, Vec<WorksheetExtent>)>::with_capacity(sources.len());
     let mut source_read_time_ms = 0_u128;
     let mut source_sheet_count = 0_usize;
-    for source_path in &sources {
+    for (source_index, source_path) in sources.iter().enumerate() {
+        on_progress(&format!(
+            "读取源工作簿 [{}/{}]：{}",
+            source_index + 1,
+            sources.len(),
+            source_path.display()
+        ));
         let read_started = Instant::now();
         let workbook = read_workbook(source_path)
             .with_context(|| format!("读取 S1-F02 汇总源工作簿失败：{}", source_path.display()))?;
@@ -400,6 +443,11 @@ pub fn summarize_s1_named_regions_selected(
         source_read_time_ms += read_started.elapsed().as_millis();
         source_sheet_count += workbook.sheets.len();
         for sheet in &workbook.sheets {
+            on_progress(&format!(
+                "检查公式缓存：文件={} 工作表={}",
+                source_path.display(),
+                sheet.name
+            ));
             ensure!(
                 sheet.formula_status == "read_by_calamine",
                 "无法确认源工作表“{}”是否含公式，停止 S1-F02 汇总",
@@ -600,7 +648,16 @@ pub fn summarize_s1_named_regions_selected(
 
             let data_top = data_bounds.top;
             let data_bottom = data_bounds.bottom;
-            for (source_path, source_workbook, source_extents) in &source_workbooks {
+            for (source_index, (source_path, source_workbook, source_extents)) in
+                source_workbooks.iter().enumerate()
+            {
+                on_progress(&format!(
+                    "汇总工作表 [{}/{}] 文件={} 工作表={}",
+                    source_index + 1,
+                    source_workbooks.len(),
+                    source_path.display(),
+                    data_range.sheet_name
+                ));
                 let Some(source_sheet) = source_workbook
                     .sheets
                     .iter()
@@ -720,8 +777,17 @@ pub fn summarize_s1_named_regions_selected(
                 .map(|range| range.sheet_name.to_lowercase())
                 .collect::<HashSet<_>>();
             let mut fallback_group_indices = HashMap::<String, usize>::new();
-            for (source_path, source_workbook, source_extents) in &source_workbooks {
+            for (source_index, (source_path, source_workbook, source_extents)) in
+                source_workbooks.iter().enumerate()
+            {
                 for source_sheet in &source_workbook.sheets {
+                    on_progress(&format!(
+                        "兜底汇总工作表 [{}/{}] 文件={} 工作表={}",
+                        source_index + 1,
+                        source_workbooks.len(),
+                        source_path.display(),
+                        source_sheet.name
+                    ));
                     let group_key = source_sheet.name.to_lowercase();
                     if configured_sheet_names.contains(&group_key) {
                         continue;
@@ -890,6 +956,12 @@ pub fn summarize_s1_named_regions_selected(
         && groups
             .iter()
             .any(|group| summary_history_rule(group).is_some());
+    if should_read_history {
+        on_progress(&format!(
+            "读取并匹配历史审核工作簿：{}",
+            history_path.expect("history path checked above").display()
+        ));
+    }
     let (history_workbook, history_reader) = match history_path.filter(|_| should_read_history) {
         Some(path) => {
             ensure!(
@@ -931,6 +1003,7 @@ pub fn summarize_s1_named_regions_selected(
     fs::create_dir_all(output_parent)
         .with_context(|| format!("创建 S1-F02 汇总输出目录失败：{}", output_parent.display()))?;
     let writer_temp = temporary_path(&output_path)?;
+    on_progress(&format!("写入汇总工作簿：{}", output_path.display()));
     let write_started = Instant::now();
     let write_result = (|| -> Result<()> {
         let mut workbook = Workbook::new();
@@ -991,6 +1064,7 @@ pub fn summarize_s1_named_regions_selected(
         return Err(error);
     }
 
+    on_progress(&format!("重新打开并验证输出工作簿：{}", writer_temp.display()));
     let validation_started = Instant::now();
     if let Err(error) = validate_summary_workbook(&writer_temp, &groups) {
         let _ = fs::remove_file(&writer_temp);

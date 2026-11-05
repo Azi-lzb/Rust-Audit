@@ -80,6 +80,23 @@ pub fn export_selected_explanations(
     output_path: impl AsRef<Path>,
     config_path: Option<&Path>,
 ) -> Result<S3ExplanationExportReport> {
+    export_selected_explanations_with_progress(
+        comparison_file,
+        output_path,
+        config_path,
+        |_| {},
+    )
+}
+
+pub fn export_selected_explanations_with_progress<F>(
+    comparison_file: impl AsRef<Path>,
+    output_path: impl AsRef<Path>,
+    config_path: Option<&Path>,
+    mut on_progress: F,
+) -> Result<S3ExplanationExportReport>
+where
+    F: FnMut(&str),
+{
     let started = Instant::now();
     let comparison_file = comparison_file.as_ref();
     let output_path = output_path.as_ref();
@@ -97,6 +114,7 @@ pub fn export_selected_explanations(
         output_path.display()
     );
 
+    on_progress(&format!("读取比较结果工作簿：{}", comparison_file.display()));
     let comparison_started = Instant::now();
     let sheets = read_value_columns(comparison_file, usize::MAX)
         .with_context(|| format!("读取比较结果：{}", comparison_file.display()))?;
@@ -105,6 +123,7 @@ pub fn export_selected_explanations(
         .iter()
         .find(|sheet| header_index(sheet).contains_key("指标代码"))
         .context("比较结果中未找到包含“指标代码”的结果工作表")?;
+    on_progress(&format!("读取结果工作表表头：{}", source_sheet.name));
     let headers = header_index(source_sheet);
     let missing = REQUIRED_HEADERS
         .iter()
@@ -130,6 +149,7 @@ pub fn export_selected_explanations(
         .unwrap_or_else(|| "增减额".to_owned());
     let change_column = headers.get(&change_header).copied();
 
+    on_progress("读取机构地区参照配置");
     let (org_reference, config_read_time_ms) = load_org_reference(config_path)?;
     let mut regions_by_org = HashMap::<String, HashSet<String>>::new();
     for row_number in 2..=source_sheet.max_row {
@@ -143,6 +163,7 @@ pub fn export_selected_explanations(
         }
     }
 
+    on_progress(&format!("筛选说明标记并整理输出行：工作表={}", source_sheet.name));
     let mut rows = Vec::new();
     for row_number in 2..=source_sheet.max_row {
         let selected = cell(source_sheet, row_number, headers["输出说明"]);
@@ -215,6 +236,7 @@ pub fn export_selected_explanations(
             .with_context(|| format!("创建说明文件目录：{}", parent.display()))?;
     }
 
+    on_progress(&format!("写入、验证并发布说明工作簿：{}", output_path.display()));
     let workbook_write_started = Instant::now();
     let temporary_path = reserve_temporary_path(output_path)?;
     let write_result = write_workbook(&temporary_path, comparison_file, &output_headers, &rows)
@@ -231,6 +253,7 @@ pub fn export_selected_explanations(
     }
     fs::remove_file(&temporary_path)
         .with_context(|| format!("清理临时说明文件：{}", temporary_path.display()))?;
+    on_progress(&format!("说明工作簿已发布：{}", output_path.display()));
     let workbook_write_time_ms = workbook_write_started.elapsed().as_millis();
 
     Ok(S3ExplanationExportReport {
