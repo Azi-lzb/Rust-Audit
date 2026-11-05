@@ -361,6 +361,7 @@ fn read_time_series(
             &label,
             blank_titles,
             non_numeric_titles,
+            indicators.len(),
         );
     }
     Ok(())
@@ -419,6 +420,7 @@ fn read_plain(
             // and boolean false therefore do not create indicator columns.
             let title = truthy_string(matrix.get(header_row, column));
             (!title.is_empty()
+                && !title.eq_ignore_ascii_case("null")
                 && column != label_column
                 && !EXTERNAL_METADATA_HEADERS.contains(&title.as_str()))
             .then_some((column, title))
@@ -512,6 +514,7 @@ fn read_plain(
             &label,
             blank_titles,
             non_numeric_titles,
+            indicators.len(),
         );
     }
     data.values.extend(final_values.into_values());
@@ -650,8 +653,14 @@ fn add_row_value_warning(
     label: &str,
     blank_titles: Vec<String>,
     non_numeric_titles: Vec<String>,
+    indicator_total: usize,
 ) {
     if blank_titles.is_empty() && non_numeric_titles.is_empty() {
+        return;
+    }
+    // 整行数据全空（占位行/导出空行）不产生软性警告：该行没有可核查的
+    // 数据增量；部分空白才可能意味着误删，仍照常报告。
+    if non_numeric_titles.is_empty() && blank_titles.len() >= indicator_total {
         return;
     }
     let details = [blank_titles, non_numeric_titles]
@@ -689,4 +698,51 @@ fn file_name(path: &Path) -> String {
     path.file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.display().to_string())
+}
+
+#[cfg(test)]
+mod value_warning_tests {
+    use super::*;
+
+    #[test]
+    fn all_blank_row_is_not_reported_but_partial_blank_is() {
+        let mut warnings = Vec::new();
+        // 整行全空：2 个指标列全部空白、无非法内容 → 不产生警告。
+        add_row_value_warning(
+            &mut warnings,
+            3,
+            "6k0i（广东惠州农商行）",
+            vec!["“各项存款”为空白".to_owned(), "“各项贷款”为空白".to_owned()],
+            Vec::new(),
+            2,
+        );
+        assert!(warnings.is_empty(), "all-blank row must stay silent");
+
+        // 部分空白：一行有一列有值、一列空白 → 仍然报告（疑似误删信号）。
+        add_row_value_warning(
+            &mut warnings,
+            4,
+            "6k0i（广东惠州农商行）",
+            vec!["“各项贷款”为空白".to_owned()],
+            Vec::new(),
+            2,
+        );
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("各项贷款"));
+        assert!(warnings[0].contains("已按 0 参与外部核对"));
+    }
+
+    #[test]
+    fn non_numeric_content_is_always_reported() {
+        let mut warnings = Vec::new();
+        add_row_value_warning(
+            &mut warnings,
+            5,
+            "某机构",
+            Vec::new(),
+            vec!["“各项存款”内容“abc”不是数值".to_owned()],
+            1,
+        );
+        assert_eq!(warnings.len(), 1, "non-numeric content must be reported");
+    }
 }
