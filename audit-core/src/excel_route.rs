@@ -25,8 +25,9 @@
 use anyhow::Context;
 use excel_editor::{
     BackendCapability, CapabilityEvidence, CapabilityStatus, EditBackend, EditOperationKind,
-    EngineId, ExcelModifier, OpenpyxlWorkerConfig, OpenpyxlXlsxBackend, OpenpyxlXlsxValidator,
-    PreservationRequirement, UmyaXlsxBackend, UmyaXlsxValidator, WorkbookFeature, WorkbookFormat,
+    EngineId, ExcelModifier, OoxmlImportBackend, OpenpyxlWorkerConfig, OpenpyxlXlsxBackend,
+    OpenpyxlXlsxValidator, PreservationRequirement, UmyaXlsxBackend, UmyaXlsxValidator,
+    WorkbookFeature, WorkbookFormat, OOXML_IMPORT_OPERATIONS,
 };
 use std::{collections::BTreeSet, sync::Arc};
 
@@ -151,6 +152,22 @@ pub fn production_capability(platform: &str) -> Option<BackendCapability> {
     })
 }
 
+/// OOXML 直改后端的能力记录。它只登记实现已覆盖且由集成测试验证的操作；
+/// 未覆盖的操作（样式复制、DeleteColumn 等）在写入前被拒绝，由路由继续尝试
+/// 后续的 Umya 后端，因此 umya 仍是完整兜底路径。
+pub fn ooxml_import_capability(platform: &str) -> BackendCapability {
+    BackendCapability {
+        engine: EngineId::OoxmlPatch,
+        status: CapabilityStatus::Unverified,
+        format: WorkbookFormat::Xlsx,
+        operations: OOXML_IMPORT_OPERATIONS.iter().copied().collect(),
+        supported_features: production_supported_features(),
+        preserved: production_preserved(),
+        platform: platform.to_owned(),
+        evidence: None,
+    }
+}
+
 /// Builds the production Excel modifier for the current platform. On the
 /// verified platform it routes XLSX edit batches to the qualified Umya
 /// backend; elsewhere the modifier has no backends and every batch fails
@@ -160,10 +177,17 @@ pub fn production_modifier(
 ) -> anyhow::Result<(ExcelModifier, Option<BackendCapability>)> {
     let platform = runtime_platform();
     let capability = production_capability(&platform);
-    let backends = match &capability {
-        Some(record) => vec![Arc::new(UmyaXlsxBackend::new(record.clone())?) as Arc<dyn EditBackend>],
-        None => Vec::new(),
-    };
+    // 顺序即优先级：先尝试 OOXML 直改（只重写目标工作表部件，其余字节原样，
+    // 不会像整簿重写那样丢失关系/列尺寸等对象）；它不支持的操作在写前拒绝，
+    // 路由随后从原始输入重新执行已验收的 Umya 后端。umya 保留为完整兜底。
+    let mut backends: Vec<Arc<dyn EditBackend>> = Vec::new();
+    let ooxml_capability = ooxml_import_capability(&platform);
+    if let Ok(backend) = OoxmlImportBackend::new(ooxml_capability) {
+        backends.push(Arc::new(backend));
+    }
+    if let Some(record) = &capability {
+        backends.push(Arc::new(UmyaXlsxBackend::new(record.clone())?));
+    }
     let modifier = ExcelModifier::new(platform, backends, Arc::new(UmyaXlsxValidator))
         .with_context(|| format!("初始化 {feature} Excel-Core 生产路由"))?;
     Ok((modifier, capability))

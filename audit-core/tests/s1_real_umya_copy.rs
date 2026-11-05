@@ -107,22 +107,38 @@ fn real_s1_f1_copy_preserves_lookup_formulas_references_and_recalculated_values(
             )
         }
     };
+    // 生产路由自 2026-11 起先尝试 OOXML 直改后端（只重写目标工作表部件，
+    // 其余 package 部件按字节保留），Umya 保留为完整兜底。两者都必须产出
+    // 通过保留契约的结果；此处断言实际引擎是其中之一，并记录是哪条路径。
     ensure!(
-        edit.engine == EngineId::UmyaSpreadsheet,
-        "real S1-F1 ImportRange did not use the Umya primary engine: {:?}",
+        matches!(
+            edit.engine,
+            EngineId::OoxmlPatch | EngineId::UmyaSpreadsheet
+        ),
+        "real S1-F1 ImportRange used an unexpected engine: {:?}",
         edit.engine
     );
     ensure!(
-        edit.route_decisions.len() == 1
-            && edit.route_decisions[0].engine == EngineId::UmyaSpreadsheet
-            && edit.route_decisions[0].eligible,
-        "real S1-F1 route must select only the verified Umya backend for this formula ImportRange batch"
+        edit
+            .route_decisions
+            .iter()
+            .any(|decision| decision.engine == edit.engine && decision.eligible),
+        "the engine that produced the output must be eligible in the route decisions"
     );
+    let succeeded = edit
+        .attempts
+        .iter()
+        .find(|attempt| attempt.engine == edit.engine)
+        .map(|attempt| attempt.outcome == BackendAttemptOutcome::Succeeded)
+        .unwrap_or(false);
     ensure!(
-        edit.attempts.len() == 1
-            && edit.attempts[0].engine == EngineId::UmyaSpreadsheet
-            && edit.attempts[0].outcome == BackendAttemptOutcome::Succeeded,
-        "real S1-F1 formula ImportRange unexpectedly used an unverified fallback route"
+        succeeded,
+        "the producing engine must report a succeeded attempt; attempts={:?}",
+        edit.attempts
+    );
+    eprintln!(
+        "real S1-F1 edit engine: {:?} (OOXML 直改优先，Umya 兜底)",
+        edit.engine
     );
     ensure!(
         recalculation.engine == baseline_report.engine,
