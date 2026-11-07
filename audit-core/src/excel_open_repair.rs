@@ -35,6 +35,8 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter};
 pub struct ExcelOpenRepairReport {
     pub changed: bool,
     pub quoted: usize,
+    /// 悬空外部引用 `[N]表名!`（目标表已在本地）剥离次数。
+    pub external_ref_fixed: usize,
     pub pane_fixed: usize,
     pub reason: String,
 }
@@ -154,6 +156,46 @@ fn bare_ref_occurrences(text: &str, name: &str) -> Vec<(usize, usize)> {
     ranges
 }
 
+/// 文本中存在 `[N]本地表名!` 形态的悬空外部引用。
+fn has_dangling_external_ref(text: &str, local_sheet_names: &[String]) -> bool {
+    if local_sheet_names.is_empty() {
+        return false;
+    }
+    let alternatives = local_sheet_names
+        .iter()
+        .map(|name| regex::escape(&name.replace(char::from(39), "''")))
+        .collect::<Vec<_>>()
+        .join("|");
+    let pattern = format!(r"\[\d+\]('?(?:{alternatives})'?!)");
+    Regex::new(&pattern)
+        .ok()
+        .and_then(|re| re.is_match(text).then_some(true))
+        .unwrap_or(false)
+}
+
+/// 本地全部工作表名（与 special 检测同一来源，含普通表名）。
+fn all_local_sheet_names(archive: &mut ZipArchive<fs::File>) -> Result<Vec<String>> {
+    let Ok(mut entry) = archive.by_name("xl/workbook.xml") else {
+        return Ok(Vec::new());
+    };
+    let mut data = Vec::new();
+    if entry.read_to_end(&mut data).is_err() {
+        return Ok(Vec::new());
+    }
+    let Ok(text) = std::str::from_utf8(&data) else {
+        return Ok(Vec::new());
+    };
+    let Ok(document) = roxmltree::Document::parse(text) else {
+        return Ok(Vec::new());
+    };
+    Ok(document
+        .descendants()
+        .filter(|node| node.tag_name().name() == "sheet")
+        .filter_map(|node| node.attribute("name"))
+        .map(str::to_owned)
+        .collect())
+}
+
 fn has_bare_ref(text: &str, special: &[String]) -> bool {
     special
         .iter()
@@ -161,6 +203,30 @@ fn has_bare_ref(text: &str, special: &[String]) -> bool {
 }
 
 /// 给强制引号表名的裸引用补单引号；已引号引用与原实现一样跳过。
+/// 剥离公式中指向本地已存在表的 `[N]` 外部引用前缀；返回改写文本与次数。
+/// 形态：`[1]表名!`、`[1]'表名'!`（索引数字任意、表名可能带引号）。
+fn strip_external_refs(text: &str, local_sheet_names: &[String], fixed: &mut usize) -> String {
+    if local_sheet_names.is_empty() {
+        return text.to_owned();
+    }
+    let alternatives = local_sheet_names
+        .iter()
+        .map(|name| regex::escape(&name.replace(char::from(39), "''")))
+        .collect::<Vec<_>>()
+        .join("|");
+    let pattern = format!(r"\[\d+\]('?(?:{alternatives})'?!)");
+    let Ok(re) = Regex::new(&pattern) else {
+        return text.to_owned();
+    };
+    let mut count = 0usize;
+    let replaced = re.replace_all(text, |caps: &Captures| {
+        count += 1;
+        caps[1].to_owned()
+    });
+    *fixed += count;
+    replaced.into_owned()
+}
+
 fn quote_bare_refs(text: &str, special: &[String]) -> (String, usize) {
     let mut result = text.to_owned();
     let mut total = 0usize;
@@ -196,13 +262,21 @@ fn contradictory_pane_attribute(tag: &str) -> Option<(String, String)> {
 fn repair_part_bytes(
     data: &[u8],
     special: &[String],
+    local_sheet_names: &[String],
     quoted: &mut usize,
+    external_ref_fixed: &mut usize,
     pane_fixed: &mut usize,
 ) -> Vec<u8> {
     let Ok(text) = std::str::from_utf8(data) else {
         return data.to_vec();
     };
     let mut current = text.to_owned();
+    // 第三类缺陷：导入外部表后公式残留 `[N]表名!` 外部工作簿引用前缀，
+    // 目标表已在本地 → 剥离 `[N]` 改为本地引用（悬空外链使 Excel 拒开）。
+    if !local_sheet_names.is_empty() {
+        let replaced = strip_external_refs(&current, local_sheet_names, external_ref_fixed);
+        current = replaced;
+    }
     if !special.is_empty() {
         let replaced = F_RE.replace_all(&current, |caps: &Captures| {
             let (segment, count) = quote_bare_refs(&caps[2], special);
@@ -243,7 +317,11 @@ fn repair_part_bytes(
     replaced.into_owned().into_bytes()
 }
 
-fn needs_repair(archive: &mut ZipArchive<fs::File>, special: &[String]) -> Result<bool> {
+fn needs_repair(
+    archive: &mut ZipArchive<fs::File>,
+    special: &[String],
+    local_sheet_names: &[String],
+) -> Result<bool> {
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index)?;
         if !part_is_repairable(entry.name()) {
@@ -255,6 +333,9 @@ fn needs_repair(archive: &mut ZipArchive<fs::File>, special: &[String]) -> Resul
         }
         let text = String::from_utf8_lossy(&data);
         if has_bare_ref(&text, special) {
+            return Ok(true);
+        }
+        if has_dangling_external_ref(&text, local_sheet_names) {
             return Ok(true);
         }
         if entry.name().starts_with("xl/worksheets/")
@@ -303,7 +384,8 @@ fn repair_audit_copy_inner(path: &Path, report: &mut ExcelOpenRepairReport) -> R
             return Ok(());
         }
         let special = special_sheet_names(&mut archive)?;
-        if !needs_repair(&mut archive, &special)? {
+        let local_sheet_names = all_local_sheet_names(&mut archive)?;
+        if !needs_repair(&mut archive, &special, &local_sheet_names)? {
             report.reason = "未发现需要修复的内容".to_owned();
             return Ok(());
         }
@@ -326,7 +408,14 @@ fn repair_audit_copy_inner(path: &Path, report: &mut ExcelOpenRepairReport) -> R
             let mut data = Vec::new();
             entry.read_to_end(&mut data)?;
             let data = if part_is_repairable(&name) {
-                repair_part_bytes(&data, &special, &mut report.quoted, &mut report.pane_fixed)
+                repair_part_bytes(
+                    &data,
+                    &special,
+                    &local_sheet_names,
+                    &mut report.quoted,
+                    &mut report.external_ref_fixed,
+                    &mut report.pane_fixed,
+                )
             } else {
                 data
             };
@@ -620,6 +709,24 @@ mod tests {
     }
 
     #[test]
+    #[test]
+    fn strips_dangling_external_refs_to_local_sheets() {
+        let locals = vec!["集中系统数据".to_owned(), "参照表".to_owned()];
+        let mut n = 0usize;
+        let text = strip_external_refs(
+            "INDEX([1]集中系统数据!$1:$1048576,MATCH(VLOOKUP($B$4,[1]'参照表'!$A:$B,2,0),…)",
+            &locals,
+            &mut n,
+        );
+        assert_eq!(n, 2, "{text}");
+        assert!(text.contains("INDEX(集中系统数据!"));
+        assert!(!text.contains("[1]"));
+        let mut n2 = 0usize;
+        let text2 = strip_external_refs("SUM([3]其他簿!A1)", &locals, &mut n2);
+        assert_eq!(n2, 0);
+        assert_eq!(text2, "SUM([3]其他簿!A1)");
+    }
+
     fn excel_com_gate_only_on_windows_auto_or_excel() {
         if cfg!(windows) {
             assert!(excel_com_engine_requested("auto"));
