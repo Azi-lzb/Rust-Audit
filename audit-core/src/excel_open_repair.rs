@@ -35,8 +35,10 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter};
 pub struct ExcelOpenRepairReport {
     pub changed: bool,
     pub quoted: usize,
-    /// 悬空外部引用 `[N]表名!`（目标表已在本地）剥离次数。
+    /// 外部工作簿引用前缀（索引式/路径式，四种形态）剥离次数。
     pub external_ref_fixed: usize,
+    /// 剥离后确认无残留时移除的外链相关部件数（externalLink 等）。
+    pub external_link_parts_removed: usize,
     pub pane_fixed: usize,
     pub reason: String,
 }
@@ -156,23 +158,6 @@ fn bare_ref_occurrences(text: &str, name: &str) -> Vec<(usize, usize)> {
     ranges
 }
 
-/// 文本中存在 `[N]本地表名!` 形态的悬空外部引用。
-fn has_dangling_external_ref(text: &str, local_sheet_names: &[String]) -> bool {
-    if local_sheet_names.is_empty() {
-        return false;
-    }
-    let alternatives = local_sheet_names
-        .iter()
-        .map(|name| regex::escape(&name.replace(char::from(39), "''")))
-        .collect::<Vec<_>>()
-        .join("|");
-    let pattern = format!(r"\[\d+\]('?(?:{alternatives})'?!)");
-    Regex::new(&pattern)
-        .ok()
-        .and_then(|re| re.is_match(text).then_some(true))
-        .unwrap_or(false)
-}
-
 /// 本地全部工作表名（与 special 检测同一来源，含普通表名）。
 fn all_local_sheet_names(archive: &mut ZipArchive<fs::File>) -> Result<Vec<String>> {
     let Ok(mut entry) = archive.by_name("xl/workbook.xml") else {
@@ -203,28 +188,167 @@ fn has_bare_ref(text: &str, special: &[String]) -> bool {
 }
 
 /// 给强制引号表名的裸引用补单引号；已引号引用与原实现一样跳过。
-/// 剥离公式中指向本地已存在表的 `[N]` 外部引用前缀；返回改写文本与次数。
-/// 形态：`[1]表名!`、`[1]'表名'!`（索引数字任意、表名可能带引号）。
-fn strip_external_refs(text: &str, local_sheet_names: &[String], fixed: &mut usize) -> String {
-    if local_sheet_names.is_empty() {
-        return text.to_owned();
+/// 表名的"编码无关"正则片段：每个非 ASCII 字符同时匹配字面、十进制 NCR 与
+/// 十六进制 NCR。openpyxl 保存时把中文写成 `&#38598;` 实体，WPS/Excel 生成
+/// 的文件是字面 UTF-8；两种都必须命中，否则经 openpyxl 处理过的副本会漏修。
+fn name_flex_regex(name: &str) -> String {
+    let mut parts = String::new();
+    for ch in name.chars() {
+        if (ch as u32) < 128 {
+            parts.push_str(&regex::escape(&ch.to_string()));
+        } else {
+            let code = ch as u32;
+            parts.push_str(&format!(
+                "(?:{}|&#{code};|&#[xX]{:x};|&#[xX]{:X};)",
+                regex::escape(&ch.to_string()),
+                code,
+                code
+            ));
+        }
     }
-    let alternatives = local_sheet_names
-        .iter()
-        .map(|name| regex::escape(&name.replace(char::from(39), "''")))
-        .collect::<Vec<_>>()
-        .join("|");
-    let pattern = format!(r"\[\d+\]('?(?:{alternatives})'?!)");
-    let Ok(re) = Regex::new(&pattern) else {
-        return text.to_owned();
+    parts
+}
+
+/// 剥离公式里的外部工作簿引用前缀（业务口径：副本只允许工作簿内引用）。
+///
+/// 覆盖四种形态（与 Python `_strip_external_prefixes` 逐条一致）：
+/// ① `'C:\路径\[簿.xlsx]表名'!` ② `'[簿.xlsx]表名'!`
+/// ③ `[簿.xlsx]表名!` ④ `[1]表名!`（或 `[1]'表名'!`）
+///
+/// 索引式与路径式**一律无条件剥离**（不看本地是否已有同名表）：本地有同名表
+/// 则公式改指本地表；本地没有则公式自然成 `#REF!`，按审核异常计入——这优于
+/// 整簿被 Excel 拒绝打开。`local_sheets` 仅用于日志判定缺失表名。
+///
+/// 返回 (新文本, 剥离次数)。
+fn strip_external_refs(text: &str, local_sheets: &[String], stripped: &mut usize) -> String {
+    let mut result = text.to_owned();
+    let mut total = 0usize;
+
+    // ① ② 路径式 + 引号：'...\[簿.xlsx]表名'! → '表名'!
+    if let Ok(re) = Regex::new(r"'[^']*\[[^\]/]+\.(?:xlsx|xlsm|xlsb|xls)\]((?:[^']|'')*)'!") {
+        let replaced = re.replace_all(&result, |caps: &Captures| {
+            format!("'{}'!", &caps[1])
+        });
+        if replaced != result {
+            total += re.find_iter(&result).count();
+            result = replaced.into_owned();
+        }
+    }
+    // ③ 路径式 + 裸名：[簿.xlsx]表名! → 表名!
+    if let Ok(re) = Regex::new(r"\[[^\]/]+\.(?:xlsx|xlsm|xlsb|xls)\]([^\s!'\[\]<>()]+)!") {
+        let replaced = re.replace_all(&result, |caps: &Captures| {
+            format!("{}!", &caps[1])
+        });
+        if replaced != result {
+            total += re.find_iter(&result).count();
+            result = replaced.into_owned();
+        }
+    }
+    // ④ 索引式 + 引号：[1]'表名'! → '表名'!
+    if let Ok(re) = Regex::new(r"\[\d+\]'((?:[^']|'')*)'!") {
+        let replaced = re.replace_all(&result, |caps: &Captures| {
+            format!("'{}'!", &caps[1])
+        });
+        if replaced != result {
+            total += re.find_iter(&result).count();
+            result = replaced.into_owned();
+        }
+    }
+    // 索引式 + NCR 编码表名：[1]&#38598;...! → 表名!
+    for name in local_sheets {
+        let flex = name_flex_regex(name);
+        let escaped = name_flex_regex(&name.replace('\'', "''"));
+        if let Ok(re) = Regex::new(&format!(r"\[\d+\]'{escaped}'!")) {
+            let replacement = format!("'{}'!", name.replace('\'', "''"));
+            let replaced = re.replace_all(&result, replacement.as_str());
+            if replaced != result {
+                total += re.find_iter(&result).count();
+                result = replaced.into_owned();
+            }
+        }
+        if let Ok(re) = Regex::new(&format!(r"\[\d+\]{flex}!")) {
+            let replacement = format!("{name}!");
+            let replaced = re.replace_all(&result, replacement.as_str());
+            if replaced != result {
+                total += re.find_iter(&result).count();
+                result = replaced.into_owned();
+            }
+        }
+    }
+
+    // ④ 索引式 + 裸名：[1]表名! → 表名!
+    if let Ok(re) = Regex::new(r"\[\d+\]([^\s!'\[\]<>()]+)!") {
+        let replaced = re.replace_all(&result, |caps: &Captures| {
+            format!("{}!", &caps[1])
+        });
+        if replaced != result {
+            total += re.find_iter(&result).count();
+            result = replaced.into_owned();
+        }
+    }
+    // 剥离后若仍有 NCR 实体形态的表名（openpyxl 保存的文件），解码为字面
+    // UTF-8，使公式与 WPS/Excel 生成的形态一致。
+    if let Ok(re) = Regex::new(r"&#(?:[xX]([0-9a-fA-F]+)|([0-9]+));") {
+        let decoded = re.replace_all(&result, |caps: &Captures| {
+            let code = caps
+                .get(1)
+                .and_then(|hex| u32::from_str_radix(hex.as_str(), 16).ok())
+                .or_else(|| caps.get(2).and_then(|dec| dec.as_str().parse::<u32>().ok()));
+            code.and_then(char::from_u32)
+                .map(|ch| ch.to_string())
+                .unwrap_or_else(|| caps[0].to_owned())
+        });
+        result = decoded.into_owned();
+    }
+    *stripped += total;
+    result
+}
+
+/// 是否仍存在任何形态的外部引用（索引式或路径式）。用于决定 externalLink
+/// 定义能否安全清除——**检测与剥离必须同源**，只查 `[N]` 会漏判路径式，
+/// 误删外链定义后原本存活的引用变成新的悬空引用。
+fn has_any_external_ref(text: &str) -> bool {
+    if Regex::new(r"\[\d+\]")
+        .ok()
+        .is_some_and(|re| re.is_match(text))
+    {
+        return true;
+    }
+    Regex::new(r"\[[^\]]+\.(?:xlsx|xlsm|xlsb|xls)\]")
+        .ok()
+        .is_some_and(|re| re.is_match(text))
+}
+
+/// 剥离后仍指向"本地不存在表"的引用名（用于运行日志提示，不阻断）。
+/// 只识别合法表引用：`'表名'!` 或中文/字母/数字/下划线/空格组成的 `表名!`。
+fn dangling_after_strip(formula_text: &str, local_sheets: &[String]) -> Vec<String> {
+    let mut missing: Vec<String> = Vec::new();
+    let Ok(re) = Regex::new(r"(?:'((?:[^']|'')*)'|([A-Za-z_\u{4e00}-\u{9fff}][\w\u{4e00}-\u{9fff} .\u{3000}]*))!")
+    else {
+        return missing;
     };
-    let mut count = 0usize;
-    let replaced = re.replace_all(text, |caps: &Captures| {
-        count += 1;
-        caps[1].to_owned()
-    });
-    *fixed += count;
-    replaced.into_owned()
+    for caps in re.captures_iter(formula_text) {
+        let name = caps
+            .get(1)
+            .or_else(|| caps.get(2))
+            .map(|m| m.as_str().replace("''", "'"))
+            .unwrap_or_default();
+        let name = name.trim();
+        if name.is_empty() || local_sheets.iter().any(|sheet| sheet == name) {
+            continue;
+        }
+        // 排除单元格地址（如 A1、AB12）
+        if Regex::new(r"^[A-Za-z]{1,3}\d+$")
+            .ok()
+            .is_some_and(|re| re.is_match(name))
+        {
+            continue;
+        }
+        if !missing.iter().any(|existing| existing == name) {
+            missing.push(name.to_owned());
+        }
+    }
+    missing
 }
 
 fn quote_bare_refs(text: &str, special: &[String]) -> (String, usize) {
@@ -335,7 +459,7 @@ fn needs_repair(
         if has_bare_ref(&text, special) {
             return Ok(true);
         }
-        if has_dangling_external_ref(&text, local_sheet_names) {
+        if has_any_external_ref(&text) {
             return Ok(true);
         }
         if entry.name().starts_with("xl/worksheets/")
@@ -394,6 +518,38 @@ fn repair_audit_copy_inner(path: &Path, report: &mut ExcelOpenRepairReport) -> R
             .create_new(true)
             .open(&temporary)?;
         let mut writer = ZipWriter::new(out_file);
+        // 预扫描：在不写出的情况下模拟剥离，确定剥离后是否仍有任何外部引用
+        // 残留（索引式或路径式）。必须先于写出完成，否则 workbook.xml 可能
+        // 先于工作表被写出，导致外链声明残留。检测与剥离同源。
+        let mut residual_external_ref = false;
+        for index in 0..archive.len() {
+            let mut entry = archive.by_index(index)?;
+            if !part_is_repairable(entry.name()) {
+                continue;
+            }
+            let mut probe = Vec::new();
+            if entry.read_to_end(&mut probe).is_err() {
+                continue;
+            }
+            let mut scratch_total = 0usize;
+            let stripped = repair_part_bytes(
+                &probe,
+                &special,
+                &local_sheet_names,
+                &mut 0,
+                &mut scratch_total,
+                &mut 0,
+            );
+            if has_any_external_ref(&String::from_utf8_lossy(&stripped)) {
+                if std::env::var_os("AUDIT_DEBUG_RESIDUAL").is_some() {
+                    let text = String::from_utf8_lossy(&stripped);
+                    let sample: String = text.chars().take(400).collect();
+                    eprintln!("RESIDUAL part={} sample={sample}", entry.name());
+                }
+                residual_external_ref = true;
+                break;
+            }
+        }
         for index in 0..archive.len() {
             let mut entry = archive.by_index(index)?;
             let name = entry.name().to_owned();
@@ -407,20 +563,46 @@ fn repair_audit_copy_inner(path: &Path, report: &mut ExcelOpenRepairReport) -> R
             }
             let mut data = Vec::new();
             entry.read_to_end(&mut data)?;
+            if !residual_external_ref && name.starts_with("xl/externalLinks/") {
+                continue;
+            }
             let data = if part_is_repairable(&name) {
-                repair_part_bytes(
+                let repaired = repair_part_bytes(
                     &data,
                     &special,
                     &local_sheet_names,
                     &mut report.quoted,
                     &mut report.external_ref_fixed,
                     &mut report.pane_fixed,
+                );
+                if has_any_external_ref(&String::from_utf8_lossy(&repaired)) {
+                    residual_external_ref = true;
+                }
+                // workbook.xml 既是可修复部件（definedNames 补引号），也要在
+                // 确认无残留时清除 <externalReferences> 声明。
+                if !residual_external_ref && name == "xl/workbook.xml" {
+                    strip_external_link_declarations(&name, &repaired)
+                } else {
+                    repaired
+                }
+            } else if !residual_external_ref
+                && matches!(
+                    name.as_str(),
+                    "xl/_rels/workbook.xml.rels" | "[Content_Types].xml"
                 )
+            {
+                strip_external_link_declarations(&name, &data)
             } else {
                 data
             };
             writer.start_file(name, options)?;
             writer.write_all(&data)?;
+        }
+        // 第二遍：确认全包无任何外部引用后，才断开外链定义（移除
+        // externalReferences / externalLink 关系 / Content_Types 覆盖 / 部件）。
+        // 仍有残留时保持原样，交由重算报 #REF! 或人工处理。
+        if !residual_external_ref {
+            report.external_link_parts_removed = external_link_part_count(&mut archive)?;
         }
         writer.finish()?;
         drop(archive);
@@ -433,6 +615,44 @@ fn repair_audit_copy_inner(path: &Path, report: &mut ExcelOpenRepairReport) -> R
         let _ = fs::remove_file(&temporary);
     }
     result
+}
+
+/// 统计 externalLinks 部件数量（供报告）。
+fn external_link_part_count(archive: &mut ZipArchive<fs::File>) -> Result<usize> {
+    let mut count = 0usize;
+    for index in 0..archive.len() {
+        if let Ok(entry) = archive.by_index(index) {
+            if entry.name().starts_with("xl/externalLinks/") {
+                count += 1;
+            }
+        }
+    }
+    Ok(count)
+}
+
+/// 清除工作簿级外链声明：`<externalReferences>` 元素、workbook rels 中
+/// Type 含 externalLink 的 Relationship、Content_Types 中 externalLinks 的 Override。
+/// 仅在确认全包已无任何外部引用残留时调用（检测与剥离同源）。
+fn strip_external_link_declarations(part: &str, data: &[u8]) -> Vec<u8> {
+    let text = String::from_utf8_lossy(data).into_owned();
+    let mut current = text;
+    if part == "xl/workbook.xml" {
+        if let Ok(re) = Regex::new(r"(?s)<externalReferences[^>]*>.*?</externalReferences>") {
+            current = re.replace_all(&current, "").into_owned();
+        }
+        if let Ok(re) = Regex::new(r"<externalReferences[^>]*/>") {
+            current = re.replace_all(&current, "").into_owned();
+        }
+    } else if part == "xl/_rels/workbook.xml.rels" {
+        if let Ok(re) = Regex::new(r#"<Relationship[^>]*Type="[^"]*externalLink"[^>]*/>"#) {
+            current = re.replace_all(&current, "").into_owned();
+        }
+    } else if part == "[Content_Types].xml" {
+        if let Ok(re) = Regex::new(r#"<Override[^>]*PartName="/xl/externalLinks/[^"]*"[^>]*/>"#) {
+            current = re.replace_all(&current, "").into_owned();
+        }
+    }
+    current.into_bytes()
 }
 
 fn excel_repair_temporary_path(path: &Path) -> std::path::PathBuf {
@@ -710,21 +930,95 @@ mod tests {
 
     #[test]
     #[test]
-    fn strips_dangling_external_refs_to_local_sheets() {
+    fn strips_all_four_external_reference_forms() {
         let locals = vec!["集中系统数据".to_owned(), "参照表".to_owned()];
+        // ① 路径式 + 引号 + 完整路径
+        let mut n1 = 0usize;
+        let t1 = strip_external_refs(
+            r"INDEX('C:\外部文件夹\[工作簿.xlsx]集中系统数据'!$A:$A,1)",
+            &locals,
+            &mut n1,
+        );
+        assert_eq!(n1, 1, "{t1}");
+        assert_eq!(t1, "INDEX('集中系统数据'!$A:$A,1)");
+
+        // ② 路径式 + 引号 + 仅簿名
+        let mut n2 = 0usize;
+        let t2 = strip_external_refs("'[工作簿.xlsm]参照表'!$A$1", &locals, &mut n2);
+        assert_eq!(n2, 1, "{t2}");
+        assert_eq!(t2, "'参照表'!$A$1");
+
+        // ③ 路径式 + 无引号
+        let mut n3 = 0usize;
+        let t3 = strip_external_refs("[工作簿.xlsb]集中系统数据!$A$1", &locals, &mut n3);
+        assert_eq!(n3, 1, "{t3}");
+        assert_eq!(t3, "集中系统数据!$A$1");
+
+        // ④ 索引式（引号与裸名两种）
+        let mut n4 = 0usize;
+        let t4 = strip_external_refs("[1]集中系统数据!$A$1+[2]'参照表'!$B$2", &locals, &mut n4);
+        assert_eq!(n4, 2, "{t4}");
+        // 引号式引用保留引号（与 Python 替换口径一致：'表名'!）。
+        assert_eq!(t4, "集中系统数据!$A$1+'参照表'!$B$2");
+    }
+
+    #[test]
+    fn strips_external_refs_unconditionally_even_for_unknown_sheets() {
+        // 业务口径：副本只允许工作簿内引用，因此任何外链前缀都剥离——
+        // 本地没有同名表时公式自然成 #REF!，按审核异常计入。
+        let locals = vec!["集中系统数据".to_owned()];
+        let mut n = 0usize;
+        let text = strip_external_refs("SUM([3]其他簿!A1)+[9]未知表!B2", &locals, &mut n);
+        assert_eq!(n, 2, "{text}");
+        assert_eq!(text, "SUM(其他簿!A1)+未知表!B2");
+    }
+
+    #[test]
+    fn leaves_in_workbook_references_untouched() {
+        let locals = vec!["存量债券投资".to_owned()];
+        let mut n = 0usize;
+        let original = "SUM(存量债券投资!A1:B9)+'集中系统数据'!C3";
+        let text = strip_external_refs(original, &locals, &mut n);
+        assert_eq!(n, 0, "{text}");
+        assert_eq!(text, original);
+    }
+
+    #[test]
+    fn strips_ncr_encoded_sheet_names_and_spaced_names() {
+        // openpyxl 保存的中文表名会写成 NCR 实体；空格表名需引号包裹。
+        let locals = vec!["集中系统数据".to_owned(), "某 表".to_owned()];
         let mut n = 0usize;
         let text = strip_external_refs(
-            "INDEX([1]集中系统数据!$1:$1048576,MATCH(VLOOKUP($B$4,[1]'参照表'!$A:$B,2,0),…)",
+            "INDEX([1]&#38598;&#20013;&#31995;&#32479;&#25968;&#25454;!$A:$A,1)+[2]'某 表'!B1",
             &locals,
             &mut n,
         );
         assert_eq!(n, 2, "{text}");
-        assert!(text.contains("INDEX(集中系统数据!"));
-        assert!(!text.contains("[1]"));
-        let mut n2 = 0usize;
-        let text2 = strip_external_refs("SUM([3]其他簿!A1)", &locals, &mut n2);
-        assert_eq!(n2, 0);
-        assert_eq!(text2, "SUM([3]其他簿!A1)");
+        assert!(text.contains("集中系统数据!$A:$A"), "{text}");
+        assert!(text.contains("'某 表'!B1"), "{text}");
+        assert!(!text.contains("&#38598;"), "{text}");
+    }
+
+    #[test]
+    fn reports_missing_sheets_after_strip_without_blocking() {
+        let locals = vec!["集中系统数据".to_owned()];
+        let mut n = 0usize;
+        let text = strip_external_refs("[1]集中系统数据!A1+[1]参照表!B1", &locals, &mut n);
+        assert_eq!(n, 2, "{text}");
+        // 剥离后公式为 `表名!`（无前缀）；缺失表名由日志侧收集。
+        assert_eq!(text, "集中系统数据!A1+参照表!B1");
+        let missing = dangling_after_strip(&text, &locals);
+        assert_eq!(missing, vec!["参照表".to_owned()], "{missing:?}");
+    }
+
+    #[test]
+    fn external_ref_detection_covers_index_and_path_forms() {
+        // 检测与剥离同源：索引式与路径式都算残留。
+        assert!(has_any_external_ref("[1]集中系统数据!A1"));
+        assert!(has_any_external_ref("'[簿.xlsx]表'!A1"));
+        assert!(has_any_external_ref("[簿.xlsx]表!A1"));
+        assert!(!has_any_external_ref("集中系统数据!A1"));
+        assert!(!has_any_external_ref("SUM(A1:B2)"));
     }
 
     fn excel_com_gate_only_on_windows_auto_or_excel() {
