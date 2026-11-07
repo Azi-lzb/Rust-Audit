@@ -41,6 +41,10 @@ SUPPORTED_OPERATIONS = {
     "set_workbook_calculation_properties",
     "set_page_settings",
     "replace_header_text",
+    "delete_column",
+    "set_cell_number_format",
+    "set_row_hidden",
+    "set_sheet_visibility",
 }
 
 
@@ -588,6 +592,36 @@ def _apply_operation(workbook: Any, cached_workbook: Any, operation: Dict[str, A
         if len(color) != 8 or any(char not in "0123456789abcdefABCDEF" for char in color):
             raise WorkerError("invalid_operation", "fill color must be RGB or ARGB hexadecimal")
         workbook[payload["sheet"]][payload["cell"]].fill = PatternFill(fill_type="solid", fgColor=color.upper())
+    elif kind == "delete_column":
+        sheet = workbook[payload["sheet"]]
+        column_index = int(payload["column_index"])
+        if column_index < 1:
+            raise WorkerError("invalid_operation", "column index must be >= 1")
+        sheet.delete_cols(column_index, 1)
+    elif kind == "set_cell_number_format":
+        workbook[payload["sheet"]][payload["cell"]].number_format = payload["format_code"]
+    elif kind == "set_row_hidden":
+        sheet = workbook[payload["sheet"]]
+        row_index = int(payload["row_index"])
+        if row_index < 1:
+            raise WorkerError("invalid_operation", "row index must be >= 1")
+        dimension = sheet.row_dimensions[row_index]
+        dimension.hidden = bool(payload["hidden"])
+    elif kind == "set_sheet_visibility":
+        sheet = workbook[payload["sheet"]]
+        visibility = str(payload["visibility"]).lower()
+        if visibility not in ("visible", "hidden", "very_hidden", "veryhidden"):
+            raise WorkerError("invalid_operation", "visibility must be visible/hidden/very_hidden")
+        if visibility.startswith("very"):
+            if len([ws for ws in workbook.worksheets if ws.sheet_state == "visible"]) <= 1 and sheet.sheet_state == "visible":
+                raise WorkerError("invalid_operation", "cannot hide the only visible worksheet")
+            sheet.sheet_state = "veryHidden"
+        elif visibility == "hidden":
+            if len([ws for ws in workbook.worksheets if ws.sheet_state == "visible"]) <= 1 and sheet.sheet_state == "visible":
+                raise WorkerError("invalid_operation", "cannot hide the only visible worksheet")
+            sheet.sheet_state = "hidden"
+        else:
+            sheet.sheet_state = "visible"
     elif kind in ("copy_range", "import_range"):
         if kind == "copy_range":
             source_workbook = workbook
@@ -941,10 +975,16 @@ def _verify_plan(
             cell = workbook[payload["sheet"]][payload["cell"]]
             expected = _cell_value(payload["value"])
             if isinstance(expected, Decimal):
-                if cell.value is None or Decimal(str(cell.value)) != expected:
-                    raise WorkerError("output_verification_failed", "numeric value readback mismatch at {}!{}".format(payload["sheet"], payload["cell"]))
+                # Excel 存 double 且序列化只有 15 位有效数字；按相对误差校验，
+                # 不能要求与计算侧 Decimal 逐位相等。
+                if cell.value is None:
+                    raise WorkerError("output_verification_failed", "numeric value readback mismatch at {}!{}: actual=None expected={!r}".format(payload["sheet"], payload["cell"], expected))
+                actual = Decimal(str(cell.value))
+                scale = max(abs(actual), abs(expected), Decimal(1))
+                if abs(actual - expected) > scale * Decimal("1e-14"):
+                    raise WorkerError("output_verification_failed", "numeric value readback mismatch at {}!{}: actual={!r} expected={!r}".format(payload["sheet"], payload["cell"], cell.value, expected))
             elif cell.value != expected:
-                raise WorkerError("output_verification_failed", "value readback mismatch at {}!{}".format(payload["sheet"], payload["cell"]))
+                raise WorkerError("output_verification_failed", "value readback mismatch at {}!{}: actual={!r} expected={!r}".format(payload["sheet"], payload["cell"], cell.value, expected))
             if payload["value"].get("type") == "date_time" and cell.number_format != payload["value"]["value"]["number_format"]:
                 raise WorkerError("output_verification_failed", "date number format readback mismatch")
         elif kind == "set_formula_text":

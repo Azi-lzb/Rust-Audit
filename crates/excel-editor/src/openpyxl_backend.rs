@@ -563,6 +563,10 @@ fn supported_operation(operation: EditOperationKind) -> bool {
             | EditOperationKind::ImportRange
             | EditOperationKind::SetWorkbookCalculationProperties
             | EditOperationKind::SetPageSettings
+            | EditOperationKind::DeleteColumn
+            | EditOperationKind::SetCellNumberFormat
+            | EditOperationKind::SetRowHidden
+            | EditOperationKind::SetSheetVisibility
     )
 }
 
@@ -3428,6 +3432,9 @@ struct PlanRowMap {
     rows: BTreeMap<u32, Option<u32>>,
     beyond_from: u32,
     beyond_shift: i64,
+    /// 计划删除的源列（升序）。输出列 = 源列 - 左侧被删列数；
+    /// 源列本身被删时该地址视为已按计划移除。
+    deleted_columns: Vec<u32>,
 }
 
 impl PlanRowMap {
@@ -3442,9 +3449,18 @@ impl PlanRowMap {
     /// `Ok(None)` means the plan deletes the row owning this source address.
     fn map_address(&self, address: &str) -> Result<Option<String>> {
         let (row, column) = parse_cell(address)?;
+        if self.deleted_columns.contains(&column) {
+            return Ok(None);
+        }
+        let shifted_column = column
+            - self
+                .deleted_columns
+                .iter()
+                .filter(|deleted| **deleted < column)
+                .count() as u32;
         Ok(self
             .output_row(row)
-            .map(|row| format!("{}{}", column_letters(column), row)))
+            .map(|row| format!("{}{}", column_letters(shifted_column), row)))
     }
 }
 
@@ -3471,7 +3487,19 @@ fn plan_row_map(plan: &ExcelEditPlan, source_sheet: &str) -> Result<Option<PlanR
             _ => None,
         })
         .collect();
-    if row_operations.is_empty() {
+    let mut deleted_columns: Vec<u32> = plan
+        .operations
+        .iter()
+        .filter_map(|operation| match operation {
+            EditOperation::DeleteColumn { sheet, column_index } if matches_sheet(sheet) => {
+                Some(*column_index)
+            }
+            _ => None,
+        })
+        .collect();
+    deleted_columns.sort_unstable();
+    deleted_columns.dedup();
+    if row_operations.is_empty() && deleted_columns.is_empty() {
         return Ok(None);
     }
     // rows[i] models current worksheet row i+1: Some(source row) or None for
@@ -3515,6 +3543,7 @@ fn plan_row_map(plan: &ExcelEditPlan, source_sheet: &str) -> Result<Option<PlanR
         rows: mapped,
         beyond_from: highest_placed + 1,
         beyond_shift,
+        deleted_columns,
     }))
 }
 

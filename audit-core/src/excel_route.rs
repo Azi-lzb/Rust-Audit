@@ -177,6 +177,13 @@ pub fn production_modifier(
     if feature == "S1-F01" {
         return s1_f01_modifier(feature, "auto");
     }
+    if feature == "S3-F05" {
+        let selection = crate::app_settings::AppSettings::load()
+            .edit_engine
+            .as_str()
+            .to_owned();
+        return s3_f05_modifier(feature, &selection);
+    }
     production_modifier_generic(feature)
 }
 
@@ -199,6 +206,46 @@ fn production_modifier_generic(
     let modifier = ExcelModifier::new(platform, backends, Arc::new(UmyaXlsxValidator))
         .with_context(|| format!("初始化 {feature} Excel-Core 生产路由"))?;
     Ok((modifier, capability))
+}
+
+/// S3-F05 financial-form routing. The edit batch needs DeleteColumn /
+/// SetCellNumberFormat / SetRowHidden / SetSheetVisibility, which Umya rejects
+/// (defined-name guard). Order: openpyxl worker (its `delete_cols` handles
+/// shifts and defined names like the legacy OPENPYXL renderer) → OOXML import
+/// backend (rejects unsupported operations before write) → fail closed.
+/// Umya is intentionally excluded from this feature.
+fn s3_f05_modifier(
+    feature: &str,
+    selection: &str,
+) -> anyhow::Result<(ExcelModifier, Option<BackendCapability>)> {
+    let platform = runtime_platform();
+    let mut backends: Vec<Arc<dyn EditBackend>> = Vec::new();
+    match selection {
+        "auto" | "" => {
+            if crate::app_settings::openpyxl_selection_status().0 {
+                backends.push(s1_f01_openpyxl_backend(&platform, feature)?);
+            }
+            backends.push(Arc::new(OoxmlImportBackend::new(
+                ooxml_import_capability(&platform),
+            )?));
+        }
+        "openpyxl" => backends.push(s1_f01_openpyxl_backend(&platform, feature)?),
+        "ooxml" => backends.push(Arc::new(OoxmlImportBackend::new(
+            ooxml_import_capability(&platform),
+        )?)),
+        other => anyhow::bail!("S3-F05 修改引擎不支持：{other}（可用 auto/openpyxl/ooxml）"),
+    }
+    anyhow::ensure!(
+        !backends.is_empty(),
+        "S3-F05 没有可用的编辑后端（openpyxl 运行时不可用且 OOXML 未登记）"
+    );
+    let mut modifier =
+        ExcelModifier::new(platform, backends, Arc::new(OpenpyxlXlsxValidator))
+            .with_context(|| format!("初始化 {feature} Excel-Core 生产路由"))?;
+    modifier = modifier
+        .with_unverified_engine_opt_in(EngineId::OpenpyxlWorker)
+        .with_unverified_engine_opt_in(EngineId::OoxmlPatch);
+    Ok((modifier, Some(ooxml_import_capability(&runtime_platform()))))
 }
 
 /// Builds an openpyxl backend only for S1-F01. The worker remains a candidate
@@ -481,6 +528,9 @@ pub fn production_modifier_with_edit_engine(
     feature: &str,
     edit_engine: &str,
 ) -> anyhow::Result<(ExcelModifier, Option<BackendCapability>)> {
+    if feature == "S3-F05" {
+        return s3_f05_modifier(feature, edit_engine);
+    }
     if feature != "S1-F01" {
         return production_modifier_generic(feature);
     }
