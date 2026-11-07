@@ -1,0 +1,1788 @@
+{
+  "runDir": "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01",
+  "totalFiles": 129,
+  "filesWithCf": 46,
+  "filesWithoutCf": 83,
+  "totals": {
+    "rust": 349,
+    "excel": 257,
+    "wps": 0,
+    "match": 19,
+    "mismatch": 27
+  },
+  "details": [
+    {
+      "file": "0012-TCL科技集团财务有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalcula",
+      "rustTriggered": 3,
+      "excelTriggered": 0,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MISMATCH",
+      "rustOnly": [
+        "债券投资发生额|D111",
+        "债券投资发生额|E111",
+        "存量债券投资|D112"
+      ],
+      "excelOnly": []
+    },
+    {
+      "file": "0013-TCL科技集团财务有限公司_金融基础数据采集_单位存款__2026-08-31_数据核对表-recalcula",
+      "rustTriggered": 36,
+      "excelTriggered": 36,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MATCH",
+      "rustOnly": [],
+      "excelOnly": []
+    },
+    {
+      "file": "0014-TCL科技集团财务有限公司_金融基础数据采集_单位贷款置换旧债发生额__2026-08-31_数据核对表-re",
+      "rustTriggered": 6,
+      "excelTriggered": 0,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MISMATCH",
+      "rustOnly": [
+        "单位贷款置换旧债发生额统计表|C32",
+        "单位贷款置换旧债发生额统计表|C36",
+        "单位贷款置换旧债发生额统计表|C8",
+        "单位贷款置换旧债发生额统计表|D32",
+        "单位贷款置换旧债发生额统计表|D36",
+        "单位贷款置换旧债发生额统计表|D8"
+      ],
+      "excelOnly": []
+    },
+    {
+      "file": "0015-TCL科技集团财务有限公司_金融基础数据采集_同业业务__2026-08-31_数据核对表-recalcula",
+      "rustTriggered": 11,
+      "excelTriggered": 9,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MISMATCH",
+      "rustOnly": [
+        "同业客户基础信息|C103",
+        "同业客户基础信息|C105"
+      ],
+      "excelOnly": []
+    },
+    {
+      "file": "0016-TCL科技集团财务有限公司_金融基础数据采集_委托贷款__2026-08-31_数据核对表-recalcula",
+      "rustTriggered": 6,
+      "excelTriggered": 0,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MISMATCH",
+      "rustOnly": [
+        "委托贷款发生额|D193",
+        "委托贷款发生额|D93",
+        "委托贷款发生额|E193",
+        "委托贷款发生额|E93",
+        "存量委托贷款|D204",
+        "存量委托贷款|D93"
+      ],
+      "excelOnly": []
+    },
+    {
+      "file": "0017-TCL科技集团财务有限公司_金融基础数据采集_股权和特定目的载体投资__2026-08-31_数据核对表-re",
+      "rustTriggered": 0,
+      "excelTriggered": 0,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MATCH",
+      "rustOnly": [],
+      "excelOnly": []
+    },
+    {
+      "file": "0030-广东博罗农村商业银行股份有限公司_金融基础数据采集_代发工资__2026-08-31_数据核对表-recalc",
+      "rustTriggered": 7,
+      "excelTriggered": 7,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MATCH",
+      "rustOnly": [],
+      "excelOnly": []
+    },
+    {
+      "file": "0031-广东博罗农村商业银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalc",
+      "rustTriggered": 3,
+      "excelTriggered": 2,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MISMATCH",
+      "rustOnly": [
+        "债券投资发生额|E111"
+      ],
+      "excelOnly": []
+    },
+    {
+      "file": "0032-广东博罗农村商业银行股份有限公司_金融基础数据采集_单位存款__2026-08-31_数据核对表-recalc",
+      "rustTriggered": 25,
+      "excelTriggered": 25,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MATCH",
+      "rustOnly": [],
+      "excelOnly": []
+    },
+    {
+      "file": "0033-广东博罗农村商业银行股份有限公司_金融基础数据采集_单位贷款置换旧债发生额__2026-08-31_数据核对表",
+      "rustTriggered": 2,
+      "excelTriggered": 0,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MISMATCH",
+      "rustOnly": [
+        "单位贷款置换旧债发生额统计表|C36",
+        "单位贷款置换旧债发生额统计表|D36"
+      ],
+      "excelOnly": []
+    },
+    {
+      "file": "0034-广东博罗农村商业银行股份有限公司_金融基础数据采集_同业业务__2026-08-31_数据核对表-recalc",
+      "rustTriggered": 6,
+      "excelTriggered": 5,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MISMATCH",
+      "rustOnly": [
+        "同业客户基础信息|C105"
+      ],
+      "excelOnly": []
+    },
+    {
+      "file": "0035-广东博罗农村商业银行股份有限公司_金融基础数据采集_委托贷款__2026-08-31_数据核对表-recalc",
+      "rustTriggered": 6,
+      "excelTriggered": 0,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MISMATCH",
+      "rustOnly": [
+        "委托贷款发生额|D193",
+        "委托贷款发生额|D93",
+        "委托贷款发生额|E193",
+        "委托贷款发生额|E93",
+        "存量委托贷款|D204",
+        "存量委托贷款|D93"
+      ],
+      "excelOnly": []
+    },
+    {
+      "file": "0036-广东博罗农村商业银行股份有限公司_金融基础数据采集_股权和特定目的载体投资__2026-08-31_数据核对表",
+      "rustTriggered": 0,
+      "excelTriggered": 0,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MATCH",
+      "rustOnly": [],
+      "excelOnly": []
+    },
+    {
+      "file": "0049-广东惠东农村商业银行股份有限公司_金融基础数据采集_代发工资__2026-08-31_数据核对表-recalc",
+      "rustTriggered": 8,
+      "excelTriggered": 8,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MATCH",
+      "rustOnly": [],
+      "excelOnly": []
+    },
+    {
+      "file": "0050-广东惠东农村商业银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalc",
+      "rustTriggered": 3,
+      "excelTriggered": 2,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MISMATCH",
+      "rustOnly": [
+        "债券投资发生额|E111"
+      ],
+      "excelOnly": []
+    },
+    {
+      "file": "0051-广东惠东农村商业银行股份有限公司_金融基础数据采集_单位存款__2026-08-31_数据核对表-recalc",
+      "rustTriggered": 47,
+      "excelTriggered": 47,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MATCH",
+      "rustOnly": [],
+      "excelOnly": []
+    },
+    {
+      "file": "0052-广东惠东农村商业银行股份有限公司_金融基础数据采集_单位贷款置换旧债发生额__2026-08-31_数据核对表",
+      "rustTriggered": 2,
+      "excelTriggered": 0,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MISMATCH",
+      "rustOnly": [
+        "单位贷款置换旧债发生额统计表|C36",
+        "单位贷款置换旧债发生额统计表|D36"
+      ],
+      "excelOnly": []
+    },
+    {
+      "file": "0053-广东惠东农村商业银行股份有限公司_金融基础数据采集_同业业务__2026-08-31_数据核对表-recalc",
+      "rustTriggered": 4,
+      "excelTriggered": 3,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MISMATCH",
+      "rustOnly": [
+        "同业客户基础信息|C105"
+      ],
+      "excelOnly": []
+    },
+    {
+      "file": "0054-广东惠东农村商业银行股份有限公司_金融基础数据采集_委托贷款__2026-08-31_数据核对表-recalc",
+      "rustTriggered": 6,
+      "excelTriggered": 0,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MISMATCH",
+      "rustOnly": [
+        "委托贷款发生额|D193",
+        "委托贷款发生额|D93",
+        "委托贷款发生额|E193",
+        "委托贷款发生额|E93",
+        "存量委托贷款|D204",
+        "存量委托贷款|D93"
+      ],
+      "excelOnly": []
+    },
+    {
+      "file": "0055-广东惠东农村商业银行股份有限公司_金融基础数据采集_股权和特定目的载体投资__2026-08-31_数据核对表",
+      "rustTriggered": 0,
+      "excelTriggered": 0,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MATCH",
+      "rustOnly": [],
+      "excelOnly": []
+    },
+    {
+      "file": "0068-广东龙门农村商业银行股份有限公司_金融基础数据采集_代发工资__2026-08-31_数据核对表-recalc",
+      "rustTriggered": 2,
+      "excelTriggered": 2,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MATCH",
+      "rustOnly": [],
+      "excelOnly": []
+    },
+    {
+      "file": "0069-广东龙门农村商业银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalc",
+      "rustTriggered": 2,
+      "excelTriggered": 0,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MISMATCH",
+      "rustOnly": [
+        "债券投资发生额|D111",
+        "债券投资发生额|E111"
+      ],
+      "excelOnly": []
+    },
+    {
+      "file": "0070-广东龙门农村商业银行股份有限公司_金融基础数据采集_单位存款__2026-08-31_数据核对表-recalc",
+      "rustTriggered": 17,
+      "excelTriggered": 17,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MATCH",
+      "rustOnly": [],
+      "excelOnly": []
+    },
+    {
+      "file": "0071-广东龙门农村商业银行股份有限公司_金融基础数据采集_单位贷款置换旧债发生额__2026-08-31_数据核对表",
+      "rustTriggered": 2,
+      "excelTriggered": 0,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MISMATCH",
+      "rustOnly": [
+        "单位贷款置换旧债发生额统计表|C36",
+        "单位贷款置换旧债发生额统计表|D36"
+      ],
+      "excelOnly": []
+    },
+    {
+      "file": "0072-广东龙门农村商业银行股份有限公司_金融基础数据采集_同业业务__2026-08-31_数据核对表-recalc",
+      "rustTriggered": 5,
+      "excelTriggered": 2,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MISMATCH",
+      "rustOnly": [
+        "同业客户基础信息|C103",
+        "同业客户基础信息|C104",
+        "同业客户基础信息|C105"
+      ],
+      "excelOnly": []
+    },
+    {
+      "file": "0073-广东龙门农村商业银行股份有限公司_金融基础数据采集_委托贷款__2026-08-31_数据核对表-recalc",
+      "rustTriggered": 6,
+      "excelTriggered": 0,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MISMATCH",
+      "rustOnly": [
+        "委托贷款发生额|D193",
+        "委托贷款发生额|D93",
+        "委托贷款发生额|E193",
+        "委托贷款发生额|E93",
+        "存量委托贷款|D204",
+        "存量委托贷款|D93"
+      ],
+      "excelOnly": []
+    },
+    {
+      "file": "0074-广东龙门农村商业银行股份有限公司_金融基础数据采集_股权和特定目的载体投资__2026-08-31_数据核对表",
+      "rustTriggered": 0,
+      "excelTriggered": 0,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MATCH",
+      "rustOnly": [],
+      "excelOnly": []
+    },
+    {
+      "file": "0087-惠东惠民村镇银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalcul",
+      "rustTriggered": 2,
+      "excelTriggered": 0,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MISMATCH",
+      "rustOnly": [
+        "债券投资发生额|D111",
+        "债券投资发生额|E111"
+      ],
+      "excelOnly": []
+    },
+    {
+      "file": "0088-惠东惠民村镇银行股份有限公司_金融基础数据采集_单位存款__2026-08-31_数据核对表-recalcul",
+      "rustTriggered": 6,
+      "excelTriggered": 6,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MATCH",
+      "rustOnly": [],
+      "excelOnly": []
+    },
+    {
+      "file": "0089-惠东惠民村镇银行股份有限公司_金融基础数据采集_单位贷款置换旧债发生额__2026-08-31_数据核对表-r",
+      "rustTriggered": 6,
+      "excelTriggered": 0,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MISMATCH",
+      "rustOnly": [
+        "单位贷款置换旧债发生额统计表|C32",
+        "单位贷款置换旧债发生额统计表|C36",
+        "单位贷款置换旧债发生额统计表|C8",
+        "单位贷款置换旧债发生额统计表|D32",
+        "单位贷款置换旧债发生额统计表|D36",
+        "单位贷款置换旧债发生额统计表|D8"
+      ],
+      "excelOnly": []
+    },
+    {
+      "file": "0090-惠东惠民村镇银行股份有限公司_金融基础数据采集_同业业务__2026-08-31_数据核对表-recalcul",
+      "rustTriggered": 3,
+      "excelTriggered": 0,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MISMATCH",
+      "rustOnly": [
+        "同业客户基础信息|C103",
+        "同业客户基础信息|C104",
+        "同业客户基础信息|C105"
+      ],
+      "excelOnly": []
+    },
+    {
+      "file": "0091-惠东惠民村镇银行股份有限公司_金融基础数据采集_委托贷款__2026-08-31_数据核对表-recalcul",
+      "rustTriggered": 6,
+      "excelTriggered": 0,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MISMATCH",
+      "rustOnly": [
+        "委托贷款发生额|D193",
+        "委托贷款发生额|D93",
+        "委托贷款发生额|E193",
+        "委托贷款发生额|E93",
+        "存量委托贷款|D204",
+        "存量委托贷款|D93"
+      ],
+      "excelOnly": []
+    },
+    {
+      "file": "0092-惠东惠民村镇银行股份有限公司_金融基础数据采集_股权和特定目的载体投资__2026-08-31_数据核对表-r",
+      "rustTriggered": 0,
+      "excelTriggered": 0,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MATCH",
+      "rustOnly": [],
+      "excelOnly": []
+    },
+    {
+      "file": "0105-惠州农村商业银行股份有限公司_金融基础数据采集_代发工资__2026-08-31_数据核对表-recalcul",
+      "rustTriggered": 16,
+      "excelTriggered": 16,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MATCH",
+      "rustOnly": [],
+      "excelOnly": []
+    },
+    {
+      "file": "0106-惠州农村商业银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalcul",
+      "rustTriggered": 9,
+      "excelTriggered": 9,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MATCH",
+      "rustOnly": [],
+      "excelOnly": []
+    },
+    {
+      "file": "0107-惠州农村商业银行股份有限公司_金融基础数据采集_单位存款__2026-08-31_数据核对表-recalcul",
+      "rustTriggered": 48,
+      "excelTriggered": 48,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MATCH",
+      "rustOnly": [],
+      "excelOnly": []
+    },
+    {
+      "file": "0108-惠州农村商业银行股份有限公司_金融基础数据采集_单位贷款置换旧债发生额__2026-08-31_数据核对表-r",
+      "rustTriggered": 2,
+      "excelTriggered": 0,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MISMATCH",
+      "rustOnly": [
+        "单位贷款置换旧债发生额统计表|C36",
+        "单位贷款置换旧债发生额统计表|D36"
+      ],
+      "excelOnly": []
+    },
+    {
+      "file": "0109-惠州农村商业银行股份有限公司_金融基础数据采集_同业业务__2026-08-31_数据核对表-recalcul",
+      "rustTriggered": 6,
+      "excelTriggered": 5,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MISMATCH",
+      "rustOnly": [
+        "同业客户基础信息|C103"
+      ],
+      "excelOnly": []
+    },
+    {
+      "file": "0110-惠州农村商业银行股份有限公司_金融基础数据采集_委托贷款__2026-08-31_数据核对表-recalcul",
+      "rustTriggered": 6,
+      "excelTriggered": 2,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MISMATCH",
+      "rustOnly": [
+        "委托贷款发生额|D193",
+        "委托贷款发生额|E193",
+        "委托贷款发生额|E93",
+        "存量委托贷款|D204"
+      ],
+      "excelOnly": []
+    },
+    {
+      "file": "0111-惠州农村商业银行股份有限公司_金融基础数据采集_股权和特定目的载体投资__2026-08-31_数据核对表-r",
+      "rustTriggered": 0,
+      "excelTriggered": 0,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MATCH",
+      "rustOnly": [],
+      "excelOnly": []
+    },
+    {
+      "file": "0124-惠州博罗长江村镇银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalc",
+      "rustTriggered": 3,
+      "excelTriggered": 0,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MISMATCH",
+      "rustOnly": [
+        "债券投资发生额|D111",
+        "债券投资发生额|E111",
+        "存量债券投资|D112"
+      ],
+      "excelOnly": []
+    },
+    {
+      "file": "0125-惠州博罗长江村镇银行股份有限公司_金融基础数据采集_单位存款__2026-08-31_数据核对表-recalc",
+      "rustTriggered": 6,
+      "excelTriggered": 6,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MATCH",
+      "rustOnly": [],
+      "excelOnly": []
+    },
+    {
+      "file": "0126-惠州博罗长江村镇银行股份有限公司_金融基础数据采集_单位贷款置换旧债发生额__2026-08-31_数据核对表",
+      "rustTriggered": 6,
+      "excelTriggered": 0,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MISMATCH",
+      "rustOnly": [
+        "单位贷款置换旧债发生额统计表|C32",
+        "单位贷款置换旧债发生额统计表|C36",
+        "单位贷款置换旧债发生额统计表|C8",
+        "单位贷款置换旧债发生额统计表|D32",
+        "单位贷款置换旧债发生额统计表|D36",
+        "单位贷款置换旧债发生额统计表|D8"
+      ],
+      "excelOnly": []
+    },
+    {
+      "file": "0127-惠州博罗长江村镇银行股份有限公司_金融基础数据采集_同业业务__2026-08-31_数据核对表-recalc",
+      "rustTriggered": 3,
+      "excelTriggered": 0,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MISMATCH",
+      "rustOnly": [
+        "同业客户基础信息|C103",
+        "同业客户基础信息|C104",
+        "同业客户基础信息|C105"
+      ],
+      "excelOnly": []
+    },
+    {
+      "file": "0128-惠州博罗长江村镇银行股份有限公司_金融基础数据采集_委托贷款__2026-08-31_数据核对表-recalc",
+      "rustTriggered": 6,
+      "excelTriggered": 0,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MISMATCH",
+      "rustOnly": [
+        "委托贷款发生额|D193",
+        "委托贷款发生额|D93",
+        "委托贷款发生额|E193",
+        "委托贷款发生额|E93",
+        "存量委托贷款|D204",
+        "存量委托贷款|D93"
+      ],
+      "excelOnly": []
+    },
+    {
+      "file": "0129-惠州博罗长江村镇银行股份有限公司_金融基础数据采集_股权和特定目的载体投资__2026-08-31_数据核对表",
+      "rustTriggered": 0,
+      "excelTriggered": 0,
+      "wpsTriggered": 0,
+      "rustVsExcel": "MATCH",
+      "rustOnly": [],
+      "excelOnly": []
+    }
+  ],
+  "inventory": {
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0001-TCL科技集团财务有限公司_五篇大文章-互联网金融业务信息_月度__B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0002-TCL科技集团财务有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0003-TCL科技集团财务有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0004-TCL科技集团财务有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0005-TCL科技集团财务有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0006-TCL科技集团财务有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0007-TCL科技集团财务有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0008-TCL科技集团财务有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0009-TCL科技集团财务有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0010-TCL科技集团财务有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0011-TCL科技集团财务有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0012-TCL科技集团财务有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 46,
+      "cfSheets": [
+        {
+          "name": "存量债券投资",
+          "cfBlocks": 15
+        },
+        {
+          "name": "债券投资发生额",
+          "cfBlocks": 20
+        },
+        {
+          "name": "存量债券发行",
+          "cfBlocks": 6
+        },
+        {
+          "name": "债券发行发生额",
+          "cfBlocks": 5
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0013-TCL科技集团财务有限公司_金融基础数据采集_单位存款__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 137,
+      "cfSheets": [
+        {
+          "name": "单位存款余额",
+          "cfBlocks": 14
+        },
+        {
+          "name": "单位存款发生额",
+          "cfBlocks": 22
+        },
+        {
+          "name": "存量单位存款分产品期限",
+          "cfBlocks": 18
+        },
+        {
+          "name": "单位存款发生额分产品期限",
+          "cfBlocks": 83
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0014-TCL科技集团财务有限公司_金融基础数据采集_单位贷款置换旧债发生额__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 7,
+      "cfSheets": [
+        {
+          "name": "单位贷款置换旧债发生额统计表",
+          "cfBlocks": 6
+        },
+        {
+          "name": "单位贷款置换旧债极端数据核查信息（元）",
+          "cfBlocks": 1
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0015-TCL科技集团财务有限公司_金融基础数据采集_同业业务__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 27,
+      "cfSheets": [
+        {
+          "name": "存量同业借贷",
+          "cfBlocks": 6
+        },
+        {
+          "name": "同业借贷发生额",
+          "cfBlocks": 3
+        },
+        {
+          "name": "存量同业存款",
+          "cfBlocks": 6
+        },
+        {
+          "name": "同业存款发生额",
+          "cfBlocks": 3
+        },
+        {
+          "name": "同业客户基础信息",
+          "cfBlocks": 9
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0016-TCL科技集团财务有限公司_金融基础数据采集_委托贷款__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 49,
+      "cfSheets": [
+        {
+          "name": "存量委托贷款",
+          "cfBlocks": 18
+        },
+        {
+          "name": "委托贷款发生额",
+          "cfBlocks": 31
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0017-TCL科技集团财务有限公司_金融基础数据采集_股权和特定目的载体投资__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 19,
+      "cfSheets": [
+        {
+          "name": "存量股权投资",
+          "cfBlocks": 7
+        },
+        {
+          "name": "股权投资发生额",
+          "cfBlocks": 2
+        },
+        {
+          "name": "存量spv投资",
+          "cfBlocks": 6
+        },
+        {
+          "name": "spv投资发生额",
+          "cfBlocks": 2
+        },
+        {
+          "name": "存量股权投资大集中数据核对",
+          "cfBlocks": 1
+        },
+        {
+          "name": "存量特定目的载体投资大集中数据核对",
+          "cfBlocks": 1
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0018-广东博罗农村商业银行股份有限公司_五篇大文章-互联网金融业务信息_月度__B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0019-广东博罗农村商业银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0020-广东博罗农村商业银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0021-广东博罗农村商业银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0022-广东博罗农村商业银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0023-广东博罗农村商业银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0024-广东博罗农村商业银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0025-广东博罗农村商业银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0026-广东博罗农村商业银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0027-广东博罗农村商业银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0028-广东博罗农村商业银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0029-广东博罗农村商业银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0030-广东博罗农村商业银行股份有限公司_金融基础数据采集_代发工资__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 14,
+      "cfSheets": [
+        {
+          "name": "汇总表",
+          "cfBlocks": 12
+        },
+        {
+          "name": "极端数据核查信息",
+          "cfBlocks": 2
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0031-广东博罗农村商业银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 46,
+      "cfSheets": [
+        {
+          "name": "存量债券投资",
+          "cfBlocks": 15
+        },
+        {
+          "name": "债券投资发生额",
+          "cfBlocks": 20
+        },
+        {
+          "name": "存量债券发行",
+          "cfBlocks": 6
+        },
+        {
+          "name": "债券发行发生额",
+          "cfBlocks": 5
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0032-广东博罗农村商业银行股份有限公司_金融基础数据采集_单位存款__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 137,
+      "cfSheets": [
+        {
+          "name": "单位存款余额",
+          "cfBlocks": 14
+        },
+        {
+          "name": "单位存款发生额",
+          "cfBlocks": 22
+        },
+        {
+          "name": "存量单位存款分产品期限",
+          "cfBlocks": 18
+        },
+        {
+          "name": "单位存款发生额分产品期限",
+          "cfBlocks": 83
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0033-广东博罗农村商业银行股份有限公司_金融基础数据采集_单位贷款置换旧债发生额__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 7,
+      "cfSheets": [
+        {
+          "name": "单位贷款置换旧债发生额统计表",
+          "cfBlocks": 6
+        },
+        {
+          "name": "单位贷款置换旧债极端数据核查信息（元）",
+          "cfBlocks": 1
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0034-广东博罗农村商业银行股份有限公司_金融基础数据采集_同业业务__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 27,
+      "cfSheets": [
+        {
+          "name": "存量同业借贷",
+          "cfBlocks": 6
+        },
+        {
+          "name": "同业借贷发生额",
+          "cfBlocks": 3
+        },
+        {
+          "name": "存量同业存款",
+          "cfBlocks": 6
+        },
+        {
+          "name": "同业存款发生额",
+          "cfBlocks": 3
+        },
+        {
+          "name": "同业客户基础信息",
+          "cfBlocks": 9
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0035-广东博罗农村商业银行股份有限公司_金融基础数据采集_委托贷款__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 49,
+      "cfSheets": [
+        {
+          "name": "存量委托贷款",
+          "cfBlocks": 18
+        },
+        {
+          "name": "委托贷款发生额",
+          "cfBlocks": 31
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0036-广东博罗农村商业银行股份有限公司_金融基础数据采集_股权和特定目的载体投资__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 19,
+      "cfSheets": [
+        {
+          "name": "存量股权投资",
+          "cfBlocks": 7
+        },
+        {
+          "name": "股权投资发生额",
+          "cfBlocks": 2
+        },
+        {
+          "name": "存量spv投资",
+          "cfBlocks": 6
+        },
+        {
+          "name": "spv投资发生额",
+          "cfBlocks": 2
+        },
+        {
+          "name": "存量股权投资大集中数据核对",
+          "cfBlocks": 1
+        },
+        {
+          "name": "存量特定目的载体投资大集中数据核对",
+          "cfBlocks": 1
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0037-广东惠东农村商业银行股份有限公司_五篇大文章-互联网金融业务信息_月度__B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0038-广东惠东农村商业银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0039-广东惠东农村商业银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0040-广东惠东农村商业银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0041-广东惠东农村商业银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0042-广东惠东农村商业银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0043-广东惠东农村商业银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0044-广东惠东农村商业银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0045-广东惠东农村商业银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0046-广东惠东农村商业银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0047-广东惠东农村商业银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0048-广东惠东农村商业银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0049-广东惠东农村商业银行股份有限公司_金融基础数据采集_代发工资__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 14,
+      "cfSheets": [
+        {
+          "name": "汇总表",
+          "cfBlocks": 12
+        },
+        {
+          "name": "极端数据核查信息",
+          "cfBlocks": 2
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0050-广东惠东农村商业银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 46,
+      "cfSheets": [
+        {
+          "name": "存量债券投资",
+          "cfBlocks": 15
+        },
+        {
+          "name": "债券投资发生额",
+          "cfBlocks": 20
+        },
+        {
+          "name": "存量债券发行",
+          "cfBlocks": 6
+        },
+        {
+          "name": "债券发行发生额",
+          "cfBlocks": 5
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0051-广东惠东农村商业银行股份有限公司_金融基础数据采集_单位存款__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 137,
+      "cfSheets": [
+        {
+          "name": "单位存款余额",
+          "cfBlocks": 14
+        },
+        {
+          "name": "单位存款发生额",
+          "cfBlocks": 22
+        },
+        {
+          "name": "存量单位存款分产品期限",
+          "cfBlocks": 18
+        },
+        {
+          "name": "单位存款发生额分产品期限",
+          "cfBlocks": 83
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0052-广东惠东农村商业银行股份有限公司_金融基础数据采集_单位贷款置换旧债发生额__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 7,
+      "cfSheets": [
+        {
+          "name": "单位贷款置换旧债发生额统计表",
+          "cfBlocks": 6
+        },
+        {
+          "name": "单位贷款置换旧债极端数据核查信息（元）",
+          "cfBlocks": 1
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0053-广东惠东农村商业银行股份有限公司_金融基础数据采集_同业业务__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 27,
+      "cfSheets": [
+        {
+          "name": "存量同业借贷",
+          "cfBlocks": 6
+        },
+        {
+          "name": "同业借贷发生额",
+          "cfBlocks": 3
+        },
+        {
+          "name": "存量同业存款",
+          "cfBlocks": 6
+        },
+        {
+          "name": "同业存款发生额",
+          "cfBlocks": 3
+        },
+        {
+          "name": "同业客户基础信息",
+          "cfBlocks": 9
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0054-广东惠东农村商业银行股份有限公司_金融基础数据采集_委托贷款__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 49,
+      "cfSheets": [
+        {
+          "name": "存量委托贷款",
+          "cfBlocks": 18
+        },
+        {
+          "name": "委托贷款发生额",
+          "cfBlocks": 31
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0055-广东惠东农村商业银行股份有限公司_金融基础数据采集_股权和特定目的载体投资__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 19,
+      "cfSheets": [
+        {
+          "name": "存量股权投资",
+          "cfBlocks": 7
+        },
+        {
+          "name": "股权投资发生额",
+          "cfBlocks": 2
+        },
+        {
+          "name": "存量spv投资",
+          "cfBlocks": 6
+        },
+        {
+          "name": "spv投资发生额",
+          "cfBlocks": 2
+        },
+        {
+          "name": "存量股权投资大集中数据核对",
+          "cfBlocks": 1
+        },
+        {
+          "name": "存量特定目的载体投资大集中数据核对",
+          "cfBlocks": 1
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0056-广东龙门农村商业银行股份有限公司_五篇大文章-互联网金融业务信息_月度__B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0057-广东龙门农村商业银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0058-广东龙门农村商业银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0059-广东龙门农村商业银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0060-广东龙门农村商业银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0061-广东龙门农村商业银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0062-广东龙门农村商业银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0063-广东龙门农村商业银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0064-广东龙门农村商业银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0065-广东龙门农村商业银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0066-广东龙门农村商业银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0067-广东龙门农村商业银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0068-广东龙门农村商业银行股份有限公司_金融基础数据采集_代发工资__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 14,
+      "cfSheets": [
+        {
+          "name": "汇总表",
+          "cfBlocks": 12
+        },
+        {
+          "name": "极端数据核查信息",
+          "cfBlocks": 2
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0069-广东龙门农村商业银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 46,
+      "cfSheets": [
+        {
+          "name": "存量债券投资",
+          "cfBlocks": 15
+        },
+        {
+          "name": "债券投资发生额",
+          "cfBlocks": 20
+        },
+        {
+          "name": "存量债券发行",
+          "cfBlocks": 6
+        },
+        {
+          "name": "债券发行发生额",
+          "cfBlocks": 5
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0070-广东龙门农村商业银行股份有限公司_金融基础数据采集_单位存款__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 137,
+      "cfSheets": [
+        {
+          "name": "单位存款余额",
+          "cfBlocks": 14
+        },
+        {
+          "name": "单位存款发生额",
+          "cfBlocks": 22
+        },
+        {
+          "name": "存量单位存款分产品期限",
+          "cfBlocks": 18
+        },
+        {
+          "name": "单位存款发生额分产品期限",
+          "cfBlocks": 83
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0071-广东龙门农村商业银行股份有限公司_金融基础数据采集_单位贷款置换旧债发生额__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 7,
+      "cfSheets": [
+        {
+          "name": "单位贷款置换旧债发生额统计表",
+          "cfBlocks": 6
+        },
+        {
+          "name": "单位贷款置换旧债极端数据核查信息（元）",
+          "cfBlocks": 1
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0072-广东龙门农村商业银行股份有限公司_金融基础数据采集_同业业务__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 27,
+      "cfSheets": [
+        {
+          "name": "存量同业借贷",
+          "cfBlocks": 6
+        },
+        {
+          "name": "同业借贷发生额",
+          "cfBlocks": 3
+        },
+        {
+          "name": "存量同业存款",
+          "cfBlocks": 6
+        },
+        {
+          "name": "同业存款发生额",
+          "cfBlocks": 3
+        },
+        {
+          "name": "同业客户基础信息",
+          "cfBlocks": 9
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0073-广东龙门农村商业银行股份有限公司_金融基础数据采集_委托贷款__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 49,
+      "cfSheets": [
+        {
+          "name": "存量委托贷款",
+          "cfBlocks": 18
+        },
+        {
+          "name": "委托贷款发生额",
+          "cfBlocks": 31
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0074-广东龙门农村商业银行股份有限公司_金融基础数据采集_股权和特定目的载体投资__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 19,
+      "cfSheets": [
+        {
+          "name": "存量股权投资",
+          "cfBlocks": 7
+        },
+        {
+          "name": "股权投资发生额",
+          "cfBlocks": 2
+        },
+        {
+          "name": "存量spv投资",
+          "cfBlocks": 6
+        },
+        {
+          "name": "spv投资发生额",
+          "cfBlocks": 2
+        },
+        {
+          "name": "存量股权投资大集中数据核对",
+          "cfBlocks": 1
+        },
+        {
+          "name": "存量特定目的载体投资大集中数据核对",
+          "cfBlocks": 1
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0075-惠东惠民村镇银行股份有限公司_五篇大文章-互联网金融业务信息_月度__B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0076-惠东惠民村镇银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0077-惠东惠民村镇银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0078-惠东惠民村镇银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0079-惠东惠民村镇银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0080-惠东惠民村镇银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0081-惠东惠民村镇银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0082-惠东惠民村镇银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0083-惠东惠民村镇银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0084-惠东惠民村镇银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0085-惠东惠民村镇银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0086-惠东惠民村镇银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0087-惠东惠民村镇银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 46,
+      "cfSheets": [
+        {
+          "name": "存量债券投资",
+          "cfBlocks": 15
+        },
+        {
+          "name": "债券投资发生额",
+          "cfBlocks": 20
+        },
+        {
+          "name": "存量债券发行",
+          "cfBlocks": 6
+        },
+        {
+          "name": "债券发行发生额",
+          "cfBlocks": 5
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0088-惠东惠民村镇银行股份有限公司_金融基础数据采集_单位存款__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 137,
+      "cfSheets": [
+        {
+          "name": "单位存款余额",
+          "cfBlocks": 14
+        },
+        {
+          "name": "单位存款发生额",
+          "cfBlocks": 22
+        },
+        {
+          "name": "存量单位存款分产品期限",
+          "cfBlocks": 18
+        },
+        {
+          "name": "单位存款发生额分产品期限",
+          "cfBlocks": 83
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0089-惠东惠民村镇银行股份有限公司_金融基础数据采集_单位贷款置换旧债发生额__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 7,
+      "cfSheets": [
+        {
+          "name": "单位贷款置换旧债发生额统计表",
+          "cfBlocks": 6
+        },
+        {
+          "name": "单位贷款置换旧债极端数据核查信息（元）",
+          "cfBlocks": 1
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0090-惠东惠民村镇银行股份有限公司_金融基础数据采集_同业业务__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 27,
+      "cfSheets": [
+        {
+          "name": "存量同业借贷",
+          "cfBlocks": 6
+        },
+        {
+          "name": "同业借贷发生额",
+          "cfBlocks": 3
+        },
+        {
+          "name": "存量同业存款",
+          "cfBlocks": 6
+        },
+        {
+          "name": "同业存款发生额",
+          "cfBlocks": 3
+        },
+        {
+          "name": "同业客户基础信息",
+          "cfBlocks": 9
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0091-惠东惠民村镇银行股份有限公司_金融基础数据采集_委托贷款__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 49,
+      "cfSheets": [
+        {
+          "name": "存量委托贷款",
+          "cfBlocks": 18
+        },
+        {
+          "name": "委托贷款发生额",
+          "cfBlocks": 31
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0092-惠东惠民村镇银行股份有限公司_金融基础数据采集_股权和特定目的载体投资__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 19,
+      "cfSheets": [
+        {
+          "name": "存量股权投资",
+          "cfBlocks": 7
+        },
+        {
+          "name": "股权投资发生额",
+          "cfBlocks": 2
+        },
+        {
+          "name": "存量spv投资",
+          "cfBlocks": 6
+        },
+        {
+          "name": "spv投资发生额",
+          "cfBlocks": 2
+        },
+        {
+          "name": "存量股权投资大集中数据核对",
+          "cfBlocks": 1
+        },
+        {
+          "name": "存量特定目的载体投资大集中数据核对",
+          "cfBlocks": 1
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0093-惠州农村商业银行股份有限公司_五篇大文章-互联网金融业务信息_月度__B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0094-惠州农村商业银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0095-惠州农村商业银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0096-惠州农村商业银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0097-惠州农村商业银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0098-惠州农村商业银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0099-惠州农村商业银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0100-惠州农村商业银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0101-惠州农村商业银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0102-惠州农村商业银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0103-惠州农村商业银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0104-惠州农村商业银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0105-惠州农村商业银行股份有限公司_金融基础数据采集_代发工资__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 14,
+      "cfSheets": [
+        {
+          "name": "汇总表",
+          "cfBlocks": 12
+        },
+        {
+          "name": "极端数据核查信息",
+          "cfBlocks": 2
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0106-惠州农村商业银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 46,
+      "cfSheets": [
+        {
+          "name": "存量债券投资",
+          "cfBlocks": 15
+        },
+        {
+          "name": "债券投资发生额",
+          "cfBlocks": 20
+        },
+        {
+          "name": "存量债券发行",
+          "cfBlocks": 6
+        },
+        {
+          "name": "债券发行发生额",
+          "cfBlocks": 5
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0107-惠州农村商业银行股份有限公司_金融基础数据采集_单位存款__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 137,
+      "cfSheets": [
+        {
+          "name": "单位存款余额",
+          "cfBlocks": 14
+        },
+        {
+          "name": "单位存款发生额",
+          "cfBlocks": 22
+        },
+        {
+          "name": "存量单位存款分产品期限",
+          "cfBlocks": 18
+        },
+        {
+          "name": "单位存款发生额分产品期限",
+          "cfBlocks": 83
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0108-惠州农村商业银行股份有限公司_金融基础数据采集_单位贷款置换旧债发生额__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 7,
+      "cfSheets": [
+        {
+          "name": "单位贷款置换旧债发生额统计表",
+          "cfBlocks": 6
+        },
+        {
+          "name": "单位贷款置换旧债极端数据核查信息（元）",
+          "cfBlocks": 1
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0109-惠州农村商业银行股份有限公司_金融基础数据采集_同业业务__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 27,
+      "cfSheets": [
+        {
+          "name": "存量同业借贷",
+          "cfBlocks": 6
+        },
+        {
+          "name": "同业借贷发生额",
+          "cfBlocks": 3
+        },
+        {
+          "name": "存量同业存款",
+          "cfBlocks": 6
+        },
+        {
+          "name": "同业存款发生额",
+          "cfBlocks": 3
+        },
+        {
+          "name": "同业客户基础信息",
+          "cfBlocks": 9
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0110-惠州农村商业银行股份有限公司_金融基础数据采集_委托贷款__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 49,
+      "cfSheets": [
+        {
+          "name": "存量委托贷款",
+          "cfBlocks": 18
+        },
+        {
+          "name": "委托贷款发生额",
+          "cfBlocks": 31
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0111-惠州农村商业银行股份有限公司_金融基础数据采集_股权和特定目的载体投资__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 19,
+      "cfSheets": [
+        {
+          "name": "存量股权投资",
+          "cfBlocks": 7
+        },
+        {
+          "name": "股权投资发生额",
+          "cfBlocks": 2
+        },
+        {
+          "name": "存量spv投资",
+          "cfBlocks": 6
+        },
+        {
+          "name": "spv投资发生额",
+          "cfBlocks": 2
+        },
+        {
+          "name": "存量股权投资大集中数据核对",
+          "cfBlocks": 1
+        },
+        {
+          "name": "存量特定目的载体投资大集中数据核对",
+          "cfBlocks": 1
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0112-惠州博罗长江村镇银行股份有限公司_五篇大文章-互联网金融业务信息_月度__B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0113-惠州博罗长江村镇银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0114-惠州博罗长江村镇银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0115-惠州博罗长江村镇银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0116-惠州博罗长江村镇银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0117-惠州博罗长江村镇银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0118-惠州博罗长江村镇银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0119-惠州博罗长江村镇银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0120-惠州博罗长江村镇银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0121-惠州博罗长江村镇银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0122-惠州博罗长江村镇银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0123-惠州博罗长江村镇银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表-recalculated.xlsx": {
+      "cfBlocks": 0,
+      "cfSheets": []
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0124-惠州博罗长江村镇银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 46,
+      "cfSheets": [
+        {
+          "name": "存量债券投资",
+          "cfBlocks": 15
+        },
+        {
+          "name": "债券投资发生额",
+          "cfBlocks": 20
+        },
+        {
+          "name": "存量债券发行",
+          "cfBlocks": 6
+        },
+        {
+          "name": "债券发行发生额",
+          "cfBlocks": 5
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0125-惠州博罗长江村镇银行股份有限公司_金融基础数据采集_单位存款__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 137,
+      "cfSheets": [
+        {
+          "name": "单位存款余额",
+          "cfBlocks": 14
+        },
+        {
+          "name": "单位存款发生额",
+          "cfBlocks": 22
+        },
+        {
+          "name": "存量单位存款分产品期限",
+          "cfBlocks": 18
+        },
+        {
+          "name": "单位存款发生额分产品期限",
+          "cfBlocks": 83
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0126-惠州博罗长江村镇银行股份有限公司_金融基础数据采集_单位贷款置换旧债发生额__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 7,
+      "cfSheets": [
+        {
+          "name": "单位贷款置换旧债发生额统计表",
+          "cfBlocks": 6
+        },
+        {
+          "name": "单位贷款置换旧债极端数据核查信息（元）",
+          "cfBlocks": 1
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0127-惠州博罗长江村镇银行股份有限公司_金融基础数据采集_同业业务__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 27,
+      "cfSheets": [
+        {
+          "name": "存量同业借贷",
+          "cfBlocks": 6
+        },
+        {
+          "name": "同业借贷发生额",
+          "cfBlocks": 3
+        },
+        {
+          "name": "存量同业存款",
+          "cfBlocks": 6
+        },
+        {
+          "name": "同业存款发生额",
+          "cfBlocks": 3
+        },
+        {
+          "name": "同业客户基础信息",
+          "cfBlocks": 9
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0128-惠州博罗长江村镇银行股份有限公司_金融基础数据采集_委托贷款__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 49,
+      "cfSheets": [
+        {
+          "name": "存量委托贷款",
+          "cfBlocks": 18
+        },
+        {
+          "name": "委托贷款发生额",
+          "cfBlocks": 31
+        }
+      ]
+    },
+    "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0129-惠州博罗长江村镇银行股份有限公司_金融基础数据采集_股权和特定目的载体投资__2026-08-31_数据核对表-recalculated.xlsx": {
+      "cfBlocks": 19,
+      "cfSheets": [
+        {
+          "name": "存量股权投资",
+          "cfBlocks": 7
+        },
+        {
+          "name": "股权投资发生额",
+          "cfBlocks": 2
+        },
+        {
+          "name": "存量spv投资",
+          "cfBlocks": 6
+        },
+        {
+          "name": "spv投资发生额",
+          "cfBlocks": 2
+        },
+        {
+          "name": "存量股权投资大集中数据核对",
+          "cfBlocks": 1
+        },
+        {
+          "name": "存量特定目的载体投资大集中数据核对",
+          "cfBlocks": 1
+        }
+      ]
+    }
+  }
+}
