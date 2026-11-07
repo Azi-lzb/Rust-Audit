@@ -1,15 +1,15 @@
-//! Static conditional-format evaluation used by the Audit S1 migration.
+//! Conditional-format evaluation used by the Audit S1 migration.
 //!
-//! This is a Rust port of the source project's bounded OOXML rule evaluator.
-//! It evaluates cellIs comparisons and the supported expression subset over
-//! stored/cached cell values. Unsupported rule types and formula syntax remain
-//! explicit diagnostics; they are never treated as FALSE.
+//! The static fallback is a Rust port of the source project's bounded OOXML
+//! rule evaluator. Windows S1-F01 can replace its trigger truth with actual
+//! Excel DisplayFormat observations while keeping OOXML rules for explanations.
+//! Unsupported static rules remain explicit diagnostics on fallback paths.
 
 use anyhow::{bail, Context, Result};
 use excel_reader::{
     read_workbook_with_diagnostics, SheetDump, WorkbookDump, WorkbookReadDiagnostics,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -23,6 +23,7 @@ enum Value {
     Number(f64),
     Text(String),
     Boolean(bool),
+    Error(String),
     Range(RangeRef),
 }
 
@@ -91,8 +92,35 @@ pub struct ConditionalTrigger {
     pub message: String,
     pub priority: u32,
     pub confidence: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_fill_color: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_fill_color: Option<i32>,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub unsupported_reason: String,
+}
+
+/// A cell whose actual Excel DisplayFormat fill differs from its stored fill.
+/// Windows COM is the source of truth for these observations; Linux/static
+/// evaluation must not label a rule result as a rendered-color observation.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ConditionalDisplayColorChange {
+    pub sheet: String,
+    pub cell: String,
+    pub base_fill_color: i32,
+    pub display_fill_color: i32,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ConditionalDisplayScan {
+    pub scanned_cells: usize,
+    pub elapsed_ms: u128,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub engine_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engine_process_id: Option<u32>,
+    pub changes: Vec<ConditionalDisplayColorChange>,
+    pub diagnostics: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -111,6 +139,10 @@ pub struct ConditionalDiagnostic {
 pub struct ConditionalEvaluationReport {
     pub status: &'static str,
     pub reader: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_engine: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_engine_process_id: Option<u32>,
     pub read_diagnostics: WorkbookReadDiagnostics,
     pub read_time_ms: u128,
     pub evaluation_time_ms: u128,
@@ -207,6 +239,160 @@ pub fn evaluate_xlsx_workbook_with_dump(
         total_started.elapsed().as_millis(),
     )?;
     Ok((report, workbook))
+}
+
+/// Replace static-rule trigger decisions with Excel's observed display-fill
+/// differences while retaining OOXML rules for a readable explanation.
+pub fn apply_conditional_display_scan(
+    mut report: ConditionalEvaluationReport,
+    workbook: &WorkbookDump,
+    scan: &ConditionalDisplayScan,
+) -> ConditionalEvaluationReport {
+    if scan.engine_name == "no_conditional_rules"
+        && scan.changes.is_empty()
+        && scan.diagnostics.is_empty()
+    {
+        report.status = "no_conditional_rules";
+        report.reader = "namespace_aware_ooxml_no_conditional_rules";
+        report.display_engine = None;
+        report.display_engine_process_id = None;
+        report.scanned_cells = 0;
+        report.triggered.clear();
+        return report;
+    }
+
+    let mut rules = Vec::new();
+    let mut parse_diagnostics = Vec::new();
+    for sheet in &workbook.sheets {
+        if !sheet
+            .conditional_formatting_status
+            .starts_with("read_by_namespace_aware_ooxml_supplement")
+            && !sheet.conditional_formatting.is_empty()
+        {
+            continue;
+        }
+        for node in &sheet.conditional_formatting {
+            let previous_rule_count = rules.len();
+            if let Err(error) = parse_conditional_node(&sheet.name, node, rules.len(), &mut rules) {
+                rules.truncate(previous_rule_count);
+                parse_diagnostics.push(invalid_conditional_node_diagnostic(
+                    &sheet.name,
+                    node,
+                    &error,
+                ));
+            }
+        }
+    }
+    rules.sort_by(|left, right| {
+        left.sheet
+            .cmp(&right.sheet)
+            .then(left.priority.cmp(&right.priority))
+            .then(left.order.cmp(&right.order))
+    });
+
+    let mut seen = BTreeSet::new();
+    let mut triggered = Vec::with_capacity(scan.changes.len());
+    for change in &scan.changes {
+        let identity = (change.sheet.clone(), change.cell.to_ascii_uppercase());
+        if !seen.insert(identity) {
+            continue;
+        }
+        let Ok(reference) = parse_cell_ref(&change.cell) else {
+            report.diagnostics.push(ConditionalDiagnostic {
+                sheet: change.sheet.clone(),
+                cell: change.cell.clone(),
+                applies_to: String::new(),
+                rule_type: "display_format".to_owned(),
+                formula: String::new(),
+                priority: 0,
+                status: EvaluationStatus::Error,
+                reason: "Excel DisplayFormat 返回了无法解析的单元格坐标".to_owned(),
+            });
+            continue;
+        };
+        let rule = rules.iter().find(|rule| {
+            rule.sheet == change.sheet
+                && rule
+                    .bounds
+                    .iter()
+                    .any(|bounds| contains(*bounds, reference.column, reference.row))
+        });
+        let Some(rule) = rule else {
+            report.diagnostics.push(ConditionalDiagnostic {
+                sheet: change.sheet.clone(),
+                cell: change.cell.clone(),
+                applies_to: String::new(),
+                rule_type: "display_format".to_owned(),
+                formula: String::new(),
+                priority: 0,
+                status: EvaluationStatus::Error,
+                reason: format!(
+                    "Excel 实际显示填充色变化（基础 {}，显示 {}），但该单元格不在可读取的条件格式规则范围内；未误记为条件格式异常",
+                    change.base_fill_color, change.display_fill_color
+                ),
+            });
+            continue;
+        };
+        let applies_to = rule.applies_to.clone();
+        let rule_type = rule.rule_type.clone();
+        let operator = rule.operator.clone();
+        let formula = rule.formulas.first().cloned().unwrap_or_default();
+        let message = trigger_message(rule, &change.cell, reference.row, reference.column);
+        let priority = rule.priority;
+        let confidence = "COM_DISPLAY".to_owned();
+        triggered.push(ConditionalTrigger {
+            sheet: change.sheet.clone(),
+            cell: change.cell.clone(),
+            applies_to,
+            rule_type,
+            operator,
+            formula,
+            message,
+            priority,
+            confidence,
+            base_fill_color: Some(change.base_fill_color),
+            display_fill_color: Some(change.display_fill_color),
+            unsupported_reason: String::new(),
+        });
+    }
+
+    // Static evaluator limitations do not invalidate a successful native
+    // display scan. Keep workbook-reader and malformed-rule diagnostics,
+    // discard only unsupported/false static evaluation outcomes.
+    report.diagnostics.retain(|diagnostic| {
+        diagnostic.status == EvaluationStatus::Error
+            && (diagnostic.rule_type == "reader"
+                || diagnostic.rule_type == "value"
+                || diagnostic.rule_type == "display_format"
+                || diagnostic.reason.contains("规则元数据无法解析"))
+    });
+    report.diagnostics.extend(parse_diagnostics);
+    report
+        .diagnostics
+        .extend(scan.diagnostics.iter().map(|reason| ConditionalDiagnostic {
+            sheet: String::new(),
+            cell: String::new(),
+            applies_to: String::new(),
+            rule_type: "display_format".to_owned(),
+            formula: String::new(),
+            priority: 0,
+            status: EvaluationStatus::Error,
+            reason: reason.clone(),
+        }));
+    report.status = "evaluated_com_display";
+    report.reader = "calamine+namespace_aware_ooxml+excel_com_display";
+    report.display_engine = Some(scan.engine_name.clone());
+    report.display_engine_process_id = scan.engine_process_id;
+    report.scanned_cells = scan.scanned_cells;
+    report.evaluation_time_ms = report.evaluation_time_ms.saturating_add(scan.elapsed_ms);
+    report.total_time_ms = report.total_time_ms.saturating_add(scan.elapsed_ms);
+    report.rules_total = rules.len();
+    report.rules_supported = rules
+        .iter()
+        .filter(|rule| matches!(rule.rule_type.as_str(), "cellis" | "expression"))
+        .count();
+    report.triggered = triggered;
+    report
 }
 
 /// Evaluate conditional formatting from a workbook projection that has
@@ -407,6 +593,8 @@ fn evaluate_dump(
                                 } else {
                                     "PARTIAL".to_owned()
                                 },
+                                base_fill_color: None,
+                                display_fill_color: None,
                                 unsupported_reason: partial_reason,
                             });
                             break;
@@ -438,6 +626,8 @@ fn evaluate_dump(
     Ok(ConditionalEvaluationReport {
         status: "evaluated_static_rules",
         reader: "calamine+namespace_aware_ooxml",
+        display_engine: None,
+        display_engine_process_id: None,
         read_diagnostics: WorkbookReadDiagnostics::default(),
         read_time_ms,
         evaluation_time_ms,
@@ -863,10 +1053,16 @@ fn value_from_reader(raw: &JsonValue) -> Result<Value> {
         }
         "integer" => Value::Number(value.and_then(JsonValue::as_i64).unwrap_or_default() as f64),
         "boolean" => Value::Boolean(value.and_then(JsonValue::as_bool).unwrap_or(false)),
-        "datetime_iso" | "duration_iso" | "error" => Value::Text(
+        "datetime_iso" | "duration_iso" => Value::Text(
             value
                 .and_then(JsonValue::as_str)
                 .unwrap_or_default()
+                .to_owned(),
+        ),
+        "error" => Value::Error(
+            value
+                .and_then(JsonValue::as_str)
+                .unwrap_or("#VALUE!")
                 .to_owned(),
         ),
         _ => bail!("不支持的 Calamine 值类型：{kind}"),
@@ -1387,7 +1583,9 @@ impl Parser<'_> {
             };
             self.eat();
             let right = self.multiplicative()?;
-            left = if op == "+"
+            left = if let Some(error) = propagated_error(&left, &right) {
+                error
+            } else if op == "+"
                 && (matches!(left, Value::Text(_)) || matches!(right, Value::Text(_)))
             {
                 Value::Text(format!(
@@ -1419,14 +1617,26 @@ impl Parser<'_> {
             };
             self.eat();
             let right = self.unary()?;
-            let (Some(left_number), Some(right_number)) =
-                (expression_number(&left), expression_number(&right))
-            else {
+            if let Some(error) = propagated_error(&left, &right) {
+                left = error;
+                continue;
+            }
+            let left_number = if matches!(left, Value::Empty) {
+                Some(0.0)
+            } else {
+                expression_number(&left)
+            };
+            let right_number = if matches!(right, Value::Empty) {
+                Some(0.0)
+            } else {
+                expression_number(&right)
+            };
+            let (Some(left_number), Some(right_number)) = (left_number, right_number) else {
                 left = Value::Empty;
                 continue;
             };
             if op == "/" && right_number == 0.0 {
-                left = Value::Empty;
+                left = Value::Error("#DIV/0!".to_owned());
             } else {
                 left = Value::Number(excel_round15(if op == "*" {
                     left_number * right_number
@@ -1440,9 +1650,10 @@ impl Parser<'_> {
 
     fn unary(&mut self) -> std::result::Result<Value, EvalError> {
         if self.eat_operator("-") {
-            return Ok(Value::Number(
-                -expression_number(&self.unary()?).unwrap_or(0.0),
-            ));
+            return Ok(match self.unary()? {
+                Value::Error(error) => Value::Error(error),
+                value => Value::Number(-expression_number(&value).unwrap_or(0.0)),
+            });
         }
         self.primary()
     }
@@ -1509,18 +1720,61 @@ fn call_function(
     grid: &ValueGrid<'_>,
 ) -> std::result::Result<Value, EvalError> {
     match name.to_ascii_uppercase().as_str() {
-        "AND" => Ok(Value::Boolean(arguments.iter().all(truthy))),
-        "OR" => Ok(Value::Boolean(arguments.iter().any(truthy))),
-        "NOT" => Ok(Value::Boolean(
-            arguments
-                .first()
-                .map(|value| !truthy(value))
-                .unwrap_or(false),
-        )),
+        "AND" | "OR" => {
+            if let Some(error) = arguments.iter().find_map(error_value) {
+                return Ok(Value::Error(error.to_owned()));
+            }
+            Ok(Value::Boolean(if name.eq_ignore_ascii_case("AND") {
+                arguments.iter().all(truthy)
+            } else {
+                arguments.iter().any(truthy)
+            }))
+        }
+        "NOT" => {
+            let Some(value) = arguments.first() else {
+                return Err(EvalError::Error("NOT 函数缺少参数".to_owned()));
+            };
+            if let Some(error) = error_value(value) {
+                return Ok(Value::Error(error.to_owned()));
+            }
+            Ok(Value::Boolean(!truthy(value)))
+        }
+        "IF" => {
+            if arguments.len() < 2 {
+                return Err(EvalError::Error("IF 函数参数不足".to_owned()));
+            }
+            if let Some(error) = error_value(&arguments[0]) {
+                return Ok(Value::Error(error.to_owned()));
+            }
+            if truthy(&arguments[0]) {
+                Ok(arguments[1].clone())
+            } else {
+                Ok(arguments.get(2).cloned().unwrap_or(Value::Boolean(false)))
+            }
+        }
+        "IFERROR" => {
+            let Some(value) = arguments.first() else {
+                return Err(EvalError::Error("IFERROR 函数缺少参数".to_owned()));
+            };
+            if matches!(value, Value::Error(_)) {
+                Ok(arguments.get(1).cloned().unwrap_or(Value::Empty))
+            } else {
+                Ok(value.clone())
+            }
+        }
+        "ISBLANK" => {
+            let Some(value) = arguments.first() else {
+                return Err(EvalError::Error("ISBLANK 函数缺少参数".to_owned()));
+            };
+            Ok(Value::Boolean(matches!(value, Value::Empty)))
+        }
         "ABS" => {
             let argument = arguments
                 .first()
                 .ok_or_else(|| EvalError::Error("ABS 函数缺少参数".to_owned()))?;
+            if let Some(error) = error_value(argument) {
+                return Ok(Value::Error(error.to_owned()));
+            }
             Ok(expression_number(argument)
                 .map(|value| Value::Number(value.abs()))
                 .unwrap_or(Value::Empty))
@@ -1531,12 +1785,18 @@ fn call_function(
                 match argument {
                     Value::Range(range) => {
                         for item in grid.range_values(*range)? {
+                            if let Some(error) = error_value(&item) {
+                                return Ok(Value::Error(error.to_owned()));
+                            }
                             if let Some(number) = expression_number(&item) {
                                 total += number;
                             }
                         }
                     }
                     value => {
+                        if let Some(error) = error_value(value) {
+                            return Ok(Value::Error(error.to_owned()));
+                        }
                         if let Some(number) = expression_number(value) {
                             total += number;
                         }
@@ -1552,64 +1812,98 @@ fn call_function(
     }
 }
 
-fn compare_values(operator: &str, mut left: Value, mut right: Value) -> Value {
-    let left_empty = is_empty(&left);
-    let right_empty = is_empty(&right);
-    if !left_empty
-        && !right_empty
-        && !matches!(left, Value::Boolean(_))
-        && !matches!(right, Value::Boolean(_))
-    {
-        if let (Some(left_number), Some(right_number)) =
-            (expression_number(&left), expression_number(&right))
-        {
-            left = Value::Number(excel_round15(left_number));
-            right = Value::Number(excel_round15(right_number));
-        }
+/// Excel 比较语义（对齐 Python 落地版与 COM 实测）：
+///
+/// 1. 缓存的错误值（t="e"）或求值中的 Error 参与比较 → FALSE（规则不成立）。
+/// 2. 双方都是空单元格：= / <= / >= 为 TRUE，其余 FALSE。
+/// 3. 只有一方是空单元格时按对方类型折算（数值折 0、文本折空串、布尔折 FALSE）。
+/// 4. 字面量 "" 是文本而非空白：Number(0) = Text("") → FALSE（混合类型）。
+/// 5. 数字与文本混合比较：= 恒 FALSE、<> 恒 TRUE、</<= 数字在文本前（数字在左时 TRUE）、
+///    >/>= 反之。文本与文本的 = / <> 按字符串相等；文本不参与 < > <= >= 排序。
+fn compare_values(operator: &str, left: Value, right: Value) -> Value {
+    // 缓存的错误值（t="e"）参与比较 → FALSE（规则不成立）。
+    if error_value(&left).is_some() || error_value(&right).is_some() {
+        return Value::Boolean(false);
     }
-    let result = match operator {
-        "=" => {
-            if left_empty && right_empty {
-                true
-            } else if left_empty || right_empty {
-                false
-            } else {
-                left == right
-            }
-        }
-        "<>" => {
-            if left_empty && right_empty {
-                false
-            } else if left_empty || right_empty {
-                true
-            } else {
-                left != right
-            }
-        }
-        _ => {
-            let left_number = expression_number(if left_empty {
-                &Value::Number(0.0)
-            } else {
-                &left
-            });
-            let right_number = expression_number(if right_empty {
-                &Value::Number(0.0)
-            } else {
-                &right
-            });
-            match (left_number, right_number) {
-                (Some(left), Some(right)) => match operator {
-                    "<" => left < right,
-                    ">" => left > right,
-                    "<=" => left <= right,
-                    ">=" => left >= right,
-                    _ => false,
-                },
+
+    let left_blank = matches!(left, Value::Empty);
+    let right_blank = matches!(right, Value::Empty);
+
+    // 双方都是空单元格：= / <= / >= 为 TRUE，其余 FALSE。
+    if left_blank && right_blank {
+        return Value::Boolean(matches!(operator, "=" | "<=" | ">="));
+    }
+
+    // 空单元格折算：只折算真正的空单元格（Value::Empty），
+    // 字面量 ""（Value::Text("")）是文本，走混合类型比较。
+    let mut left = left;
+    let mut right = right;
+    if left_blank {
+        left = match &right {
+            Value::Number(_) => Value::Number(0.0),
+            Value::Text(_) => Value::Text(String::new()),
+            Value::Boolean(_) => Value::Boolean(false),
+            _ => Value::Number(0.0),
+        };
+    }
+    if right_blank {
+        right = match &left {
+            Value::Number(_) => Value::Number(0.0),
+            Value::Text(_) => Value::Text(String::new()),
+            Value::Boolean(_) => Value::Boolean(false),
+            _ => Value::Number(0.0),
+        };
+    }
+
+    // 数字与文本混合比较：类型不同 → 不做数值或文本比较。
+    let left_is_number = matches!(left, Value::Number(_));
+    let right_is_number = matches!(right, Value::Number(_));
+    let left_is_text = matches!(left, Value::Text(_));
+    let right_is_text = matches!(right, Value::Text(_));
+    if (left_is_number && right_is_text) || (left_is_text && right_is_number) {
+        return Value::Boolean(match operator {
+            "=" => false,
+            "<>" => true,
+            "<" | "<=" => left_is_number,
+            ">" | ">=" => left_is_text,
+            _ => false,
+        });
+    }
+
+    // 同类型比较。
+    match (&left, &right) {
+        (Value::Number(a), Value::Number(b)) => {
+            Value::Boolean(match operator {
+                "=" => a == b,
+                "<>" => a != b,
+                "<" => a < b,
+                ">" => a > b,
+                "<=" => a <= b,
+                ">=" => a >= b,
                 _ => false,
-            }
+            })
         }
-    };
-    Value::Boolean(result)
+        (Value::Text(a), Value::Text(b)) => {
+            // 文本与文本的 = / <> 按字符串相等；文本不参与 < > <= >= 排序。
+            Value::Boolean(match operator {
+                "=" => a == b,
+                "<>" => a != b,
+                _ => false,
+            })
+        }
+        (Value::Boolean(a), Value::Boolean(b)) => {
+            Value::Boolean(match operator {
+                "=" => a == b,
+                "<>" => a != b,
+                "<" => !a && *b,
+                ">" => *a && !b,
+                "<=" => a <= b,
+                ">=" => a >= b,
+                _ => false,
+            })
+        }
+        _ => Value::Boolean(matches!(operator, "<>")),
+    }
 }
 
 fn is_empty(value: &Value) -> bool {
@@ -1622,6 +1916,7 @@ fn truthy(value: &Value) -> bool {
         Value::Number(number) => *number != 0.0,
         Value::Text(text) => !text.is_empty(),
         Value::Boolean(value) => *value,
+        Value::Error(_) => false,
         Value::Range(_) => true,
     }
 }
@@ -1630,7 +1925,7 @@ fn expression_number(value: &Value) -> Option<f64> {
     match value {
         Value::Number(number) => Some(*number),
         Value::Text(text) => parse_number(text.trim()),
-        Value::Empty | Value::Boolean(_) | Value::Range(_) => None,
+        Value::Empty | Value::Boolean(_) | Value::Error(_) | Value::Range(_) => None,
     }
 }
 
@@ -1660,8 +1955,22 @@ fn py_text_or_empty(value: &Value) -> String {
         Value::Text(text) => text.clone(),
         Value::Number(number) => number.to_string(),
         Value::Boolean(true) => "True".to_owned(),
+        Value::Error(error) => error.clone(),
         Value::Range(_) => "[]".to_owned(),
     }
+}
+
+fn error_value(value: &Value) -> Option<&str> {
+    match value {
+        Value::Error(error) => Some(error),
+        _ => None,
+    }
+}
+
+fn propagated_error(left: &Value, right: &Value) -> Option<Value> {
+    error_value(left)
+        .or_else(|| error_value(right))
+        .map(|error| Value::Error(error.to_owned()))
 }
 
 #[cfg(test)]
@@ -1749,6 +2058,159 @@ mod tests {
         assert_eq!(report.scanned_cells, 1);
         assert_eq!(report.triggered.len(), 1);
         assert_eq!(report.triggered[0].cell, "A1");
+    }
+
+    #[test]
+    fn static_rules_evaluate_blank_targets_and_keep_excel_division_errors_false() {
+        let sheet = SheetDump {
+            name: "BlankTarget".to_owned(),
+            values: BTreeMap::from([(
+                "B1".to_owned(),
+                serde_json::json!({"type":"number", "value":10}),
+            )]),
+            formulas: BTreeMap::new(),
+            formula_status: "not_requested".to_owned(),
+            merges: Vec::new(),
+            merge_status: "not_requested".to_owned(),
+            comments: BTreeMap::new(),
+            comments_status: "not_requested".to_owned(),
+            conditional_formatting: vec![serde_json::json!({
+                "name":"conditionalFormatting",
+                "attributes":{"sqref":"A1"},
+                "content":[{
+                    "name":"cfRule",
+                    "attributes":{"type":"expression", "priority":"1"},
+                    "content":[{"name":"formula", "content":[{
+                        "text":"A1/B1<=0.9"
+                    }]}]
+                }]
+            })],
+            conditional_formatting_status: "read_by_namespace_aware_ooxml_supplement".to_owned(),
+            data_validations: Vec::new(),
+            data_validations_status: "not_requested".to_owned(),
+        };
+
+        let report = evaluate_dump(&[sheet], &[], 0, 0)
+            .expect("a blank target can satisfy a valid conditional-format formula");
+
+        assert_eq!(report.scanned_cells, 1);
+        assert_eq!(report.triggered.len(), 1);
+        assert_eq!(report.triggered[0].cell, "A1");
+
+        let zero_denominator = evaluate("A1/B1<=0.9", &[], (1, 1), (1, 1));
+        assert_eq!(zero_denominator.status, EvaluationStatus::False);
+
+        let handled_division_error = evaluate("IFERROR(A1/B1,1)>0", &[], (1, 1), (1, 1));
+        assert_eq!(handled_division_error.status, EvaluationStatus::True);
+    }
+
+    #[test]
+    fn com_display_scan_reports_blank_cell_when_rendered_fill_changes() {
+        let sheet = SheetDump {
+            name: "BlankTarget".to_owned(),
+            values: BTreeMap::new(),
+            formulas: BTreeMap::new(),
+            formula_status: "not_requested".to_owned(),
+            merges: Vec::new(),
+            merge_status: "not_requested".to_owned(),
+            comments: BTreeMap::new(),
+            comments_status: "not_requested".to_owned(),
+            conditional_formatting: vec![serde_json::json!({
+                "name":"conditionalFormatting",
+                "attributes":{"sqref":"AX10"},
+                "content":[{
+                    "name":"cfRule",
+                    "attributes":{"type":"expression", "priority":"1"},
+                    "content":[{"name":"formula", "content":[{
+                        "text":"AX10>0"
+                    }]}]
+                }]
+            })],
+            conditional_formatting_status: "read_by_namespace_aware_ooxml_supplement".to_owned(),
+            data_validations: Vec::new(),
+            data_validations_status: "not_requested".to_owned(),
+        };
+        let workbook = WorkbookDump {
+            schema_version: 1,
+            reader: "fixture",
+            elapsed_ms: 0,
+            sheets: vec![sheet],
+        };
+        let static_report = evaluate_workbook_dump(
+            &workbook,
+            &WorkbookReadDiagnostics::default(),
+            &["BlankTarget!AX10".to_owned()],
+            0,
+            0,
+        )
+        .expect("static report");
+        assert!(static_report.triggered.is_empty());
+
+        let report = apply_conditional_display_scan(
+            static_report,
+            &workbook,
+            &ConditionalDisplayScan {
+                scanned_cells: 1,
+                elapsed_ms: 4,
+                engine_name: "Microsoft Excel".to_owned(),
+                engine_process_id: Some(1234),
+                changes: vec![ConditionalDisplayColorChange {
+                    sheet: "BlankTarget".to_owned(),
+                    cell: "AX10".to_owned(),
+                    base_fill_color: 16_777_215,
+                    display_fill_color: 255,
+                }],
+                diagnostics: Vec::new(),
+            },
+        );
+
+        assert_eq!(report.status, "evaluated_com_display");
+        assert_eq!(report.display_engine.as_deref(), Some("Microsoft Excel"));
+        assert_eq!(report.triggered.len(), 1);
+        assert_eq!(report.triggered[0].cell, "AX10");
+        assert_eq!(report.triggered[0].base_fill_color, Some(16_777_215));
+        assert_eq!(report.triggered[0].display_fill_color, Some(255));
+    }
+
+    #[test]
+    fn no_conditional_rules_is_a_complete_empty_result() {
+        let workbook = WorkbookDump {
+            schema_version: 1,
+            reader: "fixture",
+            elapsed_ms: 0,
+            sheets: vec![SheetDump {
+                name: "NoRules".to_owned(),
+                values: BTreeMap::new(),
+                formulas: BTreeMap::new(),
+                formula_status: "not_requested".to_owned(),
+                merges: Vec::new(),
+                merge_status: "not_requested".to_owned(),
+                comments: BTreeMap::new(),
+                comments_status: "not_requested".to_owned(),
+                conditional_formatting: Vec::new(),
+                conditional_formatting_status: "not_present".to_owned(),
+                data_validations: Vec::new(),
+                data_validations_status: "not_requested".to_owned(),
+            }],
+        };
+        let report =
+            evaluate_workbook_dump(&workbook, &WorkbookReadDiagnostics::default(), &[], 0, 0)
+                .expect("evaluate workbook without conditional formatting");
+        let report = apply_conditional_display_scan(
+            report,
+            &workbook,
+            &ConditionalDisplayScan {
+                engine_name: "no_conditional_rules".to_owned(),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(report.status, "no_conditional_rules");
+        assert_eq!(report.reader, "namespace_aware_ooxml_no_conditional_rules");
+        assert!(report.display_engine.is_none());
+        assert_eq!(report.scanned_cells, 0);
+        assert!(report.triggered.is_empty());
+        assert!(report.diagnostics.is_empty());
     }
 
     #[test]
@@ -1971,4 +2433,113 @@ mod tests {
             EvaluationStatus::Error
         );
     }
+    // === Excel 比较语义测试（对齐 Python 落地版与 COM 实测） ===
+
+    #[test]
+    fn comparison_blank_cells() {
+        // 空/空：= / <= / >= 为 TRUE，<> / < / > 为 FALSE
+        assert!(compare_values("=", Value::Empty, Value::Empty) == Value::Boolean(true));
+        assert!(compare_values("<>", Value::Empty, Value::Empty) == Value::Boolean(false));
+        assert!(compare_values("<=", Value::Empty, Value::Empty) == Value::Boolean(true));
+
+        // 空/数值：空折 0
+        assert!(compare_values("=", Value::Empty, Value::Number(0.0)) == Value::Boolean(true));
+        assert!(compare_values("=", Value::Number(0.0), Value::Empty) == Value::Boolean(true));
+        assert!(compare_values("<>", Value::Empty, Value::Number(0.0)) == Value::Boolean(false));
+        assert!(compare_values("<=", Value::Empty, Value::Number(0.9)) == Value::Boolean(true));
+        assert!(compare_values(">=", Value::Empty, Value::Number(30.0)) == Value::Boolean(false));
+
+        // 空/文本：空折空串
+        assert!(compare_values("=", Value::Empty, Value::Text(String::new())) == Value::Boolean(true));
+        assert!(compare_values("<>", Value::Empty, Value::Text(String::new())) == Value::Boolean(false));
+    }
+
+    #[test]
+    fn comparison_literal_empty_string_is_text() {
+        // 字面量 "" 是文本：0="" → FALSE（混合类型），0<>"" → TRUE
+        assert!(compare_values("=", Value::Number(0.0), Value::Text(String::new())) == Value::Boolean(false));
+        assert!(compare_values("<>", Value::Number(0.0), Value::Text(String::new())) == Value::Boolean(true));
+        // 反向
+        assert!(compare_values("=", Value::Text(String::new()), Value::Number(0.0)) == Value::Boolean(false));
+        assert!(compare_values("<>", Value::Text(String::new()), Value::Number(0.0)) == Value::Boolean(true));
+    }
+
+    #[test]
+    fn comparison_division_by_zero_propagates_then_falsifies() {
+        // 除以 0 产生 #DIV/0!；比较含错误值 → FALSE
+        let error = Value::Error("#DIV/0!".to_owned());
+        assert!(compare_values(">", error.clone(), Value::Number(0.9)) == Value::Boolean(false));
+        assert!(compare_values("<>", Value::Number(5.0), error.clone()) == Value::Boolean(false));
+        assert!(compare_values("=", error.clone(), error) == Value::Boolean(false));
+    }
+
+    #[test]
+    fn comparison_cached_error_text_is_false() {
+        // 缓存的错误文本值（t="e"）参与比较 → FALSE
+        let cached = Value::Error("#N/A".to_owned());
+        assert!(compare_values("=", cached.clone(), Value::Text("x".to_owned())) == Value::Boolean(false));
+        assert!(compare_values("<>", Value::Number(1.0), cached) == Value::Boolean(false));
+    }
+
+    #[test]
+    fn comparison_mixed_number_and_text() {
+        let num = Value::Number(5.0);
+        let txt = Value::Text("abc".to_owned());
+        // = 恒 FALSE、<> 恒 TRUE
+        assert!(compare_values("=", num.clone(), txt.clone()) == Value::Boolean(false));
+        assert!(compare_values("<>", num.clone(), txt.clone()) == Value::Boolean(true));
+        // 数字在文本前：</<= 数字在左时 TRUE
+        assert!(compare_values("<", num.clone(), txt.clone()) == Value::Boolean(true));
+        assert!(compare_values("<=", num, txt.clone()) == Value::Boolean(true));
+        // >/>= 数字在左时 FALSE
+        assert!(compare_values(">", Value::Number(5.0), Value::Text("abc".to_owned())) == Value::Boolean(false));
+        assert!(compare_values(">=", Value::Number(5.0), Value::Text("abc".to_owned())) == Value::Boolean(false));
+        // 反向：文本在数字前 → >/>= TRUE
+        assert!(compare_values(">", Value::Text("abc".to_owned()), Value::Number(5.0)) == Value::Boolean(true));
+    }
+
+    #[test]
+    fn comparison_text_ordering_returns_false() {
+        // 文本不参与 < > <= >= 排序
+        let a = Value::Text("apple".to_owned());
+        let b = Value::Text("banana".to_owned());
+        assert!(compare_values("<", a.clone(), b.clone()) == Value::Boolean(false));
+        assert!(compare_values(">", a.clone(), b.clone()) == Value::Boolean(false));
+        assert!(compare_values("<=", a.clone(), b.clone()) == Value::Boolean(false));
+        assert!(compare_values(">=", a, b) == Value::Boolean(false));
+        // 但 = 和 <> 按字符串相等
+        assert!(compare_values("=", Value::Text("x".to_owned()), Value::Text("x".to_owned())) == Value::Boolean(true));
+        assert!(compare_values("<>", Value::Text("x".to_owned()), Value::Text("y".to_owned())) == Value::Boolean(true));
+    }
+
+    #[test]
+    fn comparison_and_with_blank_cells() {
+        // AND($C54<>"",OR($C54<=50)) 在 C54 为空白时的行为
+        let blank = Value::Empty;
+        // $C54<>"" → 空折空串 → "" <> "" → FALSE
+        let ne = compare_values("<>", blank.clone(), Value::Text(String::new()));
+        assert!(ne == Value::Boolean(false), "blank <> empty string must be FALSE");
+        // $C54<=50 → 空折 0 → 0 <= 50 → TRUE
+        let le = compare_values("<=", blank.clone(), Value::Number(50.0));
+        assert!(le == Value::Boolean(true), "blank <= 50 must be TRUE");
+        // AND(FALSE, TRUE) → FALSE → 不触发 ✓
+    }
+
+    #[test]
+    fn comparison_and_with_zero_and_partial_values() {
+        // C54 = 0：$C54<>"" → 0 vs "" 混合类型 → <> TRUE；$C54<=50 → 0<=50 TRUE → AND → TRUE
+        let zero = Value::Number(0.0);
+        let ne = compare_values("<>", zero.clone(), Value::Text(String::new()));
+        assert!(ne == Value::Boolean(true), "0 <> empty string is TRUE (mixed types)");
+        let le = compare_values("<=", zero, Value::Number(50.0));
+        assert!(le == Value::Boolean(true));
+        // C54 = 0.5：$C54<=0.9 → TRUE → 触发
+        let half = Value::Number(0.5);
+        assert!(compare_values("<=", half, Value::Number(0.9)) == Value::Boolean(true));
+        // C54 = 3：$C54<=0.9 → FALSE → 不触发
+        let three = Value::Number(3.0);
+        assert!(compare_values("<=", three, Value::Number(0.9)) == Value::Boolean(false));
+    }
+
+
 }
