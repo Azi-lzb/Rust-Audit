@@ -35,6 +35,20 @@ if exist "%PROJECT_ROOT%README_RELEASE.md" (
     copy /y "%DIST_DIR%\README_RELEASE.md" "%PACKAGE_DIR%\README_RELEASE.md" >nul
 )
 
+rem 内置 openpyxl worker 的隔离 Python 运行时（openpyxl 备选引擎）。
+rem 用系统 Python（须已装 openpyxl）复制精简运行时；失败不阻断打包，
+rem 但会明确提示 openpyxl 备选在目标机器不可用。
+if exist "%PROJECT_ROOT%bundle_openpyxl_runtime.py" (
+  python "%PROJECT_ROOT%bundle_openpyxl_runtime.py" --dest "%PACKAGE_DIR%\libexec\open-data-audit\openpyxl/runtime"
+  if errorlevel 1 (
+    echo WARNING: bundled python runtime failed; openpyxl fallback will need PATH python.
+  ) else (
+    if not exist "%PACKAGE_DIR%\libexec/open-data-audit/openpyxl/worker" mkdir "%PACKAGE_DIR%\libexec/open-data-audit/openpyxl/worker"
+    if exist "%PROJECT_ROOT%crates/excel-editor/python/openpyxl_worker.py" copy /y "%PROJECT_ROOT%crates/excel-editor/python/openpyxl_worker.py" "%PACKAGE_DIR%\libexec/open-data-audit/openpyxl/worker\openpyxl_worker.py" >nul
+    echo Bundled python+openpyxl runtime staged.
+  )
+)
+
 echo Packaged to %PACKAGE_DIR%
 echo Layout: open-data-audit.exe (root) + config\默认配置\
 dir /b "%PACKAGE_DIR%"
