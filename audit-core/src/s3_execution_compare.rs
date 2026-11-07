@@ -3802,6 +3802,7 @@ mod tests {
             change: CentralValue::Empty,
             ratio: CentralValue::Text(REMARK_DIV_ZERO.to_owned()),
             remark: String::new(),
+            build_order: 0,
             need_explanation: String::new(),
             explanation_content: String::new(),
             calculation_process: String::new(),
