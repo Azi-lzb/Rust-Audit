@@ -137,6 +137,8 @@ pub fn validate_config_warnings(warnings: &[String]) -> Vec<S2AuditFinding> {
         .collect()
 }
 
+/// 外部数据导入提示（保留供诊断代码调用；**不得并入 findings**）。
+/// 源生产 service.py 明确其属运行诊断，不计入审核发现或异常统计。
 pub fn validate_external_warnings(warnings: &[String]) -> Vec<S2AuditFinding> {
     warnings
         .iter()

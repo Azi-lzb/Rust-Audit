@@ -17,7 +17,7 @@ use crate::{
     s2_period::compare_periods,
     s2_rule_engine::evaluate_rules,
     s2_validation::{
-        validate_config_warnings, validate_external_warnings, validate_import, S2AuditFinding,
+        validate_config_warnings, validate_import, S2AuditFinding,
     },
 };
 use anyhow::{anyhow, Result};
@@ -269,9 +269,26 @@ pub fn run_s2_audit_with_scan_depth(
         );
         let started = Instant::now();
         let imported = import_external_workbook(external_path)?;
-        let external_quality = validate_external_warnings(&imported.warnings);
-        external_warning_count = external_quality.len();
-        quality_findings.extend(external_quality);
+        // 源生产口径（service.py）：外部文件取数提示属于**运行诊断**，
+        // 不纳入审核发现或异常统计；只计数并在进度日志中提示。此处保持
+        // 计数与日志，不把警告转成 Q002 findings。
+        external_warning_count = imported.warnings.len();
+        for (index, warning) in imported.warnings.iter().enumerate() {
+            emit_progress(
+                &mut on_progress,
+                "external_read",
+                "读取大集中数据",
+                76.0,
+                index + 1,
+                imported.warnings.len(),
+                format!(
+                    "数据提示 {}/{}：{}",
+                    index + 1,
+                    imported.warnings.len(),
+                    warning
+                ),
+            );
+        }
         let reader_elapsed = if imported.reader_elapsed_seconds > 0.0 {
             imported.reader_elapsed_seconds
         } else {

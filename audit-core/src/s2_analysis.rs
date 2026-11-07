@@ -61,7 +61,8 @@ pub fn analyze_imports(
     quality_findings.extend(validate_import(previous_import));
 
     let external_findings = if let Some(external_import) = external_import {
-        quality_findings.extend(validate_external_warnings(&external_import.warnings));
+        // 源生产口径：外部数据提示属运行诊断，不并入审核发现。
+        let _external_warning_count = external_import.warnings.len();
         compare_external(
             &current_records,
             &external_import.data,

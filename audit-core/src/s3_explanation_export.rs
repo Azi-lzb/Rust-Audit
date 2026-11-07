@@ -526,8 +526,17 @@ fn write_workbook(
     let date_format = Format::new().set_num_format("yyyy-mm-dd hh:mm:ss");
 
     let explanation = workbook.add_worksheet();
+    // 源生产 `_explanation_sheet_title`：从**比较结果工作表名**提取
+    // 「YYYY 年 M 月」，生成为 `(说明)YYYY.MM 说明文件`；无法识别回退 "说明文件"。
+    let comparison_sheet_title = excel_reader::read_value_columns_with_iso_dates(
+        comparison_file,
+        usize::MAX,
+    )
+    .ok()
+    .and_then(|sheets| sheets.first().map(|sheet| sheet.name.clone()))
+    .unwrap_or_default();
     explanation
-        .set_name("说明文件")
+        .set_name(&explanation_sheet_title(&comparison_sheet_title))
         .context("设置说明工作表名称失败")?;
     set_report_page_margins(explanation);
     explanation
@@ -563,24 +572,20 @@ fn write_workbook(
             .with_context(|| format!("设置说明文件第 {} 列宽度失败", column + 1))?;
     }
 
-    let info = workbook.add_worksheet();
-    info.set_name("生成信息")
-        .context("设置生成信息工作表名称失败")?;
-    set_report_page_margins(info);
-    info.write_string_with_format(0, 0, "项目", &info_header_format)?;
-    info.write_string_with_format(0, 1, "内容", &info_header_format)?;
-    let exported_at = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    info.write_string(1, 0, "来源比较文件")?;
-    info.write_string(1, 1, comparison_file.to_string_lossy().into_owned())?;
-    info.write_string(2, 0, "导出时间")?;
-    info.write_string(2, 1, &exported_at)?;
-    info.write_string(3, 0, "选定指标数")?;
-    info.write_number(3, 1, rows.len() as f64)?;
-    info.write_string(4, 0, "选取规则")?;
-    info.write_string(4, 1, CHANGE_REASON_RULE)?;
-    info.set_column_width_pixels(0, 18 * 7)?;
-    info.set_column_width_pixels(1, 90 * 7)?;
     workbook.save(path).context("保存 S3-F02 说明 XLSX 失败")
+}
+
+/// 源生产 `_explanation_sheet_title`：`(说明)YYYY.MM 说明文件`。
+fn explanation_sheet_title(comparison_title: &str) -> String {
+    let Ok(re) = regex::Regex::new(r"(\d{4})\s*年\s*(\d{1,2})\s*月") else {
+        return "说明文件".to_owned();
+    };
+    let Some(caps) = re.captures(comparison_title) else {
+        return "说明文件".to_owned();
+    };
+    let year = &caps[1];
+    let month = caps[2].parse::<u32>().unwrap_or(1);
+    format!("(说明){year}.{month:02} 说明文件")
 }
 
 fn set_report_page_margins(worksheet: &mut Worksheet) {
@@ -641,13 +646,19 @@ fn write_cell(
 
 fn validate_output(path: &Path, selected_rows: usize) -> Result<()> {
     let sheets = read_value_columns(path, 8).context("独立读回 S3-F02 说明工作簿失败")?;
+    // 源生产口径：只输出**一个**说明工作表，名称为 `(说明)YYYY.MM 说明文件`
+    // 或回退 `说明文件`；不再附「生成信息」诊断表。
     ensure!(
-        sheets
-            .iter()
-            .map(|sheet| sheet.name.as_str())
-            .collect::<Vec<_>>()
-            == ["说明文件", "生成信息"],
-        "S3-F02 说明工作簿工作表名称或顺序错误"
+        sheets.len() == 1,
+        "S3-F02 说明工作簿应只包含一个工作表，实际 {} 个",
+        sheets.len()
+    );
+    let sheet_name = sheets[0].name.as_str();
+    ensure!(
+        sheet_name == "说明文件"
+            || (sheet_name.starts_with("(说明)")
+                && sheet_name.ends_with(" 说明文件")),
+        "S3-F02 说明工作簿工作表名称错误：{sheet_name}"
     );
     let explanation = &sheets[0];
     ensure!(
@@ -661,15 +672,10 @@ fn validate_output(path: &Path, selected_rows: usize) -> Result<()> {
         cell(explanation, 1, 1) == CellValue::Text(TITLE.to_owned()),
         "S3-F02 说明工作簿标题读回不一致"
     );
-    let metadata = &sheets[1];
-    ensure!(
-        metadata.max_row == 5 && metadata.max_column == 2,
-        "S3-F02 生成信息工作表结构错误"
-    );
     let package = read_workbook(path).context("验证 S3-F02 说明工作簿合并区域失败")?;
     ensure!(
-        package.sheets.len() == 2,
-        "S3-F02 说明工作簿工作表数量不是 2"
+        package.sheets.len() == 1,
+        "S3-F02 说明工作簿工作表数量不是 1"
     );
     ensure!(
         package.sheets[0].merges.iter().any(|area| area == "A1:H1"),
