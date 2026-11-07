@@ -1,9 +1,0 @@
-{
- "s1": {
-  "mappingConfig": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-history-with-external.xlsx",
-  "sourceDirectory": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\poison_template_work\\sources",
-  "externalData": "C:\\Users\\AZI\\Desktop\\VibeCode\\3.open-data-audit\\config-real\\外部文件-大集中相关数据.xlsx",
-  "sidecar": null,
-  "templateDirectory": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\poison_template_work\\templates"
- }
-}
