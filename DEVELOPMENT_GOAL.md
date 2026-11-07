@@ -8,6 +8,13 @@
 - **S3F4 ✅ 逐格 0 差异**（33 行核对结果，两跑一致）。S3F2/F3 ✅（0 行/0 回写为该期真实业务结果）。S1F2/S2F1 ✅（首轮口径，505 行/1087 条）。S3F5 ❌ 未对齐：三个后端均不支持 DeleteColumn（Umya 有删列逻辑但定义名称守卫拒绝；ooxml import 后端显式 UnsupportedBeforeWrite；openpyxl worker 未接线）。路由决策（用户确认）：**S3-F05 修改管线 umya 退出；ooxml DeleteColumn 优先**（删列+平移+dimension/mergeCells/sqref/定义名称同步改写，Rust 原生 OOXML 直改、格式零损失；实现草案 probe/patch_ooxml_delete_col.py 已留存待验证接线）；**openpyxl worker 备选**（openpyxl 原生 delete_cols() 与旧 audit render_mode=OPENPYXL 同款语义）。**实现进展（2026-11-07）**：S3-F05 已切到 openpyxl 优先路由（umya 退出，见 `s3_f05_modifier`；`production_modifier` 与 `production_modifier_with_edit_engine` 均已接线）；worker 新增 delete_column / set_cell_number_format / set_row_hidden / set_sheet_visibility 四个操作（含白名单与读回校验），数值读回改为相对误差 1e-14 容差（Excel 15 位有效数字序列化）。**S3F5 ✅ 逐格 0 差异达成（2026-11-07 收口）**。实现路径：路由切到 openpyxl 优先（umya 退出 S3-F05；`s3_f05_modifier`，两条入口均接线）；worker 新增 delete_column（openpyxl `delete_cols` 与旧 audit OPENPYXL 渲染同款）、set_cell_number_format、set_row_hidden、set_sheet_visibility 四个操作（含白名单与逐操作读回）；数值读回改相对误差 1e-14（Excel 15 位有效数字序列化）；PlanRowMap 增加删列位移映射；被删工作表的 DefinedNames/RowAndColumnDimensions 显式登记 drop allowance。
 **样式保真口径（业务确认 B）**：S3-F05 的 `s3_f5_required_preservation` 收窄为业务关键项（单元格值/类型、公式、条件格式、数据验证、合并、定义名称、工作表身份与顺序、批注），不再把 Styles / 行高列宽 / 页面设置 / 页眉页脚 / Relationships / 冻结窗格 / AutoFilter 列为硬门槛——openpyxl 重写必然规范化这些渲染元数据且不影响表单业务含义。后端校验器本身未放宽（excel-editor 64/64 全部通过，真实数据丢失仍被拦截）。
 **验收**：8 份机构表单文件名与基线逐一对应、逐格内容 0 差异；全量 lib 273/273。
+**八功能对齐最终验收（2026-11-08，全量两跑）**：`tests/compare/rustaudit_alignment_p1.py --runs 2 --features all` 对基线 3.open-data-audit@da7b1c3 逐功能验证，**8/8 通过、367 输入 SHA-256 不变**：
+- S1F1 3602 条逐条一致（3345 公式 + 257 条件格式）
+- S1F2 505 行逐格 0 差异（任务说明 130 / 业务说明 333 / 本地校验结果 45）
+- S2F1 1087 行逐格 0 差异（729 + 357 + 4）
+- S3F1 3868 行逐格 0 差异；S3F2 单表逐格 0 差异；S3F3 exit 0 两跑一致；S3F4 33 行逐格 0 差异；S3F5 8 份表单逐格 0 差异
+本轮为达成 8/8 补的三处对齐：①S1F2 功能名匹配 `汇总_` 前缀 + 驱动改传「任意行汇总」（原误传工作表名）；②S2F1 外部表 label 探测列范围（1..=4）与源生产 `range(min(4,len))` 一致，缺失时按 0 兜底；③驱动 S2F1 外部文件改用基线同款 `config/外部文件-大集中相关数据20261016.xlsx`。
+
 **S2F1 / S3F2 对齐修正 + S3F3 真实闭环（2026-11-08）**
 
 - **S2F1**：外部数据导入提示（原 Q002「外部数据导入」8 条）此前被并入 findings，导致「校验规则」表 12 行 vs 基线 4 行。源生产 `service.py` 明确其属**运行诊断**，不计入审核发现或异常统计——已改为只计数并逐条写进度日志，`s2_service` 与 `s2_analysis` 两处调用点同步移除并入逻辑。findings 恢复 1087 条（729+357+4 行）。

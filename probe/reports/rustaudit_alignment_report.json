@@ -1,7 +1,7 @@
 {
   "generated_at": "2026-11-07 15:26:31",
   "exe": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\dist\\open-data-audit.exe",
-  "exe_sha256": "c23b506744111172ed79150dc381fa4b4ee36c8138f50dc034e47a7e4d8644c2",
+  "exe_sha256": "87ee64c4e9cee0c4cc9178f62a11a32a761ad7a8879bfdbf8f8f8515c5575b76",
   "engine_settings": "calc=auto(Excel COM); s1ConditionalFormatSource=source; conditionalFormatEvaluator=PYTHON; conditionalFormatIncludeBlankCells=true; edit=auto",
   "features": {
     "s1f1": {
@@ -33,7 +33,7 @@
         "only_baseline_total": 0,
         "value_field_diffs": [],
         "value_field_diff_total": 0,
-        "elapsed": 235.1
+        "elapsed": 189.5
       },
       "run2": {
         "exit": 0,
@@ -54,18 +54,18 @@
         "only_baseline_total": 0,
         "value_field_diffs": [],
         "value_field_diff_total": 0,
-        "elapsed": 239.4
+        "elapsed": 189.6
       },
       "two_runs_identical": true
     },
     "s3f1": {
       "baseline": {
         "feature": "S3F1",
-        "generated_at": "2026-11-07T14:13:21",
+        "generated_at": "2026-11-07T23:14:23",
         "config": "3.1大集中执行比较_配置.xlsx",
         "comparison": {
           "name": "比较结果.xlsx",
-          "sha256": "64c0bcdc7ddde0ab013fbaad75be66158bde49c86befb417dc79d5ffc5e876c2"
+          "sha256": "90e74d514fc40ed4ae1d39e3d9b1b2836b1cf8ac46db2ef9823feca6a60e518e"
         },
         "rows_total": 3868,
         "rows_by_fill_color": {
@@ -75,7 +75,7 @@
           "3": 35,
           "46": 1
         },
-        "elapsed_seconds": 2.8
+        "elapsed_seconds": 2.3
       },
       "run1": {
         "fills": {
@@ -86,7 +86,7 @@
           "FFFF6600": 1
         },
         "rows": 3868,
-        "elapsed": 4.1,
+        "elapsed": 2.3,
         "sheets": {
           "2026年10月对比结果": [
             3869,
@@ -107,7 +107,7 @@
           "FFFF6600": 1
         },
         "rows": 3868,
-        "elapsed": 2.7,
+        "elapsed": 2.4,
         "sheets": {
           "2026年10月对比结果": [
             3869,
@@ -124,14 +124,14 @@
     "s3f4": {
       "baseline": {
         "feature": "S3F4",
-        "generated_at": "2026-11-07T14:13:30",
+        "generated_at": "2026-11-07T23:14:28",
         "config": "3.2大集中本期数值核对_配置.xlsx",
         "check": {
           "name": "核对结果.xlsx",
-          "sha256": "af07dc469049e28c394f4103414bf689b7b207ca57af468fdda7cd22f5de62f3"
+          "sha256": "313b5a4c9a7bf5ae5cc1866e6008f8587ca67eefce83aa9e79359a6bfe8ee11a"
         },
         "rows_total": 33,
-        "elapsed_seconds": 0.5
+        "elapsed_seconds": 0.3
       },
       "run1": {
         "elapsed": 1.0,
@@ -164,80 +164,298 @@
     "s3f2": {
       "baseline": {
         "feature": "S3F2",
-        "generated_at": "2026-11-07T14:13:22",
+        "generated_at": "2026-11-07T23:14:23",
         "comparison": "比较结果.xlsx",
         "config": "3.0大集中通用配置.xlsx",
         "exported_rows": 0,
         "output": {
           "name": "说明文件.xlsx",
-          "sha256": "fa7cfbcb428e2ae0c631a0d819d36547fb044bbd5c3ec87bce6aee24bcb30fd2"
+          "sha256": "1695a3597d00aa90152be03e7ab910d8026505d2a4e5b3a665f38b223c8f7746"
         },
-        "elapsed_seconds": 0.6
+        "elapsed_seconds": 0.5
       },
       "run1": {
-        "elapsed": 1.0,
+        "elapsed": 1.1,
         "sheets": {
-          "说明文件": [
+          "(说明)2026.10 说明文件": [
             2,
             8
-          ],
-          "生成信息": [
-            5,
-            2
           ]
         },
         "workbook_diff": {
-          "sheet_diffs": [
-            "S3F2｜工作表仅一侧存在：(说明)2026.10 说明文件",
-            "S3F2｜工作表仅一侧存在：生成信息",
-            "S3F2｜工作表仅一侧存在：说明文件"
-          ],
-          "cell_diff_total": 3
+          "sheet_diffs": [],
+          "cell_diff_total": 0
         }
       },
       "run2": {
-        "elapsed": 1.0,
+        "elapsed": 1.1,
         "sheets": {
-          "说明文件": [
+          "(说明)2026.10 说明文件": [
             2,
             8
-          ],
-          "生成信息": [
-            5,
-            2
           ]
         },
         "workbook_diff": {
-          "sheet_diffs": [
-            "S3F2｜工作表仅一侧存在：(说明)2026.10 说明文件",
-            "S3F2｜工作表仅一侧存在：生成信息",
-            "S3F2｜工作表仅一侧存在：说明文件"
-          ],
-          "cell_diff_total": 3
+          "sheet_diffs": [],
+          "cell_diff_total": 0
         }
       },
-      "two_runs_identical": false
+      "two_runs_identical": true
     },
     "s3f3": {
       "baseline": {
         "imported": 0,
         "unmatched": 0,
         "conflicts": 0,
-        "backup_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\3.open-data-audit\\test-output\\rustaudit_alignment\\_work\\s3f2\\说明文件_导入前备份_20261107_141329.xlsx",
+        "backup_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\3.open-data-audit\\test-output\\rustaudit_alignment\\_work\\s3f2\\说明文件_导入前备份_20261107_231428.xlsx",
         "conflict_report_path": null
       },
       "run1": {
         "exit": 0,
-        "stdout_tail": "\\\\reports\\\\rustaudit_alignment_work\\\\s3f3_run1\\\\s3f2_for_f3\\\\s3f2\\\\说明文件.xlsx\",\n  \"backup_workbook\": \"C:\\\\Users\\\\AZI\\\\Desktop\\\\VibeCode\\\\Rust-Audit\\\\probe\\\\reports\\\\rustaudit_alignment_work\\\\s3f3_run1\\\\s3f2_for_f3\\\\s3f2\\\\说明文件_导入前备份_20261107_153413_530_0.xlsx\",\n  \"rollback_cleanup_warning\": null,\n  \"imported\": 0,\n  \"unmatched\": 0,\n  \"conflicts\": 0,\n  \"planned_cell_updates\": 0,\n  \"conflict_report_path\": null,\n  \"edit\": null,\n  \"copied_without_edits\": true,\n  \"target_read_time_ms\": 0,\n  \"feedback_read_time_ms\": 151,\n  \"conflict_write_time_ms\": 0,\n  \"writeback_time_ms\": 3,\n  \"total_time_ms\": 186\n}\n",
-        "stderr_tail": "S3-F03 已原地更新 C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\rustaudit_alignment_work\\s3f3_run1\\s3f2_for_f3\\s3f2\\说明文件.xlsx；写入 0 条、未匹配 0 条、冲突 0 条；更新前备份 C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\rustaudit_alignment_work\\s3f3_run1\\s3f2_for_f3\\s3f2\\说明文件_导入前备份_20261107_153413_530_0.xlsx；耗时 186 ms。\n",
+        "stdout_tail": "\\\\reports\\\\rustaudit_alignment_work\\\\s3f3_run1\\\\s3f2_for_f3\\\\s3f2\\\\说明文件.xlsx\",\n  \"backup_workbook\": \"C:\\\\Users\\\\AZI\\\\Desktop\\\\VibeCode\\\\Rust-Audit\\\\probe\\\\reports\\\\rustaudit_alignment_work\\\\s3f3_run1\\\\s3f2_for_f3\\\\s3f2\\\\说明文件_导入前备份_20261108_010208_977_0.xlsx\",\n  \"rollback_cleanup_warning\": null,\n  \"imported\": 0,\n  \"unmatched\": 0,\n  \"conflicts\": 0,\n  \"planned_cell_updates\": 0,\n  \"conflict_report_path\": null,\n  \"edit\": null,\n  \"copied_without_edits\": true,\n  \"target_read_time_ms\": 0,\n  \"feedback_read_time_ms\": 138,\n  \"conflict_write_time_ms\": 0,\n  \"writeback_time_ms\": 3,\n  \"total_time_ms\": 175\n}\n",
+        "stderr_tail": "S3-F03 已原地更新 C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\rustaudit_alignment_work\\s3f3_run1\\s3f2_for_f3\\s3f2\\说明文件.xlsx；写入 0 条、未匹配 0 条、冲突 0 条；更新前备份 C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\rustaudit_alignment_work\\s3f3_run1\\s3f2_for_f3\\s3f2\\说明文件_导入前备份_20261108_010208_977_0.xlsx；耗时 175 ms。\n",
         "elapsed": 0.2
       },
       "run2": {
         "exit": 0,
-        "stdout_tail": "\\\\reports\\\\rustaudit_alignment_work\\\\s3f3_run2\\\\s3f2_for_f3\\\\s3f2\\\\说明文件.xlsx\",\n  \"backup_workbook\": \"C:\\\\Users\\\\AZI\\\\Desktop\\\\VibeCode\\\\Rust-Audit\\\\probe\\\\reports\\\\rustaudit_alignment_work\\\\s3f3_run2\\\\s3f2_for_f3\\\\s3f2\\\\说明文件_导入前备份_20261107_153414_755_0.xlsx\",\n  \"rollback_cleanup_warning\": null,\n  \"imported\": 0,\n  \"unmatched\": 0,\n  \"conflicts\": 0,\n  \"planned_cell_updates\": 0,\n  \"conflict_report_path\": null,\n  \"edit\": null,\n  \"copied_without_edits\": true,\n  \"target_read_time_ms\": 0,\n  \"feedback_read_time_ms\": 160,\n  \"conflict_write_time_ms\": 0,\n  \"writeback_time_ms\": 3,\n  \"total_time_ms\": 200\n}\n",
-        "stderr_tail": "S3-F03 已原地更新 C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\rustaudit_alignment_work\\s3f3_run2\\s3f2_for_f3\\s3f2\\说明文件.xlsx；写入 0 条、未匹配 0 条、冲突 0 条；更新前备份 C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\rustaudit_alignment_work\\s3f3_run2\\s3f2_for_f3\\s3f2\\说明文件_导入前备份_20261107_153414_755_0.xlsx；耗时 201 ms。\n",
+        "stdout_tail": "\\\\reports\\\\rustaudit_alignment_work\\\\s3f3_run2\\\\s3f2_for_f3\\\\s3f2\\\\说明文件.xlsx\",\n  \"backup_workbook\": \"C:\\\\Users\\\\AZI\\\\Desktop\\\\VibeCode\\\\Rust-Audit\\\\probe\\\\reports\\\\rustaudit_alignment_work\\\\s3f3_run2\\\\s3f2_for_f3\\\\s3f2\\\\说明文件_导入前备份_20261108_010210_335_0.xlsx\",\n  \"rollback_cleanup_warning\": null,\n  \"imported\": 0,\n  \"unmatched\": 0,\n  \"conflicts\": 0,\n  \"planned_cell_updates\": 0,\n  \"conflict_report_path\": null,\n  \"edit\": null,\n  \"copied_without_edits\": true,\n  \"target_read_time_ms\": 0,\n  \"feedback_read_time_ms\": 163,\n  \"conflict_write_time_ms\": 0,\n  \"writeback_time_ms\": 4,\n  \"total_time_ms\": 208\n}\n",
+        "stderr_tail": "S3-F03 已原地更新 C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\rustaudit_alignment_work\\s3f3_run2\\s3f2_for_f3\\s3f2\\说明文件.xlsx；写入 0 条、未匹配 0 条、冲突 0 条；更新前备份 C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\rustaudit_alignment_work\\s3f3_run2\\s3f2_for_f3\\s3f2\\说明文件_导入前备份_20261108_010210_335_0.xlsx；耗时 208 ms。\n",
         "elapsed": 0.2
       }
+    },
+    "s1f2": {
+      "baseline": {
+        "input_files": 129,
+        "rows_total": 505,
+        "dump_rows_total": 505,
+        "sheets": {
+          "任务说明": [
+            130,
+            14
+          ],
+          "业务说明": [
+            333,
+            12
+          ],
+          "本地校验结果": [
+            45,
+            19
+          ]
+        }
+      },
+      "run1": {
+        "exit": 0,
+        "elapsed": 1.1,
+        "sheets": {
+          "任务说明": [
+            130,
+            14
+          ],
+          "业务说明": [
+            333,
+            12
+          ],
+          "本地校验结果": [
+            45,
+            19
+          ]
+        },
+        "rows_total": 505,
+        "workbook_diff": {
+          "sheet_diffs": [],
+          "cell_diff_total": 0
+        }
+      },
+      "run2": {
+        "exit": 0,
+        "elapsed": 1.0,
+        "sheets": {
+          "任务说明": [
+            130,
+            14
+          ],
+          "业务说明": [
+            333,
+            12
+          ],
+          "本地校验结果": [
+            45,
+            19
+          ]
+        },
+        "rows_total": 505,
+        "workbook_diff": {
+          "sheet_diffs": [],
+          "cell_diff_total": 0
+        }
+      },
+      "two_runs_identical": true
+    },
+    "s2f1": {
+      "baseline": {
+        "findings_total": 1087,
+        "findings_by_status": {
+          "异常": 528,
+          "正常": 559
+        },
+        "sheets": {
+          "环比规则": [
+            729,
+            16
+          ],
+          "外部核对规则": [
+            357,
+            16
+          ],
+          "校验规则": [
+            4,
+            12
+          ]
+        }
+      },
+      "run1": {
+        "exit": 0,
+        "summary": {
+          "institutions": 7,
+          "forms": 3,
+          "indicators": 728,
+          "total_findings": 1087,
+          "abnormal_findings": 528,
+          "by_type": {
+            "外部核对": 263,
+            "环比": 262,
+            "规则": 3
+          },
+          "by_severity": {
+            "硬性": 521,
+            "软性": 7
+          }
+        },
+        "elapsed": 0.2,
+        "sheets": {
+          "环比规则": [
+            729,
+            16
+          ],
+          "外部核对规则": [
+            357,
+            16
+          ],
+          "校验规则": [
+            4,
+            12
+          ]
+        },
+        "workbook_diff": {
+          "sheet_diffs": [],
+          "cell_diff_total": 0
+        }
+      },
+      "run2": {
+        "exit": 0,
+        "summary": {
+          "institutions": 7,
+          "forms": 3,
+          "indicators": 728,
+          "total_findings": 1087,
+          "abnormal_findings": 528,
+          "by_type": {
+            "外部核对": 263,
+            "环比": 262,
+            "规则": 3
+          },
+          "by_severity": {
+            "硬性": 521,
+            "软性": 7
+          }
+        },
+        "elapsed": 0.2,
+        "sheets": {
+          "环比规则": [
+            729,
+            16
+          ],
+          "外部核对规则": [
+            357,
+            16
+          ],
+          "校验规则": [
+            4,
+            12
+          ]
+        },
+        "workbook_diff": {
+          "sheet_diffs": [],
+          "cell_diff_total": 0
+        }
+      },
+      "two_runs_identical": true
+    },
+    "s3f5": {
+      "baseline": {
+        "count": 8,
+        "names": [
+          "2026.10 TCL财务公司 广东省.xlsx",
+          "2026.10 博罗农村商业银行 广东省.xlsx",
+          "2026.10 广东惠州农商行 广东省.xlsx",
+          "2026.10 广东龙门农村商业银行股份有限公司 广东省.xlsx",
+          "2026.10 惠东农村商业银行 广东省.xlsx",
+          "2026.10 村镇银行 惠东县乡1.xlsx",
+          "2026.10 村镇银行 惠州市.xlsx",
+          "2026.10 村镇银行 惠州市博罗县乡1.xlsx"
+        ]
+      },
+      "run1": {
+        "count": 8,
+        "names": [
+          "2026.10 TCL财务公司 广东省.xlsx",
+          "2026.10 博罗农村商业银行 广东省.xlsx",
+          "2026.10 广东惠州农商行 广东省.xlsx",
+          "2026.10 广东龙门农村商业银行股份有限公司 广东省.xlsx",
+          "2026.10 惠东农村商业银行 广东省.xlsx",
+          "2026.10 村镇银行 惠东县乡1.xlsx",
+          "2026.10 村镇银行 惠州市.xlsx",
+          "2026.10 村镇银行 惠州市博罗县乡1.xlsx"
+        ],
+        "names_match": true,
+        "elapsed": 152.2,
+        "content_diffs": [
+          "缺少：2026.10 TCL财务公司 广东省.xlsx",
+          "缺少：2026.10 博罗农村商业银行 广东省.xlsx",
+          "缺少：2026.10 广东惠州农商行 广东省.xlsx",
+          "缺少：2026.10 广东龙门农村商业银行股份有限公司 广东省.xlsx",
+          "缺少：2026.10 惠东农村商业银行 广东省.xlsx",
+          "缺少：2026.10 村镇银行 惠东县乡1.xlsx",
+          "缺少：2026.10 村镇银行 惠州市.xlsx",
+          "缺少：2026.10 村镇银行 惠州市博罗县乡1.xlsx"
+        ]
+      },
+      "run2": {
+        "count": 8,
+        "names": [
+          "2026.10 TCL财务公司 广东省.xlsx",
+          "2026.10 博罗农村商业银行 广东省.xlsx",
+          "2026.10 广东惠州农商行 广东省.xlsx",
+          "2026.10 广东龙门农村商业银行股份有限公司 广东省.xlsx",
+          "2026.10 惠东农村商业银行 广东省.xlsx",
+          "2026.10 村镇银行 惠东县乡1.xlsx",
+          "2026.10 村镇银行 惠州市.xlsx",
+          "2026.10 村镇银行 惠州市博罗县乡1.xlsx"
+        ],
+        "names_match": true,
+        "elapsed": 151.0,
+        "content_diffs": [
+          "缺少：2026.10 TCL财务公司 广东省.xlsx",
+          "缺少：2026.10 博罗农村商业银行 广东省.xlsx",
+          "缺少：2026.10 广东惠州农商行 广东省.xlsx",
+          "缺少：2026.10 广东龙门农村商业银行股份有限公司 广东省.xlsx",
+          "缺少：2026.10 惠东农村商业银行 广东省.xlsx",
+          "缺少：2026.10 村镇银行 惠东县乡1.xlsx",
+          "缺少：2026.10 村镇银行 惠州市.xlsx",
+          "缺少：2026.10 村镇银行 惠州市博罗县乡1.xlsx"
+        ]
+      },
+      "two_runs_identical": true
     }
   },
   "sources_unchanged": true,

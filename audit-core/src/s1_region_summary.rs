@@ -318,10 +318,16 @@ where
     // it determines S1-F02 output columns and sheet order.
     let defined_names = defined_names_in_openpyxl_order(&defined_names, template_sheet_names.len());
     let feature_mappings = load_s1_region_summary_mappings(mapping_config, &template_path)?;
+    // 源生产配置里功能名带 `汇总_` 前缀（`汇总_任意行汇总` / `汇总_固定行汇总`），
+    // CLI/GUI 传入的是不带前缀的短名；按「完整名或 `汇总_` + 短名」匹配。
     let selected_mappings = feature_mappings
         .into_iter()
         .filter(|mapping| {
-            feature_names.is_empty() || feature_names.iter().any(|name| name == &mapping.name)
+            feature_names.is_empty()
+                || feature_names.iter().any(|name| {
+                    name == &mapping.name
+                        || mapping.name == format!("汇总_{name}")
+                })
         })
         .collect::<Vec<_>>();
     ensure!(

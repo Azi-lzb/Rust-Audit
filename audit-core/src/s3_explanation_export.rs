@@ -35,7 +35,7 @@ const SELECTED_VALUES: [&str; 7] = ["是", "y", "yes", "true", "1", "√", "✓"
 const ORG_REFERENCE_SHEET: &str = "机构地区参照";
 const ENGINE_READER: &str = "calamine";
 const ENGINE_WRITER: &str = "rust_xlsxwriter";
-const TITLE: &str = "xx说明";
+const TITLE: &str = "xxx说明";
 const CHANGE_REASON_RULE: &str = "比较结果“输出说明”列填写“是”";
 const BODY_HEADERS: [&str; 8] = [
     "机构代码",
@@ -136,13 +136,11 @@ where
         missing.join("、")
     );
 
+    // 源生产：从「数据值」列头提取单位（如「本期金额（亿元）」→「亿元」），
+    // 三个数值列统一写「本期金额（单位）」「上期金额（单位）」「增减额（单位）」。
     let unit_column = headers["数据值"];
     let unit_header = python_string_or_empty(&cell(source_sheet, 1, unit_column));
-    let unit_header = if unit_header.is_empty() {
-        "本期金额".to_owned()
-    } else {
-        unit_header
-    };
+    let unit = unit_from_header(&unit_header);
     let change_header = header_names_in_order(source_sheet)
         .into_iter()
         .find(|name| name.starts_with("增减额"))
@@ -218,15 +216,18 @@ where
         });
     }
 
+    // 对齐源生产 headers：指标代码、指标名称、本期金额（单位）、上期金额（单位）、
+    // 增减额（单位）、变动原因。
+    let _ = change_header;
     let output_headers = [
-        BODY_HEADERS[0].to_owned(),
-        BODY_HEADERS[1].to_owned(),
-        BODY_HEADERS[2].to_owned(),
-        BODY_HEADERS[3].to_owned(),
-        unit_header,
-        BODY_HEADERS[5].to_owned(),
-        change_header,
-        BODY_HEADERS[7].to_owned(),
+        "机构代码".to_owned(),
+        "机构名称".to_owned(),
+        "指标代码".to_owned(),
+        "指标名称".to_owned(),
+        format!("本期金额（{unit}）"),
+        format!("上期金额（{unit}）"),
+        format!("增减额（{unit}）"),
+        "变动原因".to_owned(),
     ];
     let output_parent = output_path
         .parent()
@@ -573,6 +574,18 @@ fn write_workbook(
     }
 
     workbook.save(path).context("保存 S3-F02 说明 XLSX 失败")
+}
+
+/// 从列头提取单位：`本期金额（亿元）` → `亿元`；无括号时回退 `亿元`。
+fn unit_from_header(header: &str) -> String {
+    let Ok(re) = regex::Regex::new(r"[（(]([^（）()]+)[）)]\s*$") else {
+        return "亿元".to_owned();
+    };
+    re.captures(header)
+        .and_then(|caps| caps.get(1))
+        .map(|m| m.as_str().trim().to_owned())
+        .filter(|unit| !unit.is_empty())
+        .unwrap_or_else(|| "亿元".to_owned())
 }
 
 /// 源生产 `_explanation_sheet_title`：`(说明)YYYY.MM 说明文件`。

@@ -49,9 +49,11 @@ S3_DIR = DATA / "S3"
 S1F2_TEMPLATE = S1F1_TEMPLATES / "！汇总校验结果及报送说明.xlsx"
 S1_HISTORY = CONFIG_REAL / "1.逐笔统计系统_配置.xlsx"
 
-EXTERNAL_20261016 = CONFIG_REAL / "外部文件-大集中相关数据20261016.xlsx"
-EXTERNAL_DEFAULT = CONFIG_REAL / "外部文件-大集中相关数据.xlsx"
-S2_EXTERNAL = EXTERNAL_20261016 if EXTERNAL_20261016.is_file() else EXTERNAL_DEFAULT
+# 基线 S2F1 的 central 是 config/外部文件-大集中相关数据20261016.xlsx
+# （config-real 下同名文件 label 可识别，会得到不同的外部核对结果）。
+EXTERNAL_20261016 = OLD / "config" / "外部文件-大集中相关数据20261016.xlsx"
+EXTERNAL_REAL = CONFIG_REAL / "外部文件-大集中相关数据20261016.xlsx"
+S2_EXTERNAL = EXTERNAL_20261016 if EXTERNAL_20261016.is_file() else EXTERNAL_REAL
 
 
 def sha(path: Path) -> str:
@@ -313,9 +315,9 @@ def run_s1f2(run_dir: Path) -> dict:
         "--output-workbook", str(output),
         "--mapping-config", str(S1_HISTORY),
         "--history-workbook", str(S1_HISTORY),
-        "--feature-name", "任务说明",
-        "--feature-name", "业务说明",
-        "--feature-name", "本地校验结果",
+        # 对齐 Python `dag:汇总校验结果说明`：S1-F02 只执行「任意行汇总」功能
+        #（模板命名区域「任意行汇总区域」→ 输出三张表），不是工作表名。
+        "--feature-name", "任意行汇总",
         "--recursive", "false",
     ])
     return {

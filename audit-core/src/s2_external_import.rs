@@ -381,7 +381,9 @@ fn read_plain(
         .position(|header| header == "行名称" || header == "报表项目")
         .map(|index| index + 1)
         .or_else(|| {
-            (1..=matrix.max_column.unwrap_or(0).min(4)).find(|column| {
+            // 源生产用 `range(min(4, len(header)))`：**前 4 列（0-based 0..3）**，
+            // 即 1-based 1..=4；要求该列表头为空且下方 4 行内有文本。
+            (1..=4.min(matrix.max_column.unwrap_or(0))).find(|column| {
                 truthy_string(matrix.get(header_row, *column)).is_empty()
                     && (header_row + 1..=matrix.max_row.unwrap_or(header_row).min(header_row + 4))
                         .any(|row| {
