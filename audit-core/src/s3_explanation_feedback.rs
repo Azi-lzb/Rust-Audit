@@ -299,14 +299,20 @@ fn plan_explanation_feedback_import_internal(
     ensure_distinct_paths(&[target_path, candidate_output_path, plan_output_path])?;
     for feedback_path in feedback_paths {
         ensure_workbook_path(feedback_path, true)?;
+        // 反馈文件只读，扩展名放开到 .xls/.xlsb/.ods 等 calamine 能读的格式
+        // （真实机构反馈常为 .xls）；目标说明工作簿仍只允许 .xlsx，写回走
+        // 现有 ExcelEditPlan 编辑后端，保持格式不动。
         ensure!(
             feedback_path
                 .extension()
                 .and_then(|extension| extension.to_str())
                 .is_some_and(|extension| {
-                    extension.eq_ignore_ascii_case("xlsx") || extension.eq_ignore_ascii_case("xlsm")
+                    matches!(
+                        extension.to_ascii_lowercase().as_str(),
+                        "xlsx" | "xlsm" | "xls" | "xlsb" | "ods"
+                    )
                 }),
-            "S3-F03 反馈工作簿目前只支持 .xlsx 和只读 .xlsm：{}",
+            "S3-F03 反馈工作簿必须是 calamine 可读的表格格式（.xlsx/.xlsm/.xls/.xlsb/.ods）：{}",
             feedback_path.display()
         );
     }

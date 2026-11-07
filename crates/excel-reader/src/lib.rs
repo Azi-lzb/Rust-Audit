@@ -2195,9 +2195,30 @@ fn read_value_columns_calamine(
     iso_dates: bool,
 ) -> Result<Vec<SheetValues>> {
     anyhow::ensure!(max_columns > 0, "max_columns must be greater than zero");
-    validate_legacy_xls_signature(path)?;
+    // `.xls` 实为 xlsx 的情况（业务方常见：直接改扩展名）：CFB 签名校验会
+    // 拒绝，但内容是合法 ZIP。此时复制为临时 .xlsx 再读，既不放宽签名校验，
+    // 也能正确处理「扩展名与内容不一致」的真实报送/反馈文件。
+    let disguised_xlsx = legacy_xls_is_actually_zip(path);
+    let read_path = if disguised_xlsx {
+        let temporary = std::env::temp_dir().join(format!(
+            "audit-disguised-xlsx-{}-{}.xlsx",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|value| value.as_nanos())
+                .unwrap_or_default()
+        ));
+        fs::copy(path, &temporary)
+            .with_context(|| format!("复制伪装 .xlsx 临时副本：{}", path.display()))?;
+        Some(temporary)
+    } else {
+        validate_legacy_xls_signature(path)?;
+        None
+    };
+    let effective_path = read_path.as_deref().unwrap_or(path);
+    let result = (|| -> Result<Vec<SheetValues>> {
     let mut workbook =
-        open_workbook_auto(path).with_context(|| format!("open {}", path.display()))?;
+        open_workbook_auto(effective_path).with_context(|| format!("open {}", effective_path.display()))?;
     let names = workbook.sheet_names().to_vec();
     let mut sheets = Vec::with_capacity(names.len());
 
@@ -2241,6 +2262,27 @@ fn read_value_columns_calamine(
         });
     }
     Ok(sheets)
+    })();
+    if let Some(temporary) = read_path {
+        let _ = fs::remove_file(temporary);
+    }
+    result
+}
+
+/// `.xls` 扩展名但实际是 ZIP/xlsx（PK 签名）时返回 true。
+fn legacy_xls_is_actually_zip(path: &Path) -> bool {
+    let is_xls = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("xls"));
+    if !is_xls {
+        return false;
+    }
+    let Ok(mut file) = fs::File::open(path) else {
+        return false;
+    };
+    let mut signature = [0_u8; 4];
+    file.read_exact(&mut signature).is_ok() && signature == [0x50, 0x4B, 0x03, 0x04]
 }
 
 fn validate_legacy_xls_signature(path: &Path) -> Result<()> {
@@ -2593,6 +2635,42 @@ mod tests {
     use std::io::Write;
     use std::path::PathBuf;
     use zip::{write::SimpleFileOptions, ZipWriter};
+
+    #[test]
+    fn detects_disguised_xlsx_with_xls_extension() {
+        // 业务方常见：xlsx 直接改名为 .xls。按 PK 签名识别，避免 CFB 校验误拒。
+        let directory = std::env::temp_dir().join(format!(
+            "excel-reader-disguised-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|value| value.as_nanos())
+                .unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        let disguised = directory.join("feedback.xls");
+        let real = directory.join("feedback.xlsx");
+        let file = std::fs::File::create(&real).unwrap();
+        let mut writer = ZipWriter::new(file);
+        writer
+            .start_file(
+                "[Content_Types].xml",
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated),
+            )
+            .unwrap();
+        writer.write_all(b"<Types/>").unwrap();
+        writer.finish().unwrap();
+        std::fs::copy(&real, &disguised).unwrap();
+
+        assert!(legacy_xls_is_actually_zip(&disguised));
+        assert!(!legacy_xls_is_actually_zip(&real));
+        // 真正的 CFB .xls 不会被误判（用无效 CFB 头验证：非 PK 即非伪装）。
+        let fake_cfb = directory.join("legacy.xls");
+        std::fs::write(&fake_cfb, [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]).unwrap();
+        assert!(!legacy_xls_is_actually_zip(&fake_cfb));
+
+        let _ = std::fs::remove_dir_all(&directory);
+    }
 
     fn nonstandard_header_fixture() -> Result<PathBuf> {
         let path = std::env::temp_dir().join(format!(
