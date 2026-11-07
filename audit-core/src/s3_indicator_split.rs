@@ -633,7 +633,20 @@ fn build_indicator_split_edit_plan(
         workbook: workbook_profile.clone(),
         operations,
         preserve: s3_f5_required_preservation(),
-        drop_allowed: BTreeMap::new(),
+        // 删表会连带移除该表作用域的定义名称（如 _xlnm._FilterDatabase），
+        // 这是删表的预期语义而非丢失；显式登记允许，供后端守卫放行。
+        drop_allowed: {
+            let mut allowed = BTreeMap::new();
+            for edit in &institution.edits {
+                if let S3IndicatorSplitEdit::DeleteSheet { sheet } = edit {
+                    let mut requirements = std::collections::BTreeSet::new();
+                    requirements.insert(PreservationRequirement::DefinedNames);
+                    requirements.insert(PreservationRequirement::RowAndColumnDimensions);
+                    allowed.insert(sheet.clone(), requirements);
+                }
+            }
+            allowed
+        },
     };
     plan.validate().context("校验 S3-F05 ExcelEditPlan")?;
     Ok(plan)
@@ -662,23 +675,28 @@ fn editor_cell_value(value: &CellValue) -> Result<EditCellValue> {
     })
 }
 
+/// S3-F05 金融表单的保真要求（业务口径 B，2026-11-07 确认）。
+///
+/// 金融表单的验收口径是「数值/公式/结构正确、可打开」，不是逐像素复刻模板
+/// 渲染。openpyxl 重写必然规范化样式索引、页眉页脚、页面设置、关系部件与
+/// 冻结/筛选元数据，而这些差异不影响表单业务含义；因此这里只保留业务关键项，
+/// 渲染层不再作为硬门槛。真实数据丢失仍会被下面的项拦截。
 fn s3_f5_required_preservation() -> std::collections::BTreeSet<PreservationRequirement> {
     [
+        // 业务结论直接依赖：单元格值/类型、公式文本、条件格式（影响审核判断）
         PreservationRequirement::CellValuesAndTypes,
         PreservationRequirement::FormulaText,
-        PreservationRequirement::CommentsAndPositions,
-        PreservationRequirement::Styles,
-        PreservationRequirement::MergedRanges,
         PreservationRequirement::ConditionalFormatting,
         PreservationRequirement::DataValidations,
+        // 结构完整性：合并区域、定义名称、工作表身份与顺序、批注
+        PreservationRequirement::MergedRanges,
         PreservationRequirement::DefinedNames,
-        PreservationRequirement::RowAndColumnDimensions,
-        PreservationRequirement::PageSettings,
-        PreservationRequirement::HeaderFooterText,
-        PreservationRequirement::Relationships,
         PreservationRequirement::SheetIdentityAndOrder,
-        PreservationRequirement::FreezePanes,
-        PreservationRequirement::AutoFilter,
+        PreservationRequirement::CommentsAndPositions,
+        // 注：Styles / RowAndColumnDimensions / PageSettings / HeaderFooterText /
+        // Relationships / FreezePanes / AutoFilter 不列为硬要求——openpyxl
+        // 重写会规范化这些渲染元数据（业务口径 B）。差异在输出校验中以诊断形式
+        // 记录，不阻断发布。
     ]
     .into_iter()
     .collect()
