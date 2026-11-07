@@ -153,6 +153,13 @@ struct CompiledExpressionRule {
     variants: Vec<ExpressionVariant>,
     organization_scope: Option<Regex>,
     region_scope: Option<Regex>,
+    /// 源生产 legacy 口径：来源分组=「跨期核对」的八段规则从五段表同编号行
+    /// 借机构/地区 scope；五段表无该编号或机构列为空 → scope_missing，
+    /// 运行时整条跳过（VBA 只加载机构列非空的跨期核对行）。
+    legacy_scope_required: bool,
+    legacy_scope_missing: bool,
+    legacy_org_pattern: Option<Regex>,
+    legacy_region_pattern: Option<Regex>,
     required_frequency_keys: BTreeSet<String>,
 }
 
@@ -565,6 +572,20 @@ pub fn apply_expression_rules(
                 .variants
                 .iter()
                 .any(|variant| expression_variant_matches(variant, &row.record))
+            {
+                continue;
+            }
+            // 源生产 legacy 口径：跨期核对规则缺五段 scope（机构列空）整条跳过；
+            // 借到的机构/地区正则不匹配当前行时跳过。
+            if rule.legacy_scope_missing {
+                continue;
+            }
+            if rule.legacy_org_pattern.as_ref().is_some_and(|pattern| {
+                !pattern.is_match(&row.record.org_code)
+            }) || rule
+                .legacy_region_pattern
+                .as_ref()
+                .is_some_and(|pattern| !pattern.is_match(&row.record.region_code))
             {
                 continue;
             }
@@ -1707,12 +1728,57 @@ fn compile_expression_rules(
             inverted_text.trim().to_ascii_lowercase().as_str(),
             "是" | "1" | "true" | "y"
         );
-        let (expression, variants, organization_scope, region_scope) = match schema {
+        let (expression, variants, organization_scope, region_scope, legacy_scope_required, legacy_scope_missing, legacy_org_pattern, legacy_region_pattern) =
+            match schema {
             S3ExpressionSchema::LegacyEightSegment => {
                 let references = expression_references(&normalized);
                 validate_reference_shapes(&references, 8, rule_id, true)?;
                 let variants = compile_variants(references, rule_id, true)?;
-                (normalized.clone(), variants, None, None)
+                // 源生产 legacy_scope_required：仅「跨期核对」来源组且五段表
+                // 非空；scope 元数据从五段表同编号行借用（机构类代码/地区代码）。
+                let legacy_scope_required = source_group == "跨期核对"
+                    && config
+                        .expression_rules
+                        .iter()
+                        .any(|rule| rule.schema == S3ExpressionSchema::FiveSegment);
+                let borrowed = if legacy_scope_required {
+                    config
+                        .expression_rules
+                        .iter()
+                        .find(|rule| {
+                            rule.schema == S3ExpressionSchema::FiveSegment
+                                && field(&rule.fields, &["规则编号"]).trim() == rule_id
+                        })
+                        .map(|rule| {
+                            (
+                                field(&rule.fields, &["机构类代码"]).trim().to_owned(),
+                                field(&rule.fields, &["地区代码"]).trim().to_owned(),
+                            )
+                        })
+                } else {
+                    None
+                };
+                let (legacy_org_text, legacy_region_text) = borrowed
+                    .unwrap_or((String::new(), String::new()));
+                // 源生产：missing = 五段表无同编号行或机构类代码列为空
+                //（VBA 只加载机构列非空的跨期核对行；空 = missing 而非不限）。
+                let legacy_scope_missing =
+                    legacy_scope_required && legacy_org_text.trim().is_empty();
+                let legacy_org_pattern = compile_scope(&legacy_org_text, rule_id, "机构类代码")
+                    .ok()
+                    .flatten();
+                let legacy_region_pattern =
+                    compile_scope(&legacy_region_text, rule_id, "地区代码").ok().flatten();
+                (
+                    normalized.clone(),
+                    variants,
+                    None,
+                    None,
+                    legacy_scope_required,
+                    legacy_scope_missing,
+                    legacy_org_pattern,
+                    legacy_region_pattern,
+                )
             }
             S3ExpressionSchema::FiveSegment => {
                 let bindings = legacy_bindings
@@ -1735,7 +1801,16 @@ fn compile_expression_rules(
                     compile_scope(field(fields, &["机构类代码"]), rule_id, "机构类代码")?;
                 let region_scope =
                     compile_scope(field(fields, &["地区代码"]), rule_id, "地区代码")?;
-                (expanded, variants, organization_scope, region_scope)
+                (
+                    expanded,
+                    variants,
+                    organization_scope,
+                    region_scope,
+                    false,
+                    false,
+                    None,
+                    None,
+                )
             }
         };
         ensure!(
@@ -1758,6 +1833,10 @@ fn compile_expression_rules(
             variants,
             organization_scope,
             region_scope,
+            legacy_scope_required,
+            legacy_scope_missing,
+            legacy_org_pattern,
+            legacy_region_pattern,
             required_frequency_keys,
         });
     }
