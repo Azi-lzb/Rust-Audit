@@ -1,0 +1,160 @@
+{
+  "workbook": "F:\\RustBuild\\audit\\tmp\\s1f1-auto-route-current-release-129-20261106\\acceptance\\steps\\S1-F01\\S1-F1_审核结果_20261106_144557_098\\0013-TCL科技集团财务有限公司_金融基础数据采集_单位存款__2026-08-31_数据核对表-recalculated.xlsx",
+  "rust": {
+    "status": "evaluated_static_rules",
+    "rules_total": 141,
+    "rules_supported": 141,
+    "scanned_cells": 2701,
+    "triggered_total": 36,
+    "triggered_sample": [
+      {
+        "sheet": "单位存款余额",
+        "cell": "C54",
+        "applies_to": "C54",
+        "rule_type": "expression",
+        "operator": "",
+        "formula": "AND($C54<>\"\",OR($C54<=50))",
+        "message": "条件格式规则：AND(C54<>\"\",OR(C54<=50))",
+        "priority": 3,
+        "confidence": "FULL"
+      },
+      {
+        "sheet": "单位存款余额",
+        "cell": "C89",
+        "applies_to": "C89",
+        "rule_type": "expression",
+        "operator": "",
+        "formula": "AND($C89<>\"\",OR($C89>=10))",
+        "message": "条件格式规则：AND(C89<>\"\",OR(C89>=10))",
+        "priority": 5,
+        "confidence": "FULL"
+      },
+      {
+        "sheet": "单位存款余额",
+        "cell": "F22",
+        "applies_to": "F8:F132",
+        "rule_type": "expression",
+        "operator": "",
+        "formula": "AND($F8<>\"\",OR($F8<=-30,$F8>=30))",
+        "message": "条件格式规则：AND(F22<>\"\",OR(F22<=-30,F22>=30))",
+        "priority": 6,
+        "confidence": "FULL"
+      },
+      {
+        "sheet": "单位存款余额",
+        "cell": "F23",
+        "applies_to": "F8:F132",
+        "rule_type": "expression",
+        "operator": "",
+        "formula": "AND($F8<>\"\",OR($F8<=-30,$F8>=30))",
+        "message": "条件格式规则：AND(F23<>\"\",OR(F23<=-30,F23>=30))",
+        "priority": 6,
+        "confidence": "FULL"
+      },
+      {
+        "sheet": "单位存款余额",
+        "cell": "F26",
+        "applies_to": "F8:F132",
+        "rule_type": "expression",
+        "operator": "",
+        "formula": "AND($F8<>\"\",OR($F8<=-30,$F8>=30))",
+        "message": "条件格式规则：AND(F26<>\"\",OR(F26<=-30,F26>=30))",
+        "priority": 6,
+        "confidence": "FULL"
+      }
+    ],
+    "diagnostics": []
+  },
+  "excel_com": {
+    "available": true,
+    "engine": "excel",
+    "sheets": {
+      "存量单位存款分产品期限": {
+        "triggeredCount": 4,
+        "triggered": [
+          "F18=255",
+          "F9=255",
+          "AX9=255",
+          "AX18=255"
+        ],
+        "scanned": 387
+      },
+      "单位存款余额": {
+        "triggeredCount": 22,
+        "triggered": [
+          "C54=255",
+          "C89=255",
+          "F22=255",
+          "F23=255",
+          "F26=255",
+          "F29=255",
+          "F30=255",
+          "F35=255",
+          "F37=255",
+          "F38=255",
+          "F42=255",
+          "F43=255",
+          "F44=255",
+          "F48=255",
+          "F54=255",
+          "F56=255",
+          "F63=255",
+          "F64=255",
+          "F89=255",
+          "F98=255",
+          "G132=255",
+          "H55=255"
+        ],
+        "scanned": 283
+      },
+      "单位存款发生额分产品期限": {
+        "triggeredCount": 4,
+        "triggered": [
+          "E18=255",
+          "F18=255",
+          "AW18=255",
+          "AX18=255"
+        ],
+        "scanned": 1370
+      },
+      "单位存款发生额": {
+        "triggeredCount": 6,
+        "triggered": [
+          "C179=255",
+          "C54=255",
+          "D149=255",
+          "F179=255",
+          "F54=255",
+          "G149=255"
+        ],
+        "scanned": 417
+      }
+    }
+  },
+  "wps_com": {
+    "available": true,
+    "engine": "wps",
+    "sheets": {
+      "存量单位存款分产品期限": {
+        "triggeredCount": 0,
+        "triggered": [],
+        "scanned": 0
+      },
+      "单位存款余额": {
+        "triggeredCount": 0,
+        "triggered": [],
+        "scanned": 0
+      },
+      "单位存款发生额分产品期限": {
+        "triggeredCount": 0,
+        "triggered": [],
+        "scanned": 0
+      },
+      "单位存款发生额": {
+        "triggeredCount": 0,
+        "triggered": [],
+        "scanned": 0
+      }
+    }
+  }
+}
