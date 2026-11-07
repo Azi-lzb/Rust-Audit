@@ -3788,6 +3788,7 @@ mod tests {
             change: CentralValue::Number(25.5),
             ratio: CentralValue::Number(0.255),
             remark: "需说明".to_owned(),
+            build_order: 0,
             need_explanation: "是".to_owned(),
             explanation_content: "测试说明".to_owned(),
             calculation_process: "125.5 - 100.0".to_owned(),
