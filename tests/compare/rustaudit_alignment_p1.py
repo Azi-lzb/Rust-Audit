@@ -423,7 +423,7 @@ def run_s3f1(run_dir: Path) -> Path:
         "--common-config", str(CONFIG_REAL / "3.0大集中通用配置.xlsx"),
         "--feature-config", str(CONFIG_REAL / "3.1大集中执行比较_配置.xlsx"),
         "--output-workbook", str(output),
-        "--expression-schema", "five-segment",
+        "--expression-schema", "legacy-eight-segment",
     ])
     if result["returncode"] != 0:
         raise RuntimeError(f"S3F1 失败：{result['stderr'][-500:]}")
