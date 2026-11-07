@@ -454,11 +454,11 @@ fn run_recalculate_session(arguments: Vec<String>) -> Result<()> {
     }
 }
 
-/// Linux 持久重算会话：`--engine auto|lo` 时由一个本进程拥有的隔离
-/// LibreOffice 实例（独立 profile + 内置批次驱动）顺序处理批次内的工作簿。
-/// LibreOffice 实例惰性启动：`auto` 在父会话探测 COM 失败并重启为 `lo` 的
-/// 过程中不产生多余实例。`--engine com/excel/wps` 在 Linux 不可用，按既有
-/// 会话协议报告 `com_error`，由父会话的 auto 路由重启为 `lo`。
+/// Linux 的旧 request/response 重算协议：`--engine auto|lo` 复用 sidecar
+/// worker 和独立 LibreOffice profile 初始化，但每个重算请求仍会单独启动
+/// 一个 `soffice --convert-to` 命令。S1-F1 GUI 使用 `recalculate-batch`，
+/// 避免把此 profile 复用误认为 LibreOffice 进程复用。`--engine
+/// com/excel/wps` 在 Linux 不可用，协议保留该诊断供旧调用方使用。
 fn run_recalculate_session_lo(arguments: Vec<String>) -> Result<()> {
     let mut values = BTreeMap::new();
     let mut args = arguments.into_iter();
@@ -499,10 +499,11 @@ fn run_recalculate_session_lo(arguments: Vec<String>) -> Result<()> {
         "status": "session_ready",
         "engine": if lo_batch.is_some() { serde_json::json!("LibreOffice") } else { serde_json::Value::Null },
         "engine_process_id": None::<u32>,
-        "engine_process_owned": lo_batch.is_some(),
+        "engine_process_owned": false,
         "com_available": false,
         "com_error": com_error,
         "lo_batch_session": lo_batch.is_some(),
+        "lo_profile_owned": lo_batch.is_some(),
         "lo_batch_work_dir": lo_batch
             .as_ref()
             .map(|session| session.work_dir().display().to_string()),
@@ -619,35 +620,6 @@ fn run_recalculate_batch(arguments: Vec<String>) -> Result<()> {
     }
 
     let guard = TempDirGuard(unique_temp_dir(&env::temp_dir())?);
-    let profile_dir = guard.0.join("profile");
-    fs::create_dir_all(&profile_dir)?;
-    let profile_argument = libreoffice_user_installation_arg(&profile_dir)?;
-    let init_status = Command::new("soffice")
-        .args(["--headless", "--terminate_after_init"])
-        .arg(&profile_argument)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .context("start LibreOffice profile initialisation")?;
-    ensure!(
-        init_status.success(),
-        "LibreOffice profile initialisation failed (exit={init_status})"
-    );
-    // 沉降 + 排空：与暖 profile 会话相同的已知竞态（oosplash fork 窗口）。
-    std::thread::sleep(std::time::Duration::from_secs(2));
-    let profile_pattern = format!(
-        "UserInstallation={}",
-        profile_argument
-            .split_once("UserInstallation=")
-            .map(|(_, rest)| rest.to_owned())
-            .unwrap_or_else(|| profile_argument.clone())
-    );
-    let _ = Command::new("pkill")
-        .args(["-f", "--", &profile_pattern])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-
     let input_dir = guard.0.join("batch-input");
     let output_dir = guard.0.join("batch-output");
     fs::create_dir_all(&input_dir)?;
@@ -730,6 +702,8 @@ fn run_recalculate_batch(arguments: Vec<String>) -> Result<()> {
     let result = serde_json::json!({
         "status": if failures == 0 { "recalculated" } else { "partial" },
         "engine": engine_name,
+        "soffice_conversion_invocations": 1,
+        "profile_processes_remaining": 0,
         "convert_ms": convert_ms,
         "books": books,
     });
@@ -2547,7 +2521,6 @@ fn run_convert_batch(arguments: Vec<String>) -> Result<()> {
         );
     }
 
-    let started = Instant::now();
     let guard = TempDirGuard(unique_temp_dir(&env::temp_dir())?);
     let use_com = cfg!(windows) && engine != "lo";
 
@@ -2565,7 +2538,7 @@ fn run_convert_batch(arguments: Vec<String>) -> Result<()> {
 
     // ---- Windows COM：批次自有实例，逐本转换 ----
     if use_com {
-        for (index, (input, output)) in declared.iter().enumerate() {
+        for (index, (input, _output)) in declared.iter().enumerate() {
             let canonical = fs::canonicalize(input)
                 .with_context(|| format!("resolve convert input {}", input.display()))?;
             let staged = guard.0.join(format!("book-{index:04}.{}", source_ext));
@@ -2589,7 +2562,7 @@ fn run_convert_batch(arguments: Vec<String>) -> Result<()> {
                             ])?);
                         }
                         let session = com_word.as_ref().expect("Word session ready");
-                        session.convert_to_docx(&staged, output)?;
+                        session.convert_to_docx(&staged, _output)?;
                         (
                             "com",
                             "Word/WPS Writer",
@@ -2605,14 +2578,14 @@ fn run_convert_batch(arguments: Vec<String>) -> Result<()> {
                             com_sheet = Some(excel_com::ExcelComSession::create(names)?);
                         }
                         let session = com_sheet.as_mut().expect("Excel session ready");
-                        session.convert_to_xlsx(&staged, output)?;
+                        session.convert_to_xlsx(&staged, _output)?;
                         let application = session.application_name();
                         ( "com", application, session.process_id())
                     };
-                    require_engine_output(output)?;
+                    require_engine_output(_output)?;
                     let validation = validate_conversion(
                         input,
-                        output,
+                        _output,
                         &source_ext,
                         target,
                         "com",

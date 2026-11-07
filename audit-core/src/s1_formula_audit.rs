@@ -197,6 +197,9 @@ pub fn extract_s1_formula_issues(
         if rule.result_mode == "keyword" && !has_result_marker(&formula_result) {
             continue;
         }
+        if is_negligible_zero_difference_result(&formula_result) {
+            continue;
+        }
 
         let formula_result_json = cell_value_to_json(&formula_result);
         let parsed = parse_formula_result(
@@ -436,6 +439,113 @@ fn is_empty_formula_result(value: &CellValue) -> bool {
     }
 }
 
+fn is_negligible_zero_difference_result(value: &CellValue) -> bool {
+    let CellValue::Text(text) = value else {
+        return false;
+    };
+    let normalized = text.replace('｜', "|");
+    let mut parts = normalized.split('|');
+    let Some(marker) = parts.next() else {
+        return false;
+    };
+    if !["错误", "硬性", "错"]
+        .iter()
+        .any(|prefix| marker.contains(prefix))
+    {
+        return false;
+    }
+    let Some(check_type) = parts.next() else {
+        return false;
+    };
+    let Some(number) = check_type.trim().strip_prefix("差值为") else {
+        return false;
+    };
+    decimal_magnitude_at_most_one_e_minus_ten(number.trim()).unwrap_or(false)
+}
+
+/// Compare decimal/scientific notation exactly with 1E-10 without rounding
+/// through `f64`; the Python baseline uses `Decimal` for this boundary.
+fn decimal_magnitude_at_most_one_e_minus_ten(value: &str) -> Option<bool> {
+    let value = value
+        .strip_prefix('+')
+        .or_else(|| value.strip_prefix('-'))
+        .unwrap_or(value);
+    let (mantissa, exponent_text) = match value.find(['e', 'E']) {
+        Some(index) => {
+            if value[index + 1..].contains(['e', 'E']) {
+                return None;
+            }
+            (&value[..index], Some(&value[index + 1..]))
+        }
+        None => (value, None),
+    };
+    let exponent_text = exponent_text.unwrap_or("0");
+    let (exponent_negative, exponent_digits) = match exponent_text
+        .strip_prefix('-')
+        .map(|digits| (true, digits))
+        .or_else(|| {
+            exponent_text
+                .strip_prefix('+')
+                .map(|digits| (false, digits))
+        }) {
+        Some(value) => value,
+        None => (false, exponent_text),
+    };
+    if exponent_digits.is_empty() || !exponent_digits.chars().all(|ch| ch.is_ascii_digit()) {
+        return None;
+    }
+
+    let mut digits = String::with_capacity(mantissa.len());
+    let mut decimal_seen = false;
+    let mut fractional_digits = 0i128;
+    let mut digit_seen = false;
+    for character in mantissa.chars() {
+        match character {
+            '.' if !decimal_seen => decimal_seen = true,
+            '.' => return None,
+            digit if digit.is_ascii_digit() => {
+                digit_seen = true;
+                digits.push(digit);
+                if decimal_seen {
+                    fractional_digits += 1;
+                }
+            }
+            _ => return None,
+        }
+    }
+    if !digit_seen {
+        return None;
+    }
+    let Some(first_nonzero) = digits.find(|digit| digit != '0') else {
+        return Some(true);
+    };
+    let significant_digits = &digits[first_nonzero..];
+
+    // Decimal's exponent is arbitrary precision. An exponent too large for
+    // i128 can only put a non-zero finite decimal clearly above/below 1E-10.
+    let exponent = match exponent_text.parse::<i128>() {
+        Ok(value) => value,
+        Err(_) if exponent_negative => return Some(true),
+        Err(_) => return Some(false),
+    };
+    let scale = match exponent.checked_sub(fractional_digits) {
+        Some(value) => value,
+        None => return Some(exponent < 0),
+    };
+    let order = match scale.checked_add(significant_digits.len() as i128 - 1) {
+        Some(value) => value,
+        None => return Some(scale < 0),
+    };
+    match order.cmp(&-10) {
+        std::cmp::Ordering::Less => Some(true),
+        std::cmp::Ordering::Greater => Some(false),
+        std::cmp::Ordering::Equal => Some(
+            significant_digits.starts_with('1')
+                && significant_digits[1..].chars().all(|digit| digit == '0'),
+        ),
+    }
+}
+
 fn has_result_marker(value: &CellValue) -> bool {
     matches!(value, CellValue::Text(text) if RESULT_KEYWORDS.iter().any(|marker| text.trim().starts_with(marker)))
 }
@@ -571,6 +681,9 @@ mod tests {
             .expect("write structured result");
         sheet.write_number(4, 1, 42).expect("write target value");
         sheet.write_number(5, 0, 0).expect("write falsey result");
+        sheet
+            .write_string(7, 0, "错误|差值为-3.63797880709171E-12")
+            .expect("write negligible zero-difference result");
         workbook.save(&path).expect("save cached values workbook");
 
         let definition = TemplateDefinition {
@@ -582,13 +695,14 @@ mod tests {
                 rule("A5", "B5", "nonempty", false, true),
                 rule("A6", "A6", "nonempty", true, true),
                 rule("A7", "A7", "keyword", true, false),
+                rule("A8", "A8", "nonempty", true, true),
             ],
             copy_ranges: Vec::new(),
             structured: false,
             structure_ranges: Vec::new(),
             extraction_ranges: vec![CopyRange {
                 sheet_name: "检查表".to_owned(),
-                address: "$A$1:$A$5".to_owned(),
+                address: "$A$1:$A$8".to_owned(),
             }],
         };
         let metadata = S1FormulaMetadata {
@@ -605,10 +719,10 @@ mod tests {
 
         assert_eq!(result.status, "completed");
         assert_eq!(result.summary.reader, "calamine");
-        assert_eq!(result.summary.rules_total, 7);
-        assert_eq!(result.summary.rules_enabled, 6);
-        assert_eq!(result.summary.rules_selected, 5);
-        assert_eq!(result.summary.formula_result_values_nonempty, 5);
+        assert_eq!(result.summary.rules_total, 8);
+        assert_eq!(result.summary.rules_enabled, 7);
+        assert_eq!(result.summary.rules_selected, 7);
+        assert_eq!(result.summary.formula_result_values_nonempty, 6);
         assert_eq!(result.issues.len(), 3);
         let keyword = &result.issues[0];
         assert_eq!(keyword.period, "2026-07");
@@ -644,6 +758,42 @@ mod tests {
             target_value_issue.difference_value,
             Value::String("3".to_owned())
         );
+    }
+
+    #[test]
+    fn negligible_zero_difference_filter_matches_python_scope_and_boundary() {
+        for text in [
+            "错|差值为-3.63797880709171E-12",
+            "错误|差值为 1E-10",
+            "错|差值为1.00000000000000000E-10",
+            "错|差值为10E-11",
+            "硬性|差值为+0.00000000009",
+            "错｜差值为-1e-11",
+            "错|差值为1E-999999999999999999999999999999999999999",
+            "错|差值为0E999999999999999999999999999999999999999",
+        ] {
+            assert!(
+                is_negligible_zero_difference_result(&CellValue::Text(text.to_owned())),
+                "expected {text:?} to be filtered"
+            );
+        }
+        for text in [
+            "错|差值为1.0000001E-10",
+            "错|差值为1.00000000000000001E-10",
+            "错|差值为1E999999999999999999999999999999999999999",
+            "错|某指标|差值为1E-12",
+            "提示|差值为1E-12",
+            "错|差值为NaN",
+            "错|差值为1E-12余数",
+        ] {
+            assert!(
+                !is_negligible_zero_difference_result(&CellValue::Text(text.to_owned())),
+                "expected {text:?} to remain visible"
+            );
+        }
+        assert!(!is_negligible_zero_difference_result(&CellValue::Number(
+            1e-12
+        )));
     }
 
     #[test]

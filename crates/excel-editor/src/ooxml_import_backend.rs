@@ -19,12 +19,12 @@ use crate::{
     BackendCapability, BackendFailure, EditBackend, EditOperation, EditOperationKind,
     ExcelEditPlan, RangeStyleMode, WorkbookFormat,
 };
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{Context, Result, bail, ensure};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
-use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
+use std::path::Path;
+use zip::{CompressionMethod, ZipArchive, ZipWriter, write::SimpleFileOptions};
 
 /// 本后端支持的操作集合。
 pub const SUPPORTED_OPERATIONS: &[EditOperationKind] = &[
@@ -122,8 +122,7 @@ impl Package {
             .parts
             .get(part)
             .with_context(|| format!("XLSX 包缺少部件 {part}"))?;
-        Ok(String::from_utf8(bytes.clone())
-            .with_context(|| format!("部件 {part} 不是 UTF-8"))?)
+        Ok(String::from_utf8(bytes.clone()).with_context(|| format!("部件 {part} 不是 UTF-8"))?)
     }
 
     fn set_text(&mut self, part: &str, text: String) {
@@ -236,8 +235,13 @@ fn apply_plan(plan: &ExcelEditPlan) -> Result<()> {
     let wrote_formulas = plan.operations.iter().any(|operation| {
         matches!(
             operation,
-            EditOperation::ImportRange { copy_formulas: true, .. }
-                | EditOperation::ImportRangeWithFormulaTranslation { copy_formulas: true, .. }
+            EditOperation::ImportRange {
+                copy_formulas: true,
+                ..
+            } | EditOperation::ImportRangeWithFormulaTranslation {
+                copy_formulas: true,
+                ..
+            }
         )
     });
     if wrote_formulas && package.parts.contains_key("xl/calcChain.xml") {
@@ -314,7 +318,9 @@ fn patch_calculation_properties(
             .find("</sheets>")
             .map(|position| position + "</sheets>".len());
         if insert_at.is_none() {
-            insert_at = workbook_xml.find("<sheets/>").map(|position| position + "<sheets/>".len());
+            insert_at = workbook_xml
+                .find("<sheets/>")
+                .map(|position| position + "<sheets/>".len());
         }
         let insert_at = insert_at.context("workbook.xml 缺少 sheets 元素")?;
         let attributes = desired
@@ -329,7 +335,9 @@ fn patch_calculation_properties(
     };
 
     let rest = &workbook_xml[start..];
-    let element_end = rest.find('>').context("workbook.xml 的 calcPr 元素未闭合")?;
+    let element_end = rest
+        .find('>')
+        .context("workbook.xml 的 calcPr 元素未闭合")?;
     let element = &rest[..=element_end];
     let self_closing = element.trim_end().ends_with("/>");
     // 元素内容去掉结尾的 `>` 或 `/>`，得到可追加属性的位置。
@@ -414,10 +422,11 @@ impl SheetParts {
                 .any(|existing| existing.eq_ignore_ascii_case(name)),
             "工作表已存在：{name}"
         );
-        let next_id = self.by_name.len() + 1;
+        let next_id = next_worksheet_part_number(package)?;
         let part = format!("xl/worksheets/sheet{next_id}.xml");
+        let relationships = package.text("xl/_rels/workbook.xml.rels")?;
+        let rel_id = next_relationship_id(&relationships)?;
         package.set_text(&part, EMPTY_WORKSHEET_XML.to_owned());
-        let rel_id = format!("rId{next_id}");
         append_relationship(package, &rel_id, &format!("worksheets/sheet{next_id}.xml"))?;
         append_content_type_override(
             package,
@@ -435,9 +444,7 @@ impl SheetParts {
         workbook_xml: &mut String,
         name: &str,
     ) -> Result<()> {
-        let part = self
-            .part_for(name)?
-            .to_owned();
+        let part = self.part_for(name)?.to_owned();
         let rel_id = sheet_rel_id(workbook_xml, name)?
             .with_context(|| format!("workbook.xml 缺少工作表 {name} 的关系 ID"))?;
         *workbook_xml = remove_sheet_entry(workbook_xml, name)?;
@@ -486,6 +493,35 @@ fn relationship_targets(rels_xml: &str) -> Result<BTreeMap<String, String>> {
     Ok(result)
 }
 
+fn next_relationship_id(rels_xml: &str) -> Result<String> {
+    let document = roxmltree::Document::parse(rels_xml).context("解析 workbook.xml.rels")?;
+    let used = document
+        .descendants()
+        .filter(|node| node.is_element() && node.tag_name().name() == "Relationship")
+        .filter_map(|node| node.attribute("Id"))
+        .collect::<BTreeSet<_>>();
+    let mut index = 1u64;
+    loop {
+        let candidate = format!("rId{index}");
+        if !used.contains(candidate.as_str()) {
+            return Ok(candidate);
+        }
+        index = index
+            .checked_add(1)
+            .context("无法为新增工作表分配唯一关系 ID")?;
+    }
+}
+
+fn next_worksheet_part_number(package: &Package) -> Result<u32> {
+    (1..=u32::MAX)
+        .find(|index| {
+            !package
+                .parts
+                .contains_key(&format!("xl/worksheets/sheet{index}.xml"))
+        })
+        .context("无法为新增工作表分配唯一 OOXML 部件名")
+}
+
 fn worksheet_entries(workbook_xml: &str) -> Result<Vec<(String, String)>> {
     let document = roxmltree::Document::parse(workbook_xml).context("解析 workbook.xml")?;
     let mut result = Vec::new();
@@ -493,8 +529,7 @@ fn worksheet_entries(workbook_xml: &str) -> Result<Vec<(String, String)>> {
         if sheet.tag_name().name() != "sheet" {
             continue;
         }
-        let (Some(name), Some(rel_id)) = (sheet.attribute("name"), relationship_id(sheet))
-        else {
+        let (Some(name), Some(rel_id)) = (sheet.attribute("name"), relationship_id(sheet)) else {
             continue;
         };
         result.push((name.to_owned(), rel_id.to_owned()));
@@ -565,6 +600,19 @@ fn append_content_type_override(
 ) -> Result<()> {
     let path = "[Content_Types].xml";
     let text = package.text(path)?;
+    let document = roxmltree::Document::parse(&text).context("解析 [Content_Types].xml")?;
+    for override_node in document
+        .descendants()
+        .filter(|node| node.is_element() && node.tag_name().name() == "Override")
+    {
+        if override_node.attribute("PartName") == Some(part_name) {
+            ensure!(
+                override_node.attribute("ContentType") == Some(content_type),
+                "部件 {part_name} 已登记了不同的 ContentType"
+            );
+            return Ok(());
+        }
+    }
     let element = format!("<Override PartName=\"{part_name}\" ContentType=\"{content_type}\"/>");
     let insertion = text
         .rfind("</Types>")
@@ -581,7 +629,11 @@ fn append_sheet_entry(
     rel_id: &str,
     index: Option<usize>,
 ) -> Result<String> {
-    let element = format!("<sheet name=\"{}\" sheetId=\"{}\" r:id=\"{rel_id}\"/>", escape_xml(name), next_sheet_id(workbook_xml)?);
+    let element = format!(
+        "<sheet name=\"{}\" sheetId=\"{}\" r:id=\"{rel_id}\"/>",
+        escape_xml(name),
+        next_sheet_id(workbook_xml)?
+    );
     if let Some(index) = index {
         let positions = sheet_element_positions(workbook_xml);
         if index < positions.len() {
@@ -597,7 +649,10 @@ fn append_sheet_entry(
     }
     // 自闭合 `<sheets/>`：展开为成对标签后再插入。
     if let Some(position) = result.find("<sheets/>") {
-        result.replace_range(position..position + "<sheets/>".len(), &format!("<sheets>{element}</sheets>"));
+        result.replace_range(
+            position..position + "<sheets/>".len(),
+            &format!("<sheets>{element}</sheets>"),
+        );
         return Ok(result);
     }
     bail!("workbook.xml 缺少 sheets 元素")
@@ -684,11 +739,9 @@ fn import_range(
     target_start: &str,
     flags: ImportFlags,
 ) -> Result<()> {
-    let (source_lo_col, source_lo_row, source_hi_col, source_hi_row) =
-        parse_range(source_range)?;
-    let (target_lo_col, target_lo_row) = parse_cell(target_start)?;
-    let row_offset = target_lo_row as i64 - source_lo_row as i64;
-    let column_offset = target_lo_col as i64 - source_lo_col as i64;
+    let source_bounds = parse_range(source_range)?;
+    let (source_lo_col, source_lo_row, source_hi_col, source_hi_row) = source_bounds;
+    let (row_offset, column_offset) = target_offsets(source_bounds, target_start)?;
 
     let source_package = Package::read(source_workbook)?;
     let source_parts = SheetParts::resolve(&source_package)?;
@@ -747,7 +800,6 @@ struct RegionCell {
     value_xml: Option<String>,
     /// 文本类型标记（`t="s"` 等），写入时需保留。
     type_attr: Option<String>,
-    is_blank: bool,
 }
 
 fn read_region_cells(
@@ -806,7 +858,10 @@ fn read_region_cells(
                     .cloned()
                     .with_context(|| format!("共享字符串索引 {index} 越界"))?;
                 (
-                    Some(format!("<is><t xml:space=\"preserve\">{}</t></is>", escape_xml(&text))),
+                    Some(format!(
+                        "<is><t xml:space=\"preserve\">{}</t></is>",
+                        escape_xml(&text)
+                    )),
                     Some("inlineStr".to_owned()),
                 )
             }
@@ -820,7 +875,6 @@ fn read_region_cells(
             formula,
             value_xml,
             type_attr,
-            is_blank: cell.is_blank,
         });
     }
     Ok(cells)
@@ -836,7 +890,6 @@ struct CellElement {
     xml: String,
     formula_body: Option<(String, String)>,
     type_attr: Option<String>,
-    is_blank: bool,
     has_inline_string: bool,
 }
 
@@ -845,17 +898,22 @@ fn cell_elements(sheet_xml: &str) -> Vec<CellElement> {
     let mut cursor = 0;
     while let Some(relative) = sheet_xml[cursor..].find("<c ") {
         let start = cursor + relative;
-        let Some(end_relative) = sheet_xml[start..].find("</c>") else {
-            // 自闭合单元格
-            if let Some(self_close) = sheet_xml[start..].find("/>") {
-                let end = start + self_close + 2;
-                result.push(build_cell_element(&sheet_xml[start..end]));
-                cursor = end;
-                continue;
-            }
+        let rest = &sheet_xml[start..];
+        let Some(open_end_relative) = rest.find('>') else {
             break;
         };
-        let end = start + end_relative + "</c>".len();
+        let open_end = open_end_relative + 1;
+        let opening_tag = &rest[..open_end];
+        let end = if opening_tag.trim_end().ends_with("/>") {
+            // 只看 `<c .../>` 起始标签是否自闭合；不能被后续单元格的
+            // `</c>` 或公式里的 `<f .../>` 误导。
+            start + open_end
+        } else {
+            let Some(close_relative) = rest[open_end..].find("</c>") else {
+                break;
+            };
+            start + open_end + close_relative + "</c>".len()
+        };
         result.push(build_cell_element(&sheet_xml[start..end]));
         cursor = end;
     }
@@ -866,28 +924,29 @@ fn build_cell_element(xml: &str) -> CellElement {
     let formula_body = xml.find("<f").and_then(|start| {
         let rest = &xml[start..];
         let open_end = rest.find('>')?;
-        let attrs = rest[..open_end].trim_start_matches("<f").to_owned();
+        let attrs = rest[..open_end]
+            .trim_start_matches("<f")
+            .trim_end_matches('/')
+            .to_owned();
         if rest[open_end - 1..open_end] == *"/" {
             return Some((attrs, String::new()));
         }
         let body_start = open_end + 1;
         let close = rest[body_start..].find("</f>")?;
-        Some((
-            attrs,
-            rest[body_start..body_start + close].to_owned(),
-        ))
+        Some((attrs, rest[body_start..body_start + close].to_owned()))
     });
+    // 只从 `<c ...>` 单元格起始标签读取类型；公式自己的 `<f t="shared">`
+    // 也有 `t` 属性，不能误写成 `<c t="shared">`。
+    let cell_tag_end = xml.find('>').unwrap_or(xml.len());
+    let cell_tag = &xml[..cell_tag_end];
     // ` t="s"`：跳过 ` t="` 四个字节，取到闭合引号。
-    let type_attr = xml.find(" t=\"").and_then(|start| {
-        let rest = &xml[start + 4..];
+    let type_attr = cell_tag.find(" t=\"").and_then(|start| {
+        let rest = &cell_tag[start + 4..];
         let end = rest.find('"')?;
         let value = rest[..end].to_owned();
         (!value.trim().is_empty()).then_some(value)
     });
     CellElement {
-        is_blank: formula_body.is_none()
-            && !xml.contains("<v>")
-            && !xml.contains("<is>"),
         has_inline_string: xml.contains("<is>"),
         formula_body,
         type_attr,
@@ -938,8 +997,7 @@ fn expand_shared_formula(
         .next()
         .context("共享公式主格缺少 ref")?;
     let (master_row, master_column) = parse_cell(master_cell)?;
-    let (dest_row, dest_column) = cell_reference(cell_xml)
-        .context("共享公式依赖格缺少坐标")?;
+    let (dest_row, dest_column) = cell_reference(cell_xml).context("共享公式依赖格缺少坐标")?;
     let row_offset = dest_row as i64 - master_row as i64;
     let column_offset = dest_column as i64 - master_column as i64;
     shift_formula_references(master_body, row_offset, column_offset)
@@ -971,12 +1029,9 @@ fn shift_formula_references(formula: &str, row_offset: i64, column_offset: i64) 
         // 只在 ASCII 位置尝试匹配引用；多字节字符直接输出。
         if current.is_ascii_alphabetic() || current == '$' {
             let rest: String = characters[index..].iter().collect();
-            if let Some((consumed, replaced)) = try_shift_reference(
-                &rest,
-                row_offset,
-                column_offset,
-                &result,
-            )? {
+            if let Some((consumed, replaced)) =
+                try_shift_reference(&rest, row_offset, column_offset, &result)?
+            {
                 result.push_str(&replaced);
                 index += consumed;
                 continue;
@@ -1116,16 +1171,38 @@ fn read_shared_strings(package: &Package) -> Result<Vec<String>> {
 fn write_region(
     target_xml: &str,
     cells: &[RegionCell],
-    _source_bounds: (u32, u32, u32, u32),
+    source_bounds: (u32, u32, u32, u32),
     row_offset: i64,
     column_offset: i64,
     flags: &ImportFlags,
 ) -> Result<String> {
+    let (source_lo_col, source_lo_row, source_hi_col, source_hi_row) = source_bounds;
     let mut by_position: BTreeMap<(u32, u32), &RegionCell> = BTreeMap::new();
     for cell in cells {
         by_position.insert((cell.row, cell.column), cell);
     }
     let mut rows: BTreeMap<u32, BTreeMap<u32, String>> = BTreeMap::new();
+    if flags.materialize_blank_cells {
+        let existing_targets = cell_elements(target_xml)
+            .into_iter()
+            .filter_map(|cell| cell_reference(&cell.xml))
+            .collect::<BTreeSet<_>>();
+        for source_row in source_lo_row..=source_hi_row {
+            let target_row = (source_row as i64 + row_offset) as u32;
+            for source_column in source_lo_col..=source_hi_col {
+                if by_position.contains_key(&(source_row, source_column)) {
+                    continue;
+                }
+                let target_column = (source_column as i64 + column_offset) as u32;
+                if existing_targets.contains(&(target_row, target_column)) {
+                    let reference = format!("{}{target_row}", column_letters(target_column));
+                    rows.entry(target_row)
+                        .or_default()
+                        .insert(target_column, format!("<c r=\"{reference}\"/>"));
+                }
+            }
+        }
+    }
     for ((row, column), cell) in &by_position {
         let target_row = (*row as i64 + row_offset) as u32;
         let target_column = (*column as i64 + column_offset) as u32;
@@ -1162,10 +1239,7 @@ fn write_region(
     write_rows(target_xml, rows)
 }
 
-fn write_rows(
-    target_xml: &str,
-    rows: BTreeMap<u32, BTreeMap<u32, String>>,
-) -> Result<String> {
+fn write_rows(target_xml: &str, rows: BTreeMap<u32, BTreeMap<u32, String>>) -> Result<String> {
     // 自闭合 `<sheetData/>`（新建工作表）：先展开为成对标签再写入。
     let expanded;
     let target_xml = if let Some(position) = target_xml.find("<sheetData/>") {
@@ -1183,8 +1257,8 @@ fn write_rows(
     let existing = &target_xml[start..end];
     let mut merged: BTreeMap<u32, BTreeMap<u32, String>> = BTreeMap::new();
     for row in row_elements(existing) {
-        let Some(row_index) = attribute_value(&row.attrs, "r")
-            .and_then(|value| value.parse::<u32>().ok())
+        let Some(row_index) =
+            attribute_value(&row.attrs, "r").and_then(|value| value.parse::<u32>().ok())
         else {
             continue;
         };
@@ -1285,7 +1359,9 @@ fn row_elements(sheet_xml: &str) -> Vec<RowElement> {
 /// 返回 `<sheetData>` 内容区间（不含开/闭标签本身）。
 /// 自闭合 `<sheetData/>` 的内容区间为空（插入点为标签之前）。
 fn sheet_data_bounds(sheet_xml: &str) -> Result<(usize, usize)> {
-    let open_tag = sheet_xml.find("<sheetData").context("工作表缺少 sheetData")?;
+    let open_tag = sheet_xml
+        .find("<sheetData")
+        .context("工作表缺少 sheetData")?;
     let open_end = sheet_xml[open_tag..]
         .find('>')
         .map(|offset| open_tag + offset + 1)
@@ -1327,6 +1403,15 @@ fn parse_range(range: &str) -> Result<(u32, u32, u32, u32)> {
         start_row.min(end_row),
         start_column.max(end_column),
         start_row.max(end_row),
+    ))
+}
+
+fn target_offsets(source_bounds: (u32, u32, u32, u32), target_start: &str) -> Result<(i64, i64)> {
+    let (source_lo_col, source_lo_row, _, _) = source_bounds;
+    let (target_row, target_column) = parse_cell(target_start)?;
+    Ok((
+        target_row as i64 - source_lo_row as i64,
+        target_column as i64 - source_lo_col as i64,
     ))
 }
 
@@ -1395,7 +1480,7 @@ fn merge_into_target(
     Ok(xml)
 }
 
-/// 复制区域内批注：把源表 `comments{N}.xml` 里落在区域内的批注搬进目标表。
+/// 复制区域内的传统 Excel 批注对象，包括作者、正文、位置和 VML 批注框。
 fn copy_region_comments(
     package: &mut Package,
     source_package: &Package,
@@ -1406,111 +1491,1165 @@ fn copy_region_comments(
     column_offset: i64,
 ) -> Result<()> {
     let (lo_col, lo_row, hi_col, hi_row) = bounds;
-    let source_rels = worksheet_rels_part(source_part);
-    let Some(rels_xml) = source_package.parts.get(&source_rels) else {
-        return Ok(());
-    };
-    let rels_text = String::from_utf8(rels_xml.clone()).context("工作表 rels 不是 UTF-8")?;
-    let Some(comments_target) = relationship_target_by_type(&rels_text, "/comments")? else {
-        return Ok(());
-    };
-    let comments_part = resolve_worksheet_target(source_part, &comments_target);
-    let Some(bytes) = source_package.parts.get(&comments_part) else {
-        return Ok(());
-    };
-    let comments_text = String::from_utf8(bytes.clone()).context("comments.xml 不是 UTF-8")?;
-    let mut selected = Vec::new();
-    let mut cursor = 0;
-    while let Some(relative) = comments_text[cursor..].find("<comment ") {
-        let start = cursor + relative;
-        let Some(close) = comments_text[start..].find("</comment>") else {
-            break;
-        };
-        let end = start + close + "</comment>".len();
-        let element = &comments_text[start..end];
-        if let Some(reference) = attribute_value(element, "ref") {
-            if let Ok((row, column)) = parse_cell(&reference) {
-                if row >= lo_row && row <= hi_row && column >= lo_col && column <= hi_col {
-                    let shifted_row = (row as i64 + row_offset) as u32;
-                    let shifted_column = (column as i64 + column_offset) as u32;
-                    let new_reference = format!("{}{shifted_row}", column_letters(shifted_column));
-                    selected.push((new_reference, element.to_owned()));
-                }
-            }
-        }
-        cursor = end;
-    }
-    if selected.is_empty() {
-        return Ok(());
-    }
-    // 目标表：追加到既有 comments 部件，或新建一个并登记关系与内容类型。
-    let target_rels = worksheet_rels_part(target_part);
-    let target_rels_text = package
-        .parts
-        .get(&target_rels)
-        .map(|bytes| String::from_utf8(bytes.clone()))
-        .transpose()
-        .context("目标工作表 rels 不是 UTF-8")?;
-    let existing = target_rels_text
+    let target_lo_row = checked_shift(lo_row, row_offset)?;
+    let target_lo_col = checked_shift(lo_col, column_offset)?;
+    let target_hi_row = checked_shift(hi_row, row_offset)?;
+    let target_hi_col = checked_shift(hi_col, column_offset)?;
+
+    let source_comments = worksheet_relationship_part(source_package, source_part, "/comments")?
+        .map(|part| source_package.text(&part))
+        .transpose()?;
+    let source_model = source_comments
         .as_deref()
-        .map(|text| relationship_target_by_type(text, "/comments"))
-        .transpose()?
-        .flatten();
-    let (target_comments_part, target_xml) = match existing {
-        Some(target) => {
-            let part = resolve_worksheet_target(target_part, &target);
-            let text = package.text(&part)?;
-            (part, text)
+        .map(parse_legacy_comments)
+        .transpose()?;
+    let source_records = source_model
+        .as_ref()
+        .map(|model| &model.comments[..])
+        .unwrap_or_default();
+    let mut imported = Vec::new();
+    for comment in source_records {
+        let (row, column) = parse_cell(&comment.reference)?;
+        if row < lo_row || row > hi_row || column < lo_col || column > hi_col {
+            continue;
         }
-        None => {
-            let sheet_file = target_part.rsplit('/').next().unwrap_or("sheet.xml");
-            let stem = sheet_file.trim_end_matches(".xml");
-            let part = format!("xl/comments{}.xml", comment_part_suffix(stem));
-            let skeleton = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\
-<comments xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\
-<authors><author>Audit</author></authors><commentList></commentList></comments>"
-                .to_owned();
-            register_comment_relationship(package, target_part, &part)?;
-            append_content_type_override(
-                package,
-                &format!("/{part}"),
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml",
-            )?;
-            (part, skeleton)
-        }
-    };
-    let mut updated = target_xml;
-    let insertion = updated
-        .find("</commentList>")
-        .context("comments.xml 缺少 commentList")?;
-    let mut block = String::new();
-    for (reference, element) in selected {
-        let mut element = element;
-        if let Some(start) = element.find("ref=\"") {
-            let value_start = start + 5;
-            let value_end = element[value_start..]
-                .find('"')
-                .map(|offset| value_start + offset)
-                .unwrap_or(element.len());
-            element.replace_range(value_start..value_end, &reference);
-        }
-        block.push_str(&element);
+        let shifted_row = checked_shift(row, row_offset)?;
+        let shifted_column = checked_shift(column, column_offset)?;
+        imported.push((
+            format!("{}{shifted_row}", column_letters(shifted_column)),
+            comment,
+        ));
     }
-    updated.insert_str(insertion, &block);
-    package.set_text(&target_comments_part, updated);
+
+    let target_comments_part = worksheet_relationship_part(package, target_part, "/comments")?;
+    let target_model = target_comments_part
+        .as_deref()
+        .map(|part| package.text(part))
+        .transpose()?
+        .as_deref()
+        .map(parse_legacy_comments)
+        .transpose()?;
+    let mut target_comments = target_model
+        .as_ref()
+        .map(|model| model.comments.clone())
+        .unwrap_or_default();
+    target_comments.retain(|comment| {
+        let Ok((row, column)) = parse_cell(&comment.reference) else {
+            return true;
+        };
+        row < target_lo_row
+            || row > target_hi_row
+            || column < target_lo_col
+            || column > target_hi_col
+    });
+
+    let mut authors = target_model
+        .as_ref()
+        .map(|model| model.authors.clone())
+        .unwrap_or_default();
+    let mut output_comments = target_comments;
+    for (reference, comment) in &imported {
+        let source_author = source_model
+            .as_ref()
+            .and_then(|model| model.authors.get(comment.author_id))
+            .with_context(|| {
+                format!(
+                    "源批注 {} 的 authorId {} 没有对应作者",
+                    comment.reference, comment.author_id
+                )
+            })?;
+        let author_id =
+            if let Some(existing) = authors.iter().position(|author| author == source_author) {
+                existing
+            } else {
+                authors.push(source_author.clone());
+                authors.len() - 1
+            };
+        let mut xml = set_xml_attribute(&comment.xml, "ref", reference)?;
+        xml = set_xml_attribute(&xml, "authorId", &author_id.to_string())?;
+        output_comments.push(LegacyComment {
+            reference: reference.clone(),
+            author_id,
+            xml,
+        });
+    }
+    output_comments.sort_by(|left, right| {
+        parse_cell(&left.reference)
+            .unwrap_or_default()
+            .cmp(&parse_cell(&right.reference).unwrap_or_default())
+    });
+    let mut seen_references = BTreeSet::new();
+    for comment in &output_comments {
+        ensure!(
+            seen_references.insert(comment.reference.to_ascii_uppercase()),
+            "复制批注后出现重复位置 {}!{}",
+            target_part,
+            comment.reference
+        );
+    }
+
+    let should_write_comments = target_comments_part.is_some() || !output_comments.is_empty();
+    if should_write_comments {
+        let root_open = target_model
+            .as_ref()
+            .map(|model| model.root_open.as_str())
+            .or_else(|| source_model.as_ref().map(|model| model.root_open.as_str()))
+            .unwrap_or(
+                "<comments xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">",
+            );
+        let source_root = source_model.as_ref().map(|model| model.root_open.as_str());
+        let comments_xml =
+            build_legacy_comments_xml(root_open, source_root, &authors, &output_comments)?;
+        let part = match target_comments_part {
+            Some(part) => part,
+            None => {
+                let part = next_comments_part(package)?;
+                ensure_worksheet_relationship(package, target_part, "/comments", &part)?;
+                append_content_type_override(
+                    package,
+                    &format!("/{part}"),
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml",
+                )?;
+                part
+            }
+        };
+        package.set_text(&part, comments_xml);
+    }
+
+    let source_vml_part = worksheet_relationship_part(source_package, source_part, "/vmlDrawing")?;
+    let source_vml = source_vml_part
+        .as_deref()
+        .map(|part| source_package.text(part))
+        .transpose()?;
+    let source_shapes = source_vml
+        .as_deref()
+        .map(parse_vml_note_shapes)
+        .transpose()?
+        .unwrap_or_default();
+    let mut imported_shapes = Vec::new();
+    for (reference, _) in &imported {
+        let (row, column) = parse_cell(reference)?;
+        let source_row = (row as i64 - row_offset) as u32;
+        let source_column = (column as i64 - column_offset) as u32;
+        let source_reference = format!("{}{source_row}", column_letters(source_column));
+        let shape = source_shapes
+            .iter()
+            .find(|shape| shape.reference.eq_ignore_ascii_case(&source_reference))
+            .with_context(|| format!("源批注 {source_reference} 缺少对应 VML 批注框"))?;
+        imported_shapes.push(shape);
+    }
+    let selected_source_refs = imported
+        .iter()
+        .map(|(_, comment)| comment.reference.to_ascii_uppercase())
+        .collect::<BTreeSet<_>>();
+    let selected_shape_refs = imported_shapes
+        .iter()
+        .map(|shape| shape.reference.to_ascii_uppercase())
+        .collect::<BTreeSet<_>>();
+    ensure!(
+        selected_source_refs == selected_shape_refs,
+        "源工作表 comments.xml 与 VML 批注框位置不一致"
+    );
+
+    let target_vml_part = worksheet_relationship_part(package, target_part, "/vmlDrawing")?;
+    let target_vml = target_vml_part
+        .as_deref()
+        .map(|part| package.text(part))
+        .transpose()?;
+    let final_refs = output_comments
+        .iter()
+        .map(|comment| comment.reference.to_ascii_uppercase())
+        .collect::<BTreeSet<_>>();
+    if target_vml.is_some() || !imported_shapes.is_empty() {
+        let mut existing_shapes = target_vml
+            .as_deref()
+            .map(parse_vml_note_shapes)
+            .transpose()?
+            .unwrap_or_default();
+        existing_shapes.retain(|shape| {
+            let Ok((row, column)) = parse_cell(&shape.reference) else {
+                return true;
+            };
+            row < target_lo_row
+                || row > target_hi_row
+                || column < target_lo_col
+                || column > target_hi_col
+        });
+        let preserved_shape_refs = existing_shapes
+            .iter()
+            .map(|shape| shape.reference.to_ascii_uppercase())
+            .collect::<BTreeSet<_>>();
+        let preserved_comment_refs = output_comments
+            .iter()
+            .filter_map(|comment| {
+                let Ok((row, column)) = parse_cell(&comment.reference) else {
+                    return None;
+                };
+                (row < target_lo_row
+                    || row > target_hi_row
+                    || column < target_lo_col
+                    || column > target_hi_col)
+                    .then(|| comment.reference.to_ascii_uppercase())
+            })
+            .collect::<BTreeSet<_>>();
+        ensure!(
+            preserved_shape_refs == preserved_comment_refs,
+            "目标工作表保留区 comments.xml 与 VML 批注框位置不一致"
+        );
+        let source_root = source_vml
+            .as_deref()
+            .map(vml_root_opening_tag)
+            .transpose()?;
+        let mut shape_xml = target_vml
+            .as_deref()
+            .map(|xml| {
+                build_updated_vml(
+                    xml,
+                    source_vml.as_deref(),
+                    &existing_shapes,
+                    &imported_shapes,
+                    row_offset,
+                    column_offset,
+                )
+            })
+            .transpose()?;
+        if target_vml.is_none() {
+            shape_xml = Some(build_new_vml(
+                source_vml.as_deref().context("源批注缺少 VML 绘图")?,
+                source_root.as_deref().context("源批注缺少 VML 根节点")?,
+                &imported_shapes,
+                row_offset,
+                column_offset,
+            )?);
+        }
+        let shape_xml = shape_xml.context("构造 S1 审核副本的 VML 批注框失败")?;
+        let part = match target_vml_part {
+            Some(part) => part,
+            None => {
+                let part = next_vml_part(package)?;
+                let relationship_id =
+                    ensure_worksheet_relationship(package, target_part, "/vmlDrawing", &part)?;
+                let sheet_xml = package.text(target_part)?;
+                package.set_text(
+                    target_part,
+                    append_legacy_drawing(&sheet_xml, &relationship_id)?,
+                );
+                ensure_default_content_type(
+                    package,
+                    "vml",
+                    "application/vnd.openxmlformats-officedocument.vmlDrawing",
+                )?;
+                part
+            }
+        };
+        package.set_text(&part, shape_xml);
+        let resulting_shapes = parse_vml_note_shapes(package.text(&part)?.as_str())?;
+        let resulting_refs = resulting_shapes
+            .iter()
+            .map(|shape| shape.reference.to_ascii_uppercase())
+            .collect::<BTreeSet<_>>();
+        ensure!(
+            resulting_refs == final_refs,
+            "写入后的目标 VML 批注框位置与 comments.xml 不一致"
+        );
+    } else {
+        ensure!(
+            final_refs.is_empty(),
+            "目标批注存在但没有可写入的 VML 批注框"
+        );
+    }
     Ok(())
 }
 
-fn comment_part_suffix(sheet_stem: &str) -> String {
-    let digits: String = sheet_stem
-        .chars()
-        .filter(|character| character.is_ascii_digit())
-        .collect();
-    if digits.is_empty() {
-        format!("-{sheet_stem}")
-    } else {
-        digits
+const MAIN_NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+const VML_NS: &str = "urn:schemas-microsoft-com:vml";
+const EXCEL_VML_NS: &str = "http://schemas.microsoft.com/office/excel/2006/main";
+const EXCEL_VML_NS_LEGACY: &str = "http://schemas.microsoft.com/office/excel";
+const EXCEL_VML_NS_URN: &str = "urn:schemas-microsoft-com:office:excel";
+const OFFICE_REL_NS: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+
+fn is_excel_vml_namespace(namespace: Option<&str>) -> bool {
+    matches!(
+        namespace,
+        Some(EXCEL_VML_NS | EXCEL_VML_NS_LEGACY | EXCEL_VML_NS_URN)
+    )
+}
+
+#[derive(Clone, Debug)]
+struct LegacyComment {
+    reference: String,
+    author_id: usize,
+    xml: String,
+}
+
+#[derive(Clone, Debug)]
+struct LegacyCommentsModel {
+    root_open: String,
+    authors: Vec<String>,
+    comments: Vec<LegacyComment>,
+}
+
+#[derive(Clone, Debug)]
+struct VmlNoteShape {
+    reference: String,
+    xml: String,
+}
+
+fn parse_legacy_comments(xml: &str) -> Result<LegacyCommentsModel> {
+    let document = roxmltree::Document::parse(xml).context("解析传统 Excel comments.xml")?;
+    let root = document.root_element();
+    ensure!(
+        root.tag_name().namespace() == Some(MAIN_NS) && root.tag_name().name() == "comments",
+        "comments.xml 根节点不是 SpreadsheetML comments"
+    );
+    let root_open = element_opening_tag(xml, root.range().start)?;
+    let authors = root
+        .children()
+        .find(|node| {
+            node.is_element()
+                && node.tag_name().namespace() == Some(MAIN_NS)
+                && node.tag_name().name() == "authors"
+        })
+        .into_iter()
+        .flat_map(|authors| authors.children())
+        .filter(|node| {
+            node.is_element()
+                && node.tag_name().namespace() == Some(MAIN_NS)
+                && node.tag_name().name() == "author"
+        })
+        .map(|author| author.text().unwrap_or_default().to_owned())
+        .collect::<Vec<_>>();
+    let comment_list = root
+        .children()
+        .find(|node| {
+            node.is_element()
+                && node.tag_name().namespace() == Some(MAIN_NS)
+                && node.tag_name().name() == "commentList"
+        })
+        .context("comments.xml 缺少 commentList")?;
+    let mut comments = Vec::new();
+    for node in comment_list.children().filter(|node| {
+        node.is_element()
+            && node.tag_name().namespace() == Some(MAIN_NS)
+            && node.tag_name().name() == "comment"
+    }) {
+        let reference = node
+            .attribute("ref")
+            .context("comments.xml 中 comment 缺少 ref")?
+            .to_owned();
+        parse_cell(&reference).context("comments.xml 中 comment 的 ref 无效")?;
+        let author_id = node
+            .attribute("authorId")
+            .context("comments.xml 中 comment 缺少 authorId")?
+            .parse::<usize>()
+            .with_context(|| format!("批注 {reference} 的 authorId 无效"))?;
+        ensure!(
+            authors.get(author_id).is_some(),
+            "批注 {reference} 的 authorId {author_id} 超出 authors 表"
+        );
+        let range = node.range();
+        comments.push(LegacyComment {
+            reference,
+            author_id,
+            xml: xml[range].to_owned(),
+        });
     }
+    Ok(LegacyCommentsModel {
+        root_open,
+        authors,
+        comments,
+    })
+}
+
+fn build_legacy_comments_xml(
+    target_root_open: &str,
+    source_root_open: Option<&str>,
+    authors: &[String],
+    comments: &[LegacyComment],
+) -> Result<String> {
+    let mut root_open = target_root_open.to_owned();
+    if let Some(source_root_open) = source_root_open {
+        root_open = merge_namespace_declarations(&root_open, source_root_open)?;
+    }
+    let root_qname = tag_qualified_name(&root_open)?;
+    let prefix = root_qname
+        .rsplit_once(':')
+        .map(|(prefix, _)| format!("{prefix}:"))
+        .unwrap_or_default();
+    let authors_tag = format!("{prefix}authors");
+    let author_tag = format!("{prefix}author");
+    let comment_list_tag = format!("{prefix}commentList");
+    let root_tag = root_qname;
+    let mut output = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>");
+    output.push_str(&root_open);
+    output.push_str(&format!("<{authors_tag}>"));
+    for author in authors {
+        output.push_str(&format!(
+            "<{author_tag}>{}</{author_tag}>",
+            escape_xml(author)
+        ));
+    }
+    output.push_str(&format!("</{authors_tag}><{comment_list_tag}>"));
+    for comment in comments {
+        output.push_str(&comment.xml);
+    }
+    output.push_str(&format!("</{comment_list_tag}></{root_tag}>"));
+    Ok(output)
+}
+
+fn parse_vml_note_shapes(xml: &str) -> Result<Vec<VmlNoteShape>> {
+    let document = roxmltree::Document::parse(xml).context("解析工作表 VML 批注绘图")?;
+    let mut shapes = Vec::new();
+    let mut references = BTreeSet::new();
+    for shape in document.descendants().filter(|node| {
+        node.is_element()
+            && node.tag_name().namespace() == Some(VML_NS)
+            && node.tag_name().name() == "shape"
+    }) {
+        let Some(client_data) = shape.descendants().find(|node| {
+            node.is_element()
+                && is_excel_vml_namespace(node.tag_name().namespace())
+                && node.tag_name().name() == "ClientData"
+                && node.attribute("ObjectType") == Some("Note")
+        }) else {
+            continue;
+        };
+        let row = vml_client_data_number(client_data, "Row")?;
+        let column = vml_client_data_number(client_data, "Column")?;
+        let row = row + 1;
+        let reference = format!("{}{row}", column_letters(column + 1));
+        ensure!(
+            references.insert(reference.to_ascii_uppercase()),
+            "VML 中存在重复的 Note 位置 {reference}"
+        );
+        shapes.push(VmlNoteShape {
+            reference,
+            xml: xml[shape.range()].to_owned(),
+        });
+    }
+    Ok(shapes)
+}
+
+fn vml_client_data_number(client_data: roxmltree::Node<'_, '_>, name: &str) -> Result<u32> {
+    client_data
+        .children()
+        .find(|node| {
+            node.is_element()
+                && is_excel_vml_namespace(node.tag_name().namespace())
+                && node.tag_name().name() == name
+        })
+        .and_then(|node| node.text())
+        .with_context(|| format!("VML ClientData 缺少 {name}"))?
+        .trim()
+        .parse::<u32>()
+        .with_context(|| format!("VML ClientData {name} 不是有效坐标"))
+}
+
+fn build_new_vml(
+    source_xml: &str,
+    root_open: &str,
+    imported_shapes: &[&VmlNoteShape],
+    row_offset: i64,
+    column_offset: i64,
+) -> Result<String> {
+    let document = roxmltree::Document::parse(source_xml).context("解析源工作表 VML")?;
+    let root = document.root_element();
+    let root_qname = tag_qualified_name(&element_opening_tag(source_xml, root.range().start)?)?;
+    let mut children = String::new();
+    for child in root.children().filter(|node| node.is_element()) {
+        let is_layout = child.tag_name().name() == "shapelayout";
+        let is_shape_type =
+            child.tag_name().namespace() == Some(VML_NS) && child.tag_name().name() == "shapetype";
+        if is_layout || is_shape_type {
+            children.push_str(&source_xml[child.range()]);
+        }
+    }
+    let mut next_id = 1025;
+    for shape in imported_shapes {
+        children.push_str(&transform_vml_note_shape(
+            &shape.xml,
+            root_open,
+            row_offset,
+            column_offset,
+            &format!("_x0000_s{next_id}"),
+        )?);
+        next_id += 1;
+    }
+    Ok(format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>{root_open}{children}</{root_qname}>"
+    ))
+}
+
+fn build_updated_vml(
+    target_xml: &str,
+    source_xml: Option<&str>,
+    preserved_shapes: &[VmlNoteShape],
+    imported_shapes: &[&VmlNoteShape],
+    row_offset: i64,
+    column_offset: i64,
+) -> Result<String> {
+    let target_document = roxmltree::Document::parse(target_xml).context("解析目标工作表 VML")?;
+    let target_root = target_document.root_element();
+    let mut output = target_xml.to_owned();
+    let mut ranges = target_root
+        .descendants()
+        .filter(|node| {
+            node.is_element()
+                && node.tag_name().namespace() == Some(VML_NS)
+                && node.tag_name().name() == "shape"
+                && node.descendants().any(|client_data| {
+                    client_data.is_element()
+                        && is_excel_vml_namespace(client_data.tag_name().namespace())
+                        && client_data.tag_name().name() == "ClientData"
+                        && client_data.attribute("ObjectType") == Some("Note")
+                })
+        })
+        .filter_map(|node| {
+            let cell_data = node.descendants().find(|client_data| {
+                client_data.is_element()
+                    && is_excel_vml_namespace(client_data.tag_name().namespace())
+                    && client_data.tag_name().name() == "ClientData"
+                    && client_data.attribute("ObjectType") == Some("Note")
+            })?;
+            let row = vml_client_data_number(cell_data, "Row")
+                .ok()?
+                .checked_add(1)?;
+            let column = vml_client_data_number(cell_data, "Column")
+                .ok()?
+                .checked_add(1)?;
+            let address = format!("{}{row}", column_letters(column));
+            (!preserved_shapes
+                .iter()
+                .any(|shape| shape.reference.eq_ignore_ascii_case(&address)))
+            .then_some(node.range())
+        })
+        .collect::<Vec<_>>();
+    ranges.sort_by_key(|range| std::cmp::Reverse(range.start));
+    for range in ranges {
+        output.replace_range(range, "");
+    }
+
+    let mut missing_shape_types = String::new();
+    let target_type_ids = roxmltree::Document::parse(&output)?
+        .descendants()
+        .filter(|node| {
+            node.is_element()
+                && node.tag_name().namespace() == Some(VML_NS)
+                && node.tag_name().name() == "shapetype"
+        })
+        .filter_map(|node| node.attribute("id"))
+        .map(str::to_owned)
+        .collect::<BTreeSet<_>>();
+    if let Some(source_xml) = source_xml {
+        let source_document = roxmltree::Document::parse(source_xml).context("解析源工作表 VML")?;
+        let source_root = source_document.root_element();
+        for shape_type in source_root.children().filter(|node| {
+            node.is_element()
+                && node.tag_name().namespace() == Some(VML_NS)
+                && node.tag_name().name() == "shapetype"
+        }) {
+            let id = shape_type.attribute("id").unwrap_or_default();
+            if !target_type_ids.contains(id) {
+                missing_shape_types.push_str(&source_xml[shape_type.range()]);
+            }
+        }
+    }
+
+    let max_shape_id = roxmltree::Document::parse(&output)?
+        .descendants()
+        .filter(|node| {
+            node.is_element()
+                && node.tag_name().namespace() == Some(VML_NS)
+                && node.tag_name().name() == "shape"
+        })
+        .filter_map(|node| node.attribute("id"))
+        .filter_map(|id| {
+            id.rsplit_once('s')
+                .and_then(|(_, digits)| digits.parse::<u64>().ok())
+        })
+        .max()
+        .unwrap_or(1024);
+    let mut next_id = max_shape_id.saturating_add(1);
+    let mut imported_xml = String::new();
+    if !imported_shapes.is_empty() {
+        let source_xml = source_xml.context("复制 VML 批注时缺少源绘图")?;
+        let source_root_open = source_root_opening_tag(source_xml)?;
+        for shape in imported_shapes {
+            imported_xml.push_str(&transform_vml_note_shape(
+                &shape.xml,
+                &source_root_open,
+                row_offset,
+                column_offset,
+                &format!("_x0000_s{next_id}"),
+            )?);
+            next_id = next_id.saturating_add(1);
+        }
+    }
+
+    let current_root_open = vml_root_opening_tag(&output)?;
+    let merged_root_open = if let Some(source_xml) = source_xml {
+        merge_namespace_declarations(&current_root_open, &source_root_opening_tag(source_xml)?)?
+    } else {
+        current_root_open
+    };
+    output = replace_root_opening_tag(&output, &merged_root_open)?;
+    append_before_root_close(&mut output, &(missing_shape_types + &imported_xml))?;
+    Ok(output)
+}
+
+fn transform_vml_note_shape(
+    shape_xml: &str,
+    namespace_context: &str,
+    row_offset: i64,
+    column_offset: i64,
+    new_id: &str,
+) -> Result<String> {
+    let shape = set_xml_attribute(shape_xml, "id", new_id)?;
+    let namespace_attributes = xml_namespace_attributes(namespace_context)?;
+    let wrapped = format!("<wrapper{namespace_attributes}>{shape}</wrapper>");
+    let document = roxmltree::Document::parse(&wrapped).context("解析单个 VML 批注框")?;
+    let mut edits = Vec::new();
+    let client_data = document
+        .descendants()
+        .find(|node| {
+            node.is_element()
+                && is_excel_vml_namespace(node.tag_name().namespace())
+                && node.tag_name().name() == "ClientData"
+                && node.attribute("ObjectType") == Some("Note")
+        })
+        .context("VML shape 缺少 Note ClientData")?;
+    let row_node = client_data
+        .children()
+        .find(|node| node.is_element() && node.tag_name().name() == "Row")
+        .context("VML Note 缺少 Row")?;
+    let column_node = client_data
+        .children()
+        .find(|node| node.is_element() && node.tag_name().name() == "Column")
+        .context("VML Note 缺少 Column")?;
+    for (node, offset, name) in [
+        (row_node, row_offset, "Row"),
+        (column_node, column_offset, "Column"),
+    ] {
+        let current = node
+            .text()
+            .context("VML Note 坐标缺少内容")?
+            .trim()
+            .parse::<i64>()
+            .with_context(|| format!("VML Note {name} 坐标无效"))?;
+        let shifted = current
+            .checked_add(offset)
+            .filter(|value| *value >= 0)
+            .context("平移后的 VML Note 坐标超出工作表范围")?;
+        edits.push(
+            xml_node_text_range(&wrapped, node.range())?.map(|range| (range, shifted.to_string())),
+        );
+    }
+    if let Some(anchor) = client_data.children().find(|node| {
+        node.is_element()
+            && is_excel_vml_namespace(node.tag_name().namespace())
+            && node.tag_name().name() == "Anchor"
+    }) {
+        let fields = anchor
+            .text()
+            .unwrap_or_default()
+            .split(',')
+            .map(str::trim)
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        if fields.len() == 8 {
+            let mut shifted = fields.clone();
+            for index in [0usize, 4] {
+                shifted[index] =
+                    checked_shift_zero_based(fields[index].parse::<u32>()?, column_offset)?
+                        .to_string();
+            }
+            for index in [2usize, 6] {
+                shifted[index] =
+                    checked_shift_zero_based(fields[index].parse::<u32>()?, row_offset)?
+                        .to_string();
+            }
+            edits.push(
+                xml_node_text_range(&wrapped, anchor.range())?
+                    .map(|range| (range, shifted.join(", "))),
+            );
+        } else {
+            bail!("VML Note Anchor 必须包含 8 个坐标字段");
+        }
+    }
+    let edits = edits.into_iter().flatten().collect::<Vec<_>>();
+    let mut updated = wrapped;
+    let mut edits = edits;
+    edits.sort_by_key(|(range, _)| std::cmp::Reverse(range.start));
+    for (range, replacement) in edits {
+        updated.replace_range(range, &replacement);
+    }
+    let open_end = updated.find('>').context("VML 包装根节点未闭合")? + 1;
+    let close_start = updated
+        .rfind("</wrapper>")
+        .context("VML 包装根节点缺少结束标签")?;
+    Ok(updated[open_end..close_start].to_owned())
+}
+
+fn xml_node_text_range(
+    xml: &str,
+    range: std::ops::Range<usize>,
+) -> Result<Option<std::ops::Range<usize>>> {
+    let element = &xml[range.clone()];
+    let open_end = element.find('>').context("XML 节点开始标签未闭合")? + range.start + 1;
+    let close_start = element.rfind("</").map(|index| range.start + index);
+    Ok(close_start.map(|close_start| open_end..close_start))
+}
+
+fn source_root_opening_tag(xml: &str) -> Result<String> {
+    let document = roxmltree::Document::parse(xml)?;
+    element_opening_tag(xml, document.root_element().range().start)
+}
+
+fn vml_root_opening_tag(xml: &str) -> Result<String> {
+    let document = roxmltree::Document::parse(xml).context("解析 VML 根节点")?;
+    ensure!(
+        document.root_element().tag_name().name() == "xml",
+        "VML 绘图根节点必须为 xml"
+    );
+    element_opening_tag(xml, document.root_element().range().start)
+}
+
+fn append_before_root_close(xml: &mut String, content: &str) -> Result<()> {
+    if content.is_empty() {
+        return Ok(());
+    }
+    let document = roxmltree::Document::parse(xml)?;
+    let root = document.root_element();
+    let qname = tag_qualified_name(&element_opening_tag(xml, root.range().start)?)?;
+    let closing_tag = format!("</{qname}>");
+    let close_start = xml.rfind(&closing_tag).context("VML 根节点缺少结束标签")?;
+    xml.insert_str(close_start, content);
+    Ok(())
+}
+
+fn replace_root_opening_tag(xml: &str, replacement: &str) -> Result<String> {
+    let document = roxmltree::Document::parse(xml)?;
+    let start = document.root_element().range().start;
+    let old = element_opening_tag(xml, start)?;
+    Ok(format!(
+        "{}{replacement}{}",
+        &xml[..start],
+        &xml[start + old.len()..]
+    ))
+}
+
+fn merge_namespace_declarations(target: &str, source: &str) -> Result<String> {
+    let target_attributes = xml_start_tag_attributes(target)?;
+    let source_attributes = xml_start_tag_attributes(source)?;
+    let mut merged = target.to_owned();
+    for (name, value) in source_attributes {
+        if name != "xmlns" && !name.starts_with("xmlns:") {
+            continue;
+        }
+        if let Some(existing) = target_attributes.get(&name) {
+            ensure!(
+                existing == &value,
+                "批注 XML 前缀 {name} 在源与目标中指向不同命名空间"
+            );
+        } else {
+            merged = set_xml_attribute(&merged, &name, &value)?;
+        }
+    }
+    Ok(merged)
+}
+
+fn xml_namespace_attributes(root_open: &str) -> Result<String> {
+    Ok(xml_start_tag_attributes(root_open)?
+        .into_iter()
+        .filter(|(name, _)| name == "xmlns" || name.starts_with("xmlns:"))
+        .map(|(name, value)| format!(" {name}=\"{}\"", escape_xml(&value)))
+        .collect())
+}
+
+fn xml_start_tag_attributes(tag: &str) -> Result<BTreeMap<String, String>> {
+    let open_end = find_start_tag_end(tag, 0)?;
+    let bytes = tag.as_bytes();
+    let mut index = tag[..open_end].find('<').context("XML 开始标签缺少 <")? + 1;
+    while index < open_end
+        && !bytes[index].is_ascii_whitespace()
+        && bytes[index] != b'>'
+        && bytes[index] != b'/'
+    {
+        index += 1;
+    }
+    let mut attributes = BTreeMap::new();
+    while index < open_end {
+        while index < open_end && (bytes[index].is_ascii_whitespace() || bytes[index] == b'/') {
+            index += 1;
+        }
+        if index >= open_end || bytes[index] == b'>' {
+            break;
+        }
+        let name_start = index;
+        while index < open_end
+            && !bytes[index].is_ascii_whitespace()
+            && bytes[index] != b'='
+            && bytes[index] != b'>'
+            && bytes[index] != b'/'
+        {
+            index += 1;
+        }
+        if name_start == index {
+            bail!("无法解析 XML 开始标签属性");
+        }
+        let name = &tag[name_start..index];
+        while index < open_end && bytes[index].is_ascii_whitespace() {
+            index += 1;
+        }
+        ensure!(
+            index < open_end && bytes[index] == b'=',
+            "XML 属性 {name} 缺少等号"
+        );
+        index += 1;
+        while index < open_end && bytes[index].is_ascii_whitespace() {
+            index += 1;
+        }
+        ensure!(
+            index < open_end && (bytes[index] == b'\"' || bytes[index] == b'\''),
+            "XML 属性 {name} 未加引号"
+        );
+        let quote = bytes[index];
+        index += 1;
+        let value_start = index;
+        while index < open_end && bytes[index] != quote {
+            index += 1;
+        }
+        ensure!(index < open_end, "XML 属性 {name} 引号未闭合");
+        let value = unescape_xml(&tag[value_start..index]);
+        attributes.insert(name.to_owned(), value);
+        index += 1;
+    }
+    Ok(attributes)
+}
+
+fn find_start_tag_end(xml: &str, start: usize) -> Result<usize> {
+    let bytes = xml.as_bytes();
+    let mut quote = None;
+    for index in start..bytes.len() {
+        match (quote, bytes[index]) {
+            (Some(current), byte) if byte == current => quote = None,
+            (Some(_), _) => {}
+            (None, b'\"' | b'\'') => quote = Some(bytes[index]),
+            (None, b'>') => return Ok(index),
+            _ => {}
+        }
+    }
+    bail!("XML 开始标签缺少 >")
+}
+
+fn element_opening_tag(xml: &str, start: usize) -> Result<String> {
+    let end = find_start_tag_end(xml, start)?;
+    Ok(xml[start..=end].to_owned())
+}
+
+fn tag_qualified_name(opening_tag: &str) -> Result<String> {
+    let start = opening_tag.find('<').context("XML 开始标签缺少 <")? + 1;
+    let end = opening_tag[start..]
+        .find(|character: char| character.is_whitespace() || character == '/' || character == '>')
+        .map(|offset| start + offset)
+        .unwrap_or(opening_tag.len());
+    ensure!(end > start, "XML 开始标签缺少名称");
+    Ok(opening_tag[start..end].to_owned())
+}
+
+fn set_xml_attribute(xml: &str, name: &str, value: &str) -> Result<String> {
+    let end = find_start_tag_end(xml, 0)?;
+    let start_tag = &xml[..=end];
+    let attributes = xml_start_tag_attribute_ranges(start_tag)?;
+    if let Some((value_start, value_end, quote)) = attributes.get(name) {
+        let mut result = xml.to_owned();
+        result.replace_range(
+            *value_start..*value_end,
+            &escape_xml_attribute(value, *quote),
+        );
+        return Ok(result);
+    }
+    let insertion = if start_tag[..end].trim_end().ends_with('/') {
+        end - 1
+    } else {
+        end
+    };
+    let mut result = xml.to_owned();
+    result.insert_str(
+        insertion,
+        &format!(" {name}=\"{}\"", escape_xml_attribute(value, b'\"')),
+    );
+    Ok(result)
+}
+
+fn xml_start_tag_attribute_ranges(tag: &str) -> Result<BTreeMap<String, (usize, usize, u8)>> {
+    let end = find_start_tag_end(tag, 0)?;
+    let bytes = tag.as_bytes();
+    let mut index = tag.find('<').context("XML 开始标签缺少 <")? + 1;
+    while index < end
+        && !bytes[index].is_ascii_whitespace()
+        && bytes[index] != b'>'
+        && bytes[index] != b'/'
+    {
+        index += 1;
+    }
+    let mut attributes = BTreeMap::new();
+    while index < end {
+        while index < end && (bytes[index].is_ascii_whitespace() || bytes[index] == b'/') {
+            index += 1;
+        }
+        if index >= end || bytes[index] == b'>' {
+            break;
+        }
+        let name_start = index;
+        while index < end
+            && !bytes[index].is_ascii_whitespace()
+            && bytes[index] != b'='
+            && bytes[index] != b'>'
+            && bytes[index] != b'/'
+        {
+            index += 1;
+        }
+        let name = tag[name_start..index].to_owned();
+        while index < end && bytes[index].is_ascii_whitespace() {
+            index += 1;
+        }
+        ensure!(
+            index < end && bytes[index] == b'=',
+            "XML 属性 {name} 缺少等号"
+        );
+        index += 1;
+        while index < end && bytes[index].is_ascii_whitespace() {
+            index += 1;
+        }
+        ensure!(
+            index < end && (bytes[index] == b'\"' || bytes[index] == b'\''),
+            "XML 属性 {name} 未加引号"
+        );
+        let quote = bytes[index];
+        index += 1;
+        let value_start = index;
+        while index < end && bytes[index] != quote {
+            index += 1;
+        }
+        ensure!(index < end, "XML 属性 {name} 引号未闭合");
+        attributes.insert(name, (value_start, index, quote));
+        index += 1;
+    }
+    Ok(attributes)
+}
+
+fn escape_xml_attribute(value: &str, quote: u8) -> String {
+    let value = value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;");
+    if quote == b'\'' {
+        value.replace('\'', "&apos;")
+    } else {
+        value.replace('\"', "&quot;")
+    }
+}
+
+fn checked_shift(value: u32, offset: i64) -> Result<u32> {
+    (value as i64)
+        .checked_add(offset)
+        .filter(|shifted| *shifted > 0 && *shifted <= 1_048_576)
+        .and_then(|shifted| u32::try_from(shifted).ok())
+        .context("平移后的批注位置超出工作表坐标范围")
+}
+
+fn checked_shift_zero_based(value: u32, offset: i64) -> Result<u32> {
+    (value as i64)
+        .checked_add(offset)
+        .filter(|shifted| *shifted >= 0 && *shifted < 1_048_576)
+        .and_then(|shifted| u32::try_from(shifted).ok())
+        .context("平移后的 VML Anchor 坐标超出工作表范围")
+}
+
+fn worksheet_relationship_part(
+    package: &Package,
+    sheet_part: &str,
+    suffix: &str,
+) -> Result<Option<String>> {
+    let rels = worksheet_rels_part(sheet_part);
+    let Some(bytes) = package.parts.get(&rels) else {
+        return Ok(None);
+    };
+    let xml =
+        std::str::from_utf8(bytes).with_context(|| format!("工作表 rels {rels} 不是 UTF-8"))?;
+    relationship_id_and_target_by_type(xml, suffix)?
+        .map(|(_, target)| resolve_worksheet_target(sheet_part, &target))
+        .map(Some)
+        .map(Ok)
+        .unwrap_or(Ok(None))
+}
+
+fn ensure_worksheet_relationship(
+    package: &mut Package,
+    sheet_part: &str,
+    suffix: &str,
+    target_part: &str,
+) -> Result<String> {
+    let rels_part = worksheet_rels_part(sheet_part);
+    let mut rels_xml = package.parts.get(&rels_part)
+        .map(|bytes| String::from_utf8(bytes.clone()).context("目标工作表 rels 不是 UTF-8"))
+        .transpose()?
+        .unwrap_or_else(|| "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"></Relationships>".to_owned());
+    if let Some((id, target)) = relationship_id_and_target_by_type(&rels_xml, suffix)? {
+        ensure!(
+            resolve_worksheet_target(sheet_part, &target) == target_part,
+            "目标工作表已有 {suffix} 关系，但指向的部件不一致"
+        );
+        return Ok(id);
+    }
+    let id = next_relationship_id(&rels_xml)?;
+    let relationship_type = if suffix.starts_with('/') {
+        format!("http://schemas.openxmlformats.org/officeDocument/2006/relationships{suffix}")
+    } else {
+        suffix.to_owned()
+    };
+    let relative_target = relative_from_worksheets(target_part);
+    let element = format!(
+        "<Relationship Id=\"{id}\" Type=\"{relationship_type}\" Target=\"{relative_target}\"/>"
+    );
+    let insertion = rels_xml
+        .rfind("</Relationships>")
+        .context("工作表 rels 缺少结束标签")?;
+    rels_xml.insert_str(insertion, &element);
+    package.set_text(&rels_part, rels_xml);
+    Ok(id)
+}
+
+fn relationship_id_and_target_by_type(xml: &str, suffix: &str) -> Result<Option<(String, String)>> {
+    let document = roxmltree::Document::parse(xml).context("解析工作表 rels")?;
+    let matches = document
+        .descendants()
+        .filter(|node| {
+            node.is_element()
+                && node.tag_name().name() == "Relationship"
+                && node
+                    .attribute("Type")
+                    .is_some_and(|value| value.ends_with(suffix))
+        })
+        .collect::<Vec<_>>();
+    ensure!(matches.len() <= 1, "工作表存在多个 {suffix} 关系");
+    matches
+        .first()
+        .map(|node| {
+            let id = node
+                .attribute("Id")
+                .context("Relationship 缺少 Id")?
+                .to_owned();
+            let target = node
+                .attribute("Target")
+                .context("Relationship 缺少 Target")?
+                .to_owned();
+            Ok((id, target))
+        })
+        .transpose()
+}
+
+fn next_comments_part(package: &Package) -> Result<String> {
+    (1..=u32::MAX)
+        .map(|index| format!("xl/comments{index}.xml"))
+        .find(|part| !package.parts.contains_key(part))
+        .context("无法分配唯一 comments.xml 部件名")
+}
+
+fn next_vml_part(package: &Package) -> Result<String> {
+    (1..=u32::MAX)
+        .map(|index| format!("xl/drawings/vmlDrawing{index}.vml"))
+        .find(|part| !package.parts.contains_key(part))
+        .context("无法分配唯一 VML 部件名")
+}
+
+fn ensure_default_content_type(
+    package: &mut Package,
+    extension: &str,
+    content_type: &str,
+) -> Result<()> {
+    let path = "[Content_Types].xml";
+    let xml = package.text(path)?;
+    let document = roxmltree::Document::parse(&xml).context("解析 [Content_Types].xml")?;
+    for default in document
+        .descendants()
+        .filter(|node| node.is_element() && node.tag_name().name() == "Default")
+    {
+        if default
+            .attribute("Extension")
+            .is_some_and(|value| value.eq_ignore_ascii_case(extension))
+        {
+            ensure!(
+                default.attribute("ContentType") == Some(content_type),
+                "扩展名 {extension} 已登记了不同的 ContentType"
+            );
+            return Ok(());
+        }
+    }
+    let insertion = xml
+        .rfind("</Types>")
+        .context("[Content_Types].xml 缺少 Types 结束标签")?;
+    let mut updated = xml;
+    updated.insert_str(
+        insertion,
+        &format!("<Default Extension=\"{extension}\" ContentType=\"{content_type}\"/>"),
+    );
+    package.set_text(path, updated);
+    Ok(())
+}
+
+fn append_legacy_drawing(sheet_xml: &str, relationship_id: &str) -> Result<String> {
+    let document = roxmltree::Document::parse(sheet_xml).context("解析目标工作表 XML")?;
+    let root = document.root_element();
+    ensure!(
+        root.tag_name().namespace() == Some(MAIN_NS),
+        "目标部件不是 SpreadsheetML 工作表"
+    );
+    ensure!(
+        !root.descendants().any(|node| node.is_element()
+            && node.tag_name().namespace() == Some(MAIN_NS)
+            && node.tag_name().name() == "legacyDrawing"),
+        "工作表已有 legacyDrawing 元素，但缺少对应 VML 关系"
+    );
+    let root_open = element_opening_tag(sheet_xml, root.range().start)?;
+    let root_qname = tag_qualified_name(&root_open)?;
+    let prefix = root_qname
+        .rsplit_once(':')
+        .map(|(prefix, _)| format!("{prefix}:"))
+        .unwrap_or_default();
+    let mut updated = if xml_start_tag_attributes(&root_open)?.contains_key("xmlns:r") {
+        sheet_xml.to_owned()
+    } else {
+        replace_root_opening_tag(
+            sheet_xml,
+            &set_xml_attribute(&root_open, "xmlns:r", OFFICE_REL_NS)?,
+        )?
+    };
+    let document = roxmltree::Document::parse(&updated)?;
+    let root = document.root_element();
+    let ext_list = root
+        .children()
+        .find(|node| {
+            node.is_element()
+                && node.tag_name().namespace() == Some(MAIN_NS)
+                && node.tag_name().name() == "extLst"
+        })
+        .map(|node| node.range().start);
+    let insertion = if let Some(insertion) = ext_list {
+        insertion
+    } else {
+        let root_open = element_opening_tag(&updated, root.range().start)?;
+        let root_qname = tag_qualified_name(&root_open)?;
+        updated
+            .rfind(&format!("</{root_qname}>"))
+            .context("无法定位 worksheet legacyDrawing 插入点")?
+    };
+    updated.insert_str(
+        insertion,
+        &format!("<{prefix}legacyDrawing r:id=\"{relationship_id}\"/>"),
+    );
+    Ok(updated)
 }
 
 fn worksheet_rels_part(sheet_part: &str) -> String {
@@ -1518,22 +2657,6 @@ fn worksheet_rels_part(sheet_part: &str) -> String {
         .rsplit_once('/')
         .unwrap_or(("xl/worksheets", sheet_part));
     format!("{directory}/_rels/{file}.rels")
-}
-
-fn relationship_target_by_type(rels_xml: &str, type_suffix: &str) -> Result<Option<String>> {
-    let document = roxmltree::Document::parse(rels_xml).context("解析工作表 rels")?;
-    for relation in document.descendants().filter(|node| node.is_element()) {
-        if relation.tag_name().name() != "Relationship" {
-            continue;
-        }
-        let matches_type = relation
-            .attribute("Type")
-            .is_some_and(|value| value.ends_with(type_suffix));
-        if matches_type {
-            return Ok(relation.attribute("Target").map(str::to_owned));
-        }
-    }
-    Ok(None)
 }
 
 fn resolve_worksheet_target(sheet_part: &str, target: &str) -> String {
@@ -1557,51 +2680,6 @@ fn resolve_worksheet_target(sheet_part: &str, target: &str) -> String {
     segments.join("/")
 }
 
-fn register_comment_relationship(
-    package: &mut Package,
-    sheet_part: &str,
-    comments_part: &str,
-) -> Result<()> {
-    let rels_part = worksheet_rels_part(sheet_part);
-    let directory = rels_part
-        .rsplit_once('/')
-        .map(|(directory, _)| directory)
-        .unwrap_or("xl/worksheets/_rels");
-    let target = comments_part
-        .rsplit_once('/')
-        .map(|(_, file)| format!("../comments/{file}"))
-        .unwrap_or_else(|| comments_part.to_owned());
-    let _ = directory;
-    // 目标路径按 OOXML 约定放在 worksheets 同级，用相对路径表达。
-    let relative = relative_from_worksheets(comments_part);
-    let element = format!(
-        "<Relationship Id=\"rIdComments\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments\" Target=\"{relative}\"/>"
-    );
-    let _ = target;
-    match package.parts.get(&rels_part) {
-        Some(bytes) => {
-            let text = String::from_utf8(bytes.clone()).context("工作表 rels 不是 UTF-8")?;
-            if text.contains("relationships/comments") {
-                return Ok(());
-            }
-            let insertion = text
-                .rfind("</Relationships>")
-                .context("工作表 rels 缺少 Relationships 结束标签")?;
-            let mut updated = text;
-            updated.insert_str(insertion, &element);
-            package.set_text(&rels_part, updated);
-        }
-        None => {
-            let skeleton = format!(
-                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\
-<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">{element}</Relationships>"
-            );
-            package.set_text(&rels_part, skeleton);
-        }
-    }
-    Ok(())
-}
-
 fn relative_from_worksheets(part: &str) -> String {
     part.strip_prefix("xl/")
         .map(|rest| format!("../{rest}"))
@@ -1615,6 +2693,7 @@ fn relative_from_worksheets(part: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn cell_reference_parsing_handles_absolute_and_relative_forms() {
@@ -1626,6 +2705,293 @@ mod tests {
             (2, 2, 4, 5),
             "range returns (lo_col, lo_row, hi_col, hi_row)"
         );
+    }
+
+    #[test]
+    fn target_offsets_keep_row_and_column_coordinates_in_order() {
+        let source = parse_range("K7:V133").unwrap();
+        assert_eq!(target_offsets(source, "K7").unwrap(), (0, 0));
+        assert_eq!(target_offsets(source, "D10").unwrap(), (3, -7));
+    }
+
+    #[test]
+    fn missing_blank_template_cells_clear_existing_target_content() {
+        let target = concat!(
+            r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>"#,
+            r#"<row r="1"><c r="A1"><v>old</v></c><c r="B1"><f>SUM(A1)</f><v>99</v></c></row>"#,
+            "</sheetData></worksheet>"
+        );
+        let source_cells = vec![RegionCell {
+            row: 1,
+            column: 1,
+            formula: None,
+            value_xml: Some("<v>new</v>".to_owned()),
+            type_attr: None,
+        }];
+        let output = write_region(
+            target,
+            &source_cells,
+            (1, 1, 2, 1),
+            0,
+            0,
+            &ImportFlags {
+                copy_values: true,
+                copy_formulas: true,
+                copy_comments: false,
+                copy_merges: false,
+                materialize_blank_cells: true,
+            },
+        )
+        .unwrap();
+        let cells = cell_elements(&output);
+        let copied = cells
+            .iter()
+            .find(|cell| cell_reference(&cell.xml) == Some((1, 1)))
+            .unwrap();
+        assert_eq!(copied.xml, r#"<c r="A1"><v>new</v></c>"#);
+        let cleared = cells
+            .iter()
+            .find(|cell| cell_reference(&cell.xml) == Some((1, 2)))
+            .unwrap();
+        assert!(cleared.formula_body.is_none());
+        assert!(!cleared.xml.contains("<v>"));
+        assert_eq!(cleared.xml, r#"<c r="B1"/>"#);
+    }
+
+    #[test]
+    fn copies_comment_author_text_position_and_vml_anchor_while_preserving_outside_notes() {
+        let mut target = Package {
+            order: vec![
+                "[Content_Types].xml".to_owned(),
+                "xl/worksheets/sheet1.xml".to_owned(),
+                "xl/worksheets/_rels/sheet1.xml.rels".to_owned(),
+                "xl/comments1.xml".to_owned(),
+                "xl/drawings/vmlDrawing1.vml".to_owned(),
+            ],
+            parts: BTreeMap::from([
+                (
+                    "[Content_Types].xml".to_owned(),
+                    br#"<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="vml" ContentType="application/vnd.openxmlformats-officedocument.vmlDrawing"/><Override PartName="/xl/comments1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml"/></Types>"#.to_vec(),
+                ),
+                (
+                    "xl/worksheets/sheet1.xml".to_owned(),
+                    br#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetData/><legacyDrawing r:id="rId2"/></worksheet>"#.to_vec(),
+                ),
+                (
+                    "xl/worksheets/_rels/sheet1.xml.rels".to_owned(),
+                    br#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="../comments1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing" Target="../drawings/vmlDrawing1.vml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.invalid" TargetMode="External"/></Relationships>"#.to_vec(),
+                ),
+                (
+                    "xl/comments1.xml".to_owned(),
+                    br#"<comments xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><authors><author>Source User</author></authors><commentList><comment ref="A2" authorId="0"><text><t>old target note</t></text></comment><comment ref="C1" authorId="0"><text><t>keep this note</t></text></comment></commentList></comments>"#.to_vec(),
+                ),
+                (
+                    "xl/drawings/vmlDrawing1.vml".to_owned(),
+                    test_vml(&[
+                        ("_x0000_s1025", "A2", 1, 0, "0, 15, 1, 2, 2, 15, 5, 2"),
+                        ("_x0000_s1026", "C1", 0, 2, "2, 15, 0, 2, 4, 15, 3, 2"),
+                    ])
+                    .into_bytes(),
+                ),
+            ]),
+        };
+        let source = Package {
+            order: vec![
+                "xl/worksheets/_rels/sheet1.xml.rels".to_owned(),
+                "xl/comments1.xml".to_owned(),
+                "xl/drawings/vmlDrawing1.vml".to_owned(),
+            ],
+            parts: BTreeMap::from([
+                (
+                    "xl/worksheets/_rels/sheet1.xml.rels".to_owned(),
+                    br#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="../comments1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing" Target="../drawings/vmlDrawing1.vml"/></Relationships>"#.to_vec(),
+                ),
+                (
+                    "xl/comments1.xml".to_owned(),
+                    br#"<comments xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><authors><author>Template Author</author></authors><commentList><comment ref="B1" authorId="0"><text><t>template note</t></text></comment></commentList></comments>"#.to_vec(),
+                ),
+                (
+                    "xl/drawings/vmlDrawing1.vml".to_owned(),
+                    test_vml(&[("_x0000_s1025", "B1", 0, 1, "1, 15, 0, 2, 3, 15, 4, 2")])
+                        .into_bytes(),
+                ),
+            ]),
+        };
+
+        copy_region_comments(
+            &mut target,
+            &source,
+            "xl/worksheets/sheet1.xml",
+            "xl/worksheets/sheet1.xml",
+            (2, 1, 3, 1),
+            1,
+            -1,
+        )
+        .expect("copy notes from B1:C1 into A2:B2");
+
+        let comments = parse_legacy_comments(&target.text("xl/comments1.xml").unwrap()).unwrap();
+        assert_eq!(comments.authors, vec!["Source User", "Template Author"]);
+        let by_reference = comments
+            .comments
+            .iter()
+            .map(|comment| (comment.reference.as_str(), comment))
+            .collect::<BTreeMap<_, _>>();
+        assert!(by_reference.contains_key("A2"));
+        assert!(by_reference.contains_key("C1"));
+        assert_eq!(by_reference["A2"].author_id, 1);
+        assert!(by_reference["A2"].xml.contains("template note"));
+        assert!(!by_reference["A2"].xml.contains("old target note"));
+        assert!(by_reference["C1"].xml.contains("keep this note"));
+
+        let vml = target.text("xl/drawings/vmlDrawing1.vml").unwrap();
+        let shapes = parse_vml_note_shapes(&vml).unwrap();
+        assert_eq!(
+            shapes
+                .iter()
+                .map(|shape| shape.reference.as_str())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["A2", "C1"])
+        );
+        assert!(vml.contains("id=\"_x0000_s1027\""));
+        assert!(vml.contains("<x:Anchor>0, 15, 1, 2, 2, 15, 5, 2</x:Anchor>"));
+        assert!(
+            target
+                .text("xl/worksheets/_rels/sheet1.xml.rels")
+                .unwrap()
+                .contains("https://example.invalid"),
+            "copying notes must preserve non-comment worksheet relationships"
+        );
+    }
+
+    #[test]
+    fn creates_comment_parts_relationships_and_legacy_drawing_for_clean_target_sheet() {
+        let mut target = Package {
+            order: vec![
+                "[Content_Types].xml".to_owned(),
+                "xl/worksheets/sheet1.xml".to_owned(),
+            ],
+            parts: BTreeMap::from([
+                (
+                    "[Content_Types].xml".to_owned(),
+                    br#"<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/></Types>"#.to_vec(),
+                ),
+                (
+                    "xl/worksheets/sheet1.xml".to_owned(),
+                    br#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData/></worksheet>"#.to_vec(),
+                ),
+            ]),
+        };
+        let source = Package {
+            order: vec![
+                "xl/worksheets/_rels/sheet1.xml.rels".to_owned(),
+                "xl/comments1.xml".to_owned(),
+                "xl/drawings/vmlDrawing1.vml".to_owned(),
+            ],
+            parts: BTreeMap::from([
+                (
+                    "xl/worksheets/_rels/sheet1.xml.rels".to_owned(),
+                    br#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="../comments1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing" Target="../drawings/vmlDrawing1.vml"/></Relationships>"#.to_vec(),
+                ),
+                (
+                    "xl/comments1.xml".to_owned(),
+                    br#"<comments xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><authors><author>Template Author</author></authors><commentList><comment ref="A1" authorId="0"><text><t>template note</t></text></comment></commentList></comments>"#.to_vec(),
+                ),
+                (
+                    "xl/drawings/vmlDrawing1.vml".to_owned(),
+                    test_vml(&[("_x0000_s1025", "A1", 0, 0, "0, 15, 0, 2, 2, 15, 3, 2")])
+                        .into_bytes(),
+                ),
+            ]),
+        };
+
+        copy_region_comments(
+            &mut target,
+            &source,
+            "xl/worksheets/sheet1.xml",
+            "xl/worksheets/sheet1.xml",
+            (1, 1, 1, 1),
+            0,
+            0,
+        )
+        .expect("create comment metadata parts on the target sheet");
+
+        let comments_part =
+            worksheet_relationship_part(&target, "xl/worksheets/sheet1.xml", "/comments")
+                .unwrap()
+                .expect("new comments relationship");
+        let vml_part =
+            worksheet_relationship_part(&target, "xl/worksheets/sheet1.xml", "/vmlDrawing")
+                .unwrap()
+                .expect("new VML relationship");
+        assert!(target.parts.contains_key(&comments_part));
+        assert!(target.parts.contains_key(&vml_part));
+        assert!(
+            target
+                .text("xl/worksheets/sheet1.xml")
+                .unwrap()
+                .contains("legacyDrawing")
+        );
+        assert!(
+            target
+                .text("xl/worksheets/sheet1.xml")
+                .unwrap()
+                .contains("xmlns:r=")
+        );
+        assert!(
+            target
+                .text("[Content_Types].xml")
+                .unwrap()
+                .contains("Extension=\"vml\"")
+        );
+        assert_eq!(
+            parse_vml_note_shapes(&target.text(&vml_part).unwrap())
+                .unwrap()
+                .first()
+                .map(|shape| shape.reference.as_str()),
+            Some("A1")
+        );
+    }
+
+    fn test_vml(shapes: &[(&str, &str, u32, u32, &str)]) -> String {
+        let mut xml = String::from(
+            r#"<xml xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="http://schemas.microsoft.com/office/excel"><o:shapelayout v:ext="edit"><o:idmap v:ext="edit" data="1"/></o:shapelayout><v:shapetype id="_x0000_t202" coordsize="21600,21600" o:spt="202" path="m,l,21600r21600,l21600,xe"><v:stroke joinstyle="miter"/><v:path gradientshapeok="t" o:connecttype="rect"/></v:shapetype>"#,
+        );
+        for (id, _, row, column, anchor) in shapes {
+            xml.push_str(&format!(
+                "<v:shape id=\"{id}\" type=\"#_x0000_t202\"><v:fill color2=\"#ffffe1\"/><v:shadow on=\"t\"/><v:path o:connecttype=\"none\"/><x:ClientData ObjectType=\"Note\"><x:MoveWithCells/><x:SizeWithCells/><x:Anchor>{anchor}</x:Anchor><x:AutoFill>False</x:AutoFill><x:Row>{row}</x:Row><x:Column>{column}</x:Column></x:ClientData></v:shape>"
+            ));
+        }
+        xml.push_str("</xml>");
+        xml
+    }
+
+    #[test]
+    fn new_sheet_uses_relationship_and_part_ids_not_already_in_use() {
+        let relationships = concat!(
+            r#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">"#,
+            r#"<Relationship Id="rId1" Type="worksheet" Target="worksheets/sheet1.xml"/>"#,
+            r#"<Relationship Id="rId2" Type="styles" Target="styles.xml"/>"#,
+            r#"<Relationship Id="rId6" Type="theme" Target="theme/theme1.xml"/>"#,
+            r#"<Relationship Id="rIdComments" Type="comments" Target="comments1.xml"/>"#,
+            "</Relationships>"
+        );
+        assert_eq!(next_relationship_id(relationships).unwrap(), "rId3");
+
+        let mut package = Package {
+            order: vec![
+                "xl/worksheets/sheet1.xml".to_owned(),
+                "xl/worksheets/sheet3.xml".to_owned(),
+            ],
+            parts: BTreeMap::from([
+                ("xl/worksheets/sheet1.xml".to_owned(), Vec::new()),
+                ("xl/worksheets/sheet3.xml".to_owned(), Vec::new()),
+            ]),
+        };
+        assert_eq!(next_worksheet_part_number(&package).unwrap(), 2);
+        package
+            .parts
+            .insert("xl/worksheets/sheet2.xml".to_owned(), Vec::new());
+        assert_eq!(next_worksheet_part_number(&package).unwrap(), 4);
     }
 
     #[test]
@@ -1663,6 +3029,31 @@ mod tests {
             "B2*2",
             "dependency cell formula is shifted from the master"
         );
+    }
+
+    #[test]
+    fn shared_formula_type_is_not_mistaken_for_cell_type() {
+        let cell = build_cell_element(r#"<c r="A2"><f t="shared" si="0"/><v>4</v></c>"#);
+        assert_eq!(cell.type_attr, None);
+        assert_eq!(
+            cell.formula_body,
+            Some((" t=\"shared\" si=\"0\"".to_owned(), String::new()))
+        );
+    }
+
+    #[test]
+    fn self_closing_blank_cell_does_not_consume_the_next_cell() {
+        let cells = cell_elements(
+            r#"<row r="211"><c r="A211" s="2"/><c r="B211" t="s"><v>604</v></c></row>"#,
+        );
+        assert_eq!(cells.len(), 2);
+        assert_eq!(cell_reference(&cells[0].xml), Some((211, 1)));
+        assert!(!cells[0].xml.contains("<v>"));
+        assert!(!cells[0].xml.contains("<is>"));
+        assert_eq!(cell_reference(&cells[1].xml), Some((211, 2)));
+        assert_eq!(cells[1].type_attr.as_deref(), Some("s"));
+        assert_eq!(cells[1].formula_body, None);
+        assert_eq!(cells[1].xml, r#"<c r="B211" t="s"><v>604</v></c>"#);
     }
 
     #[test]
@@ -1715,7 +3106,10 @@ mod tests {
             drop_allowed: Default::default(),
         };
         let failure = backend.apply(&plan).unwrap_err();
-        assert_eq!(failure.kind, crate::BackendErrorKind::UnsupportedBeforeWrite);
+        assert_eq!(
+            failure.kind,
+            crate::BackendErrorKind::UnsupportedBeforeWrite
+        );
         assert!(
             !plan.output.exists(),
             "rejected plan must not create an output"

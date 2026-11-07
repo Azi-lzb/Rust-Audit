@@ -8,10 +8,11 @@
 //! built-in sheet/key rules.
 
 use crate::{
+    discovery::ScanDepth,
     models::CopyRange,
     name_config::{
-        load_s1_region_summary_mappings, resolve_named_ranges_for_mappings, NamedRangeArea,
-        FIXED_ROW_SUMMARY_FUNCTION, USED_RANGE_SUMMARY_FUNCTION,
+        FIXED_ROW_SUMMARY_FUNCTION, NamedRangeArea, USED_RANGE_SUMMARY_FUNCTION,
+        load_s1_region_summary_mappings, resolve_named_ranges_for_mappings,
     },
     s1_structure_compare::{
         compare_s1_summary_source_structure, read_s1_structure_template_with_required_sheets,
@@ -21,7 +22,8 @@ use crate::{
 use anyhow::{bail, ensure, Context, Result};
 use excel_reader::{
     read_defined_names, read_workbook, read_xlsx_worksheet_extents, CellValue,
-    DefinedNameParseStatus, DefinedNameRecord, SheetDump, WorkbookDump, WorksheetExtent,
+    DefinedNameParseStatus, DefinedNameRecord, DefinedNameScope, SheetDump, WorkbookDump,
+    WorksheetExtent,
 };
 use excel_writer::{Color, Format, FormatAlign, Workbook};
 use serde::Serialize;
@@ -85,7 +87,23 @@ pub fn s1_region_summary_source_workbooks(
     input_dir: impl AsRef<Path>,
     recursive: bool,
 ) -> Result<Vec<PathBuf>> {
-    discover_source_workbooks(input_dir.as_ref(), recursive)
+    s1_region_summary_source_workbooks_with_depth(
+        input_dir,
+        if recursive {
+            ScanDepth::Full
+        } else {
+            ScanDepth::RootOnly
+        },
+    )
+}
+
+/// List eligible S1 source workbooks using the GUI's configured directory
+/// depth. The legacy boolean entry point above remains for existing callers.
+pub fn s1_region_summary_source_workbooks_with_depth(
+    input_dir: impl AsRef<Path>,
+    depth: ScanDepth,
+) -> Result<Vec<PathBuf>> {
+    discover_source_workbooks(input_dir.as_ref(), depth)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -245,7 +263,14 @@ where
     );
 
     let discovery_started = Instant::now();
-    let mut sources = discover_source_workbooks(&input_dir, recursive)?;
+    let mut sources = discover_source_workbooks(
+        &input_dir,
+        if recursive {
+            ScanDepth::Full
+        } else {
+            ScanDepth::RootOnly
+        },
+    )?;
     on_progress(&format!("源目录扫描完成：发现 {} 个候选工作簿", sources.len()));
     if !selected_source_files.is_empty() {
         let selected = selected_source_files
@@ -283,6 +308,15 @@ where
         .with_context(|| format!("读取 S1-F02 汇总模板值失败：{}", template_path.display()))?;
     let defined_names = read_defined_names(&template_path)
         .with_context(|| format!("读取 S1-F02 模板命名区域失败：{}", template_path.display()))?;
+    let template_sheet_names = template
+        .sheets
+        .iter()
+        .map(|sheet| sheet.name.clone())
+        .collect::<Vec<_>>();
+    // The Python Audit enumerates workbook-scoped names first, followed by
+    // worksheet-scoped names in worksheet order. Preserve that order because
+    // it determines S1-F02 output columns and sheet order.
+    let defined_names = defined_names_in_openpyxl_order(&defined_names, template_sheet_names.len());
     let feature_mappings = load_s1_region_summary_mappings(mapping_config, &template_path)?;
     let selected_mappings = feature_mappings
         .into_iter()
@@ -296,11 +330,6 @@ where
     );
     let areas = crate::name_config::named_areas_from_defined_names(&defined_names);
     let (global_summary_fields, local_summary_fields) = parse_summary_fields(&defined_names)?;
-    let template_sheet_names = template
-        .sheets
-        .iter()
-        .map(|sheet| sheet.name.clone())
-        .collect::<Vec<_>>();
     let template_sheets = template
         .sheets
         .iter()
@@ -1026,9 +1055,7 @@ where
                 .set_name("汇总")
                 .context("设置 S1-F02 空汇总工作表名")?;
         } else {
-            // Windows Excel COM serializes the output sheets in reverse
-            // creation order for the Python baseline used by this workflow.
-            for group in groups.iter().rev() {
+            for group in &groups {
                 let worksheet = workbook.add_worksheet();
                 worksheet
                     .set_name(&group.output_sheet_name)
@@ -1084,7 +1111,6 @@ where
 
     let sheets = groups
         .iter()
-        .rev()
         .map(|group| S1RegionSummarySheetSummary {
             feature_name: group.feature_name.clone(),
             sheet_name: group.output_sheet_name.clone(),
@@ -1548,6 +1574,33 @@ fn normalize_history_key_value(value: &CellValue) -> NormalizedHistoryKeyValue {
     NormalizedHistoryKeyValue::Text(text.to_owned())
 }
 
+fn defined_names_in_openpyxl_order(
+    records: &[DefinedNameRecord],
+    worksheet_count: usize,
+) -> Vec<DefinedNameRecord> {
+    let mut workbook_scoped = Vec::new();
+    let mut worksheet_scoped = vec![Vec::new(); worksheet_count];
+    for record in records {
+        match &record.scope {
+            DefinedNameScope::Workbook => workbook_scoped.push(record.clone()),
+            DefinedNameScope::Worksheet {
+                local_sheet_id,
+                sheet_kind: Some(kind),
+                ..
+            } if kind == "worksheet" => {
+                if let Some(names) = worksheet_scoped.get_mut(*local_sheet_id) {
+                    names.push(record.clone());
+                }
+            }
+            DefinedNameScope::Worksheet { .. }
+            | DefinedNameScope::UnresolvedWorksheet { .. }
+            | DefinedNameScope::InvalidWorksheetScope { .. } => {}
+        }
+    }
+    workbook_scoped.extend(worksheet_scoped.into_iter().flatten());
+    workbook_scoped
+}
+
 fn parse_summary_fields(
     records: &[DefinedNameRecord],
 ) -> Result<(Vec<SummaryField>, HashMap<String, Vec<SummaryField>>)> {
@@ -1601,21 +1654,7 @@ fn parse_summary_fields(
             }
         }
     }
-    sort_summary_fields(&mut global_fields);
-    for fields in local_fields.values_mut() {
-        sort_summary_fields(fields);
-    }
     Ok((global_fields, local_fields))
-}
-
-fn sort_summary_fields(fields: &mut [SummaryField]) {
-    fields.sort_by(|left, right| {
-        (left.bounds.top, left.bounds.left, &left.name).cmp(&(
-            right.bounds.top,
-            right.bounds.left,
-            &right.name,
-        ))
-    });
 }
 
 fn summary_fields_for_sheet(
@@ -1753,17 +1792,27 @@ fn source_file_label(path: &Path) -> String {
         .to_owned()
 }
 
-fn discover_source_workbooks(input_dir: &Path, recursive: bool) -> Result<Vec<PathBuf>> {
-    fn visit(directory: &Path, recursive: bool, files: &mut Vec<PathBuf>) -> Result<()> {
+fn discover_source_workbooks(input_dir: &Path, max_depth: ScanDepth) -> Result<Vec<PathBuf>> {
+    fn visit(
+        directory: &Path,
+        directory_depth: usize,
+        max_depth: ScanDepth,
+        files: &mut Vec<PathBuf>,
+    ) -> Result<()> {
         let entries = fs::read_dir(directory)
             .with_context(|| format!("扫描 S1-F02 汇总目录失败：{}", directory.display()))?;
         for entry in entries {
             let entry = entry?;
             let path = entry.path();
             let kind = entry.file_type()?;
-            if kind.is_dir() && recursive {
-                if entry.file_name() != "执行结果" {
-                    visit(&path, recursive, files)?;
+            if kind.is_dir() {
+                let should_recurse = match max_depth {
+                    ScanDepth::RootOnly => false,
+                    ScanDepth::MaxDirectoryDepth(max) => directory_depth < max,
+                    ScanDepth::Full => true,
+                };
+                if should_recurse && entry.file_name() != "执行结果" {
+                    visit(&path, directory_depth + 1, max_depth, files)?;
                 }
             } else if kind.is_file()
                 && path
@@ -1788,9 +1837,10 @@ fn discover_source_workbooks(input_dir: &Path, recursive: bool) -> Result<Vec<Pa
     }
 
     let mut found = Vec::new();
-    visit(input_dir, recursive, &mut found)?;
+    visit(input_dir, 0, max_depth, &mut found)?;
     found.sort();
-    let sources = if recursive {
+    let recurses = !matches!(max_depth, ScanDepth::RootOnly | ScanDepth::MaxDirectoryDepth(0));
+    let sources = if recurses {
         let nested = found.iter().any(|path| path.parent() != Some(input_dir));
         if nested {
             found
@@ -2018,7 +2068,6 @@ fn validate_summary_workbook(path: &Path, groups: &[RegionGroup]) -> Result<()> 
     } else {
         groups
             .iter()
-            .rev()
             .map(|group| group.output_sheet_name.as_str())
             .collect()
     };
@@ -2027,7 +2076,7 @@ fn validate_summary_workbook(path: &Path, groups: &[RegionGroup]) -> Result<()> 
         "S1-F02 输出工作表名称或顺序不匹配"
     );
 
-    for (sheet, group) in actual.sheets.iter().zip(groups.iter().rev()) {
+    for (sheet, group) in actual.sheets.iter().zip(groups.iter()) {
         let mut expected = BTreeMap::<(usize, usize), CellValue>::new();
         let headers = summary_output_headers(group);
         for (column, value) in headers.iter().enumerate() {
@@ -2154,7 +2203,7 @@ fn temporary_path(output_path: &Path) -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use excel_reader::{DefinedNameArea, DefinedNameScope};
+    use excel_reader::DefinedNameArea;
 
     fn area_record(
         name: &str,
@@ -2341,7 +2390,52 @@ mod tests {
     }
 
     #[test]
-    fn metadata_fields_sort_global_fields_then_local_fields_and_reject_duplicates() {
+    fn defined_names_follow_python_scope_order() {
+        let records = vec![
+            area_record(
+                "本地表",
+                DefinedNameScope::Worksheet {
+                    local_sheet_id: 2,
+                    sheet_name: Some("本地表".to_owned()),
+                    sheet_kind: Some("worksheet".to_owned()),
+                },
+                "本地表",
+                "$A$1",
+            ),
+            area_record("全局表", DefinedNameScope::Workbook, "全局表", "$A$1"),
+            area_record(
+                "任务表",
+                DefinedNameScope::Worksheet {
+                    local_sheet_id: 0,
+                    sheet_name: Some("任务表".to_owned()),
+                    sheet_kind: Some("worksheet".to_owned()),
+                },
+                "任务表",
+                "$A$1",
+            ),
+            area_record(
+                "业务表",
+                DefinedNameScope::Worksheet {
+                    local_sheet_id: 1,
+                    sheet_name: Some("业务表".to_owned()),
+                    sheet_kind: Some("worksheet".to_owned()),
+                },
+                "业务表",
+                "$A$1",
+            ),
+        ];
+        let ordered = defined_names_in_openpyxl_order(&records, 3);
+        assert_eq!(
+            ordered
+                .iter()
+                .map(|record| record.name.as_str())
+                .collect::<Vec<_>>(),
+            ["全局表", "任务表", "业务表", "本地表"]
+        );
+    }
+
+    #[test]
+    fn metadata_fields_preserve_template_order_and_reject_duplicates() {
         let records = vec![
             area_record(
                 "全局单元格区域.后批次",
@@ -2373,7 +2467,7 @@ mod tests {
                 .iter()
                 .map(|field| field.name.as_str())
                 .collect::<Vec<_>>(),
-            ["前批次", "后批次", "分组"]
+            ["后批次", "前批次", "分组"]
         );
 
         let mut duplicated = records;

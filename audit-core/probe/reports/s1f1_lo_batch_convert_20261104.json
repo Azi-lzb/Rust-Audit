@@ -1,0 +1,39 @@
+{
+  "results": [
+    {
+      "batch_average_per_book_ms": 2493,
+      "batch_total_ms": 4987,
+      "books": 2,
+      "input_unchanged": true,
+      "outputs_formula_and_cache_validation": "passed",
+      "per_book_total_ms": 5933,
+      "profile_processes_remaining": 0,
+      "rows_per_book": 400,
+      "soffice_conversion_invocations": 1
+    },
+    {
+      "batch_average_per_book_ms": 1057,
+      "batch_total_ms": 10575,
+      "books": 10,
+      "input_unchanged": true,
+      "outputs_formula_and_cache_validation": "passed",
+      "per_book_total_ms": 32813,
+      "profile_processes_remaining": 0,
+      "rows_per_book": 400,
+      "soffice_conversion_invocations": 1
+    },
+    {
+      "batch_average_per_book_ms": 661,
+      "batch_total_ms": 21837,
+      "books": 33,
+      "input_unchanged": true,
+      "outputs_formula_and_cache_validation": "passed",
+      "per_book_total_ms": 80381,
+      "profile_processes_remaining": 0,
+      "rows_per_book": 400,
+      "soffice_conversion_invocations": 1
+    }
+  ],
+  "rounds": 1,
+  "workbook_rows": 400
+}

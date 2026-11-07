@@ -1,0 +1,31 @@
+执行者：Codex
+修改前/后 commit：99ea348 / 99ea348（未提交）
+分支：main
+工作区保护：保留用户已有未跟踪文件 `OOXML_BACKEND_GOAL.md`；未执行清理、重置、提交或 push。
+
+目的：把 Linux S1-F1 GUI 的 LibreOffice 重算改为一个逻辑批次仅调用一次隔离 LO 批处理，参考 Windows COM 的批次复用，同时保留失败工作簿的人工重算恢复语义；修正规则与性能记录中的旧状态。
+
+修改文件：
+- `audit-core/src/s1_formula_copy.rs`：增加批量准备公式审核副本、统一调用重算批次及逐本保留/完成逻辑；批次失败保留无缓存副本供人工重算。
+- `audit-core/src/web_bridge.rs`：Linux S1-F1 GUI 首个可执行项触发整批准备与一次 LO batch 调用，按原顺序消费各本结果；Windows native COM 路径不变。
+- `audit-core/src/s1_recalculation.rs`：调用 sidecar `recalculate-batch` 并核验单次转换调用和专用 profile 清理状态；批次耗时按每本平均分配给旧遥测字段，单本 LO 实际阶段耗时不可得。
+- `sidecar/lo-convert/src/lo_batch.rs`、`sidecar/lo-convert/src/main.rs`：批次使用唯一 profile/一次 `soffice --convert-to`，完成后等待并核验 profile 进程排空；移除重复 profile 初始化；清除本次触及路径的未用局部变量。
+- `sidecar/lo-convert/tests/recalculate_libreoffice.rs`：增加真实 LibreOffice 批次集成测试和 ignored 2/10/33 本性能探针。
+- `rules/13_Rust_Excel读写修改与引擎路由规范.md`、`audit-core/AGENTS.md`、`.cursor/rules/external-office-batch-reuse.mdc`：明确按业务批次复用外部 Office；区分一次 `soffice --convert-to` 多输入批处理与持久 UNO；禁止将批次总耗时伪装成实测单本时长。
+- `DEVELOPMENT_GOAL.md`、`audit-core/MIGRATION_INVENTORY.md`、`audit-core/PERFORMANCE_BASELINE.md`、`audit-core/PERFORMANCE_HISTORY.md`：追加当前状态、性能证据与验收边界，不覆盖旧历史。
+- 新增 `audit-core/probe/reports/s1f1_lo_batch_convert_20261104.md/.json`。
+
+验证：
+- WSL Ubuntu + LibreOffice 24.2.7.2，`lo-convert --test recalculate_libreoffice`：2 passed，1 ignored。
+- 同一环境运行 ignored 性能探针：1 passed。每本 400 行、401 个公式；2 本逐本/批次 5,933/4,987 ms（1.19x），10 本 32,813/10,575 ms（3.10x），33 本 80,381/21,837 ms（3.68x）。每个批次仅一次 `soffice` 转换调用、profile 残留进程为 0；公式文本与缓存正确，输入字节不变。
+- WSL `audit-core --lib s1_f1`：4 passed。
+- Windows `audit-core --lib s1_formula_copy`：17 passed。
+- Windows `lo-convert --test recalculate_libreoffice --no-run`：测试目标编译通过。
+- `git diff --check` 通过。对修改宽文件执行 `rustfmt --check` 时仍报告文件中的格式差异；未用整文件格式化引入无关 diff。
+- 编译存在非致命的既有废弃 API、平台条件代码未使用等警告；定向构建与测试成功。
+
+未完成/风险：尚未在真实机构工作簿、Linux 桌面 GUI、Kylin V10 或 UOS V20 做人工验收；性能数据为单轮合成重算子路径，不代表完整审核链或 Python/Rust A/B。此批处理不是持久 UNO 会话，也不跨用户任务常驻。全 workspace 回归未运行。未新增依赖或升级组件。
+
+删除清单：无。
+回滚提示：只回滚本记录列出的本次改动；保留 `OOXML_BACKEND_GOAL.md` 及其他工作区数据。不要用破坏性 Git 操作。
+组件版本：不升级。

@@ -1,11 +1,11 @@
 //! LibreOffice 会话复用（S1-F01 Linux 公式重算，rules/13 §4.5）。
 //!
-//! 两种已实测的复用形态：
-//! - [`LoWarmProfileSession`]：一个会话只做一次 profile 初始化，随后逐本
-//!   `--convert-to`（顺序、同步），供持久会话协议（GUI 逐本请求）使用，
-//!   省去每本全新 profile 的首启初始化成本。
+//! 两种转换形态：
+//! - [`LoWarmProfileSession`] 是旧的 sidecar request/response 兼容路径：只
+//!   复用 profile 初始化状态，每个请求仍单独启动一次 `soffice`，不视为
+//!   单实例会话复用。S1-F1 GUI 已切换到下面的批量路径。
 //! - [`run_batch_convert`]：一次 `soffice --convert-to` 同时携带批次的多个
-//!   输入文件，单实例顺序转换全部工作簿，供上游已知整批清单时使用。
+//!   输入文件，在一个独立 profile 下完成整个批次转换。
 //!
 //! 为什么不是 Rust 直接讲 UNO：LibreOffice 的远程 UNO（URP）协议没有可
 //! 维护的 Rust 绑定，手写桥接协议不可验收；链接 C++ UNO SDK 则要求构建期
@@ -112,13 +112,6 @@ impl LoWarmProfileSession {
                 command.process_group(0);
             }
         }
-        let convert_log = self.work_dir.join("session-convert.log");
-        command.stdout(
-            fs::OpenOptions::new().create(true).append(true).open(&convert_log)?,
-        );
-        command.stderr(
-            fs::OpenOptions::new().create(true).append(true).open(&convert_log)?,
-        );
         let convert_log = self.work_dir.join("session-convert.log");
         command.stdout(
             fs::OpenOptions::new().create(true).append(true).open(&convert_log)?,
@@ -252,6 +245,7 @@ pub fn run_batch_convert(
         expected.push((out_dir.join(&name), index));
     }
     let started_at = Instant::now();
+    let profile_argument = crate::libreoffice_user_installation_arg(&work_dir.join("profile"))?;
     let mut command = Command::new("soffice");
     command
         .args([
@@ -262,10 +256,7 @@ pub fn run_batch_convert(
             "--nofirststartwizard",
             "--norestore",
         ])
-        .arg(format!(
-            "-env:UserInstallation=file://{}",
-            work_dir.join("profile").display()
-        ))
+        .arg(&profile_argument)
         .arg("--convert-to")
         .arg(target.filter())
         .arg("--outdir")
@@ -282,20 +273,31 @@ pub fn run_batch_convert(
     }
     let convert_log = work_dir.join("batch-convert.log");
     command.stdout(
-        fs::OpenOptions::new().create(true).append(true).open(&convert_log)?,
+        fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&convert_log)?,
     );
     command.stderr(
-        fs::OpenOptions::new().create(true).append(true).open(&convert_log)?,
-    );
-    let convert_log = work_dir.join("batch-convert.log");
-    command.stdout(
-        fs::OpenOptions::new().create(true).append(true).open(&convert_log)?,
-    );
-    command.stderr(
-        fs::OpenOptions::new().create(true).append(true).open(&convert_log)?,
+        fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&convert_log)?,
     );
     let status = run_with_timeout(&mut command, timeout, "批次 LibreOffice 转换")?;
-    ensure!(status.success(), "批次 LibreOffice 转换失败（exit={status}）");
+    // The soffice wrapper can exit before oosplash finishes forking
+    // soffice.bin. Let the owned profile settle, then wait for its processes
+    // to exit. If they outlive the batch, terminate only commands carrying
+    // this unique profile argument and confirm cleanup before returning.
+    drain_profile_after_batch(
+        &profile_argument,
+        timeout.saturating_sub(started_at.elapsed()),
+    )
+    .context("清理本批次拥有的 LibreOffice profile 进程")?;
+    ensure!(
+        status.success(),
+        "批次 LibreOffice 转换失败（exit={status}）"
+    );
     let mut stages = Vec::with_capacity(pairs.len());
     for (output_path, index) in &expected {
         ensure!(
@@ -309,7 +311,12 @@ pub fn run_batch_convert(
             "batch_output": output_path.display().to_string(),
         }));
     }
-    let _ = started_at;
+    let elapsed_ms = started_at.elapsed().as_millis() as u64;
+    for stage in &mut stages {
+        stage["batch_convert_ms"] = json!(elapsed_ms);
+        stage["soffice_conversion_invocations"] = json!(1);
+        stage["profile_processes_remaining"] = json!(0);
+    }
     Ok(("LibreOffice".to_owned(), stages))
 }
 
@@ -451,8 +458,7 @@ fn no_process_uses_profile(profile_argument: &str) -> bool {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
-        .map(|status| !status.success())
-        .unwrap_or(true)
+        .is_ok_and(|status| status.code() == Some(1))
 }
 
 #[cfg(not(unix))]
@@ -479,3 +485,33 @@ fn kill_profile_processes(profile_argument: &str) {
 
 #[cfg(not(unix))]
 fn kill_profile_processes(_profile_argument: &str) {}
+
+/// Wait for a batch-owned profile's LO process to exit, then clean up only
+/// processes still carrying that unique profile. The grace period accounts
+/// for the observed oosplash fork delay; the remaining wait is bounded by the
+/// caller's batch timeout.
+fn drain_profile_after_batch(profile_argument: &str, timeout: Duration) -> Result<()> {
+    let settle = PROFILE_FORK_SETTLE.min(timeout);
+    std::thread::sleep(settle);
+    let deadline = Instant::now() + timeout.saturating_sub(settle);
+    while !no_process_uses_profile(profile_argument) {
+        if Instant::now() >= deadline {
+            break;
+        }
+        std::thread::sleep(POLL_INTERVAL);
+    }
+    if no_process_uses_profile(profile_argument) {
+        return Ok(());
+    }
+
+    kill_profile_processes(profile_argument);
+    let cleanup_deadline = Instant::now() + Duration::from_secs(5);
+    while !no_process_uses_profile(profile_argument) && Instant::now() < cleanup_deadline {
+        std::thread::sleep(POLL_INTERVAL);
+    }
+    ensure!(
+        no_process_uses_profile(profile_argument),
+        "LibreOffice profile 进程在定向终止后仍未退出"
+    );
+    Ok(())
+}

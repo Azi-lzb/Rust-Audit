@@ -1,0 +1,30 @@
+﻿{
+    "存量单位存款分产品期限":  {
+                        "triggeredCount":  0,
+                        "triggered":  [
+
+                                      ],
+                        "scanned":  0
+                    },
+    "单位存款余额":  {
+                   "triggeredCount":  0,
+                   "triggered":  [
+
+                                 ],
+                   "scanned":  0
+               },
+    "单位存款发生额分产品期限":  {
+                         "triggeredCount":  0,
+                         "triggered":  [
+
+                                       ],
+                         "scanned":  0
+                     },
+    "单位存款发生额":  {
+                    "triggeredCount":  0,
+                    "triggered":  [
+
+                                  ],
+                    "scanned":  0
+                }
+}

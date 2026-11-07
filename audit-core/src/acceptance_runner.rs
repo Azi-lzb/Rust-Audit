@@ -1,7 +1,7 @@
 //! Config-driven manual acceptance runner for the existing Audit entry points.
 //!
 //! The runner owns orchestration and evidence only. S1-F01 is routed through
-//! its existing GUI workflow worker; S2, S3 and S5 use the shipped CLI
+//! its existing GUI workflow worker; S2 and S3 use the shipped CLI
 //! subcommands. It never edits a supplied input workbook. S3-F03 receives a
 //! runner-owned copy because its established contract updates its target in
 //! place after creating a backup.
@@ -26,7 +26,6 @@ pub struct AcceptanceManifest {
     pub s1: Option<S1AcceptanceInputs>,
     pub s2: Option<S2AcceptanceInputs>,
     pub s3: Option<S3AcceptanceInputs>,
-    pub s5: Option<S5AcceptanceInputs>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -65,33 +64,6 @@ pub struct S3AcceptanceInputs {
     pub feedback_workbooks: Vec<PathBuf>,
     #[serde(default)]
     pub expression_schema: Option<String>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct S5AcceptanceInputs {
-    pub config: PathBuf,
-    pub source: PathBuf,
-    pub period: String,
-    pub org_code: Option<String>,
-    pub org_name: Option<String>,
-    pub template_path: Option<PathBuf>,
-    pub template_directory: Option<PathBuf>,
-    pub source_id: Option<String>,
-    pub source_business: Option<String>,
-    #[serde(default)]
-    pub current_sources: Vec<String>,
-    pub previous_source: Option<PathBuf>,
-    pub previous_source_id: Option<String>,
-    pub previous_period: Option<String>,
-    pub external_source: Option<PathBuf>,
-    pub external_source_id: Option<String>,
-    #[serde(default)]
-    pub external_source_bindings: Vec<String>,
-    pub default_external_source_id: Option<String>,
-    #[serde(default)]
-    pub businesses: Vec<String>,
-    pub run_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -188,9 +160,8 @@ pub fn run_acceptance_manifest(
     ensure!(
         manifest.s1.is_some()
             || manifest.s2.is_some()
-            || manifest.s3.is_some()
-            || manifest.s5.is_some(),
-        "验收清单至少需要提供 S1、S2、S3 或 S5 中的一项"
+            || manifest.s3.is_some(),
+        "验收清单至少需要提供 S1、S2 或 S3 中的一项"
     );
 
     let run_started = Instant::now();
@@ -248,79 +219,6 @@ pub fn run_acceptance_manifest(
             &input_roots,
             &mut steps,
         )?;
-    }
-
-    if let Some(inputs) = manifest.s5.as_ref() {
-        let step_dir = output_directory.join("steps").join("S5-F01");
-        let mut args = vec!["s5-audit-run".to_owned()];
-        push_arg(&mut args, "--config", &inputs.config);
-        push_arg(&mut args, "--source", &inputs.source);
-        push_arg_text(&mut args, "--period", &inputs.period);
-        push_arg(&mut args, "--output-dir", &step_dir);
-        push_arg_opt(&mut args, "--org-code", inputs.org_code.as_deref());
-        push_arg_opt(&mut args, "--org-name", inputs.org_name.as_deref());
-        push_arg_opt(&mut args, "--run-id", inputs.run_id.as_deref());
-        push_optional_path(
-            &mut args,
-            "--template-path",
-            inputs.template_path.as_deref(),
-        );
-        push_optional_path(
-            &mut args,
-            "--template-dir",
-            inputs.template_directory.as_deref(),
-        );
-        push_arg_opt(&mut args, "--source-id", inputs.source_id.as_deref());
-        push_arg_opt(
-            &mut args,
-            "--source-business",
-            inputs.source_business.as_deref(),
-        );
-        push_optional_path(
-            &mut args,
-            "--previous-source",
-            inputs.previous_source.as_deref(),
-        );
-        push_arg_opt(
-            &mut args,
-            "--previous-source-id",
-            inputs.previous_source_id.as_deref(),
-        );
-        push_arg_opt(
-            &mut args,
-            "--previous-period",
-            inputs.previous_period.as_deref(),
-        );
-        push_optional_path(
-            &mut args,
-            "--external-source",
-            inputs.external_source.as_deref(),
-        );
-        push_arg_opt(
-            &mut args,
-            "--external-source-id",
-            inputs.external_source_id.as_deref(),
-        );
-        push_arg_opt(
-            &mut args,
-            "--default-external-source-id",
-            inputs.default_external_source_id.as_deref(),
-        );
-        push_repeated(&mut args, "--current-source", &inputs.current_sources);
-        push_repeated(
-            &mut args,
-            "--external-source-binding",
-            &inputs.external_source_bindings,
-        );
-        push_repeated(&mut args, "--business", &inputs.businesses);
-        args.push("--developer-view".to_owned());
-        steps.push(run_cli_step(
-            "S5-F01 本期数值核对",
-            &executable,
-            &args,
-            &step_dir,
-            &input_roots,
-        )?);
     }
 
     let final_hashes = hash_input_roots(&input_roots)?;
@@ -821,18 +719,6 @@ fn manifest_input_roots(manifest: &AcceptanceManifest, manifest_path: &Path) -> 
         }
         roots.extend(s3.feedback_workbooks.iter().cloned());
     }
-    if let Some(s5) = &manifest.s5 {
-        roots.insert(s5.config.clone());
-        roots.insert(s5.source.clone());
-        for path in [
-            s5.template_path.as_ref(),
-            s5.template_directory.as_ref(),
-            s5.previous_source.as_ref(),
-            s5.external_source.as_ref(),
-        ] {
-            add_option(&mut roots, path);
-        }
-    }
     roots.into_iter().collect()
 }
 
@@ -892,21 +778,6 @@ fn resolve_manifest_paths(manifest: &mut AcceptanceManifest, base: &Path) {
             resolve(path, base);
         }
         for path in &mut s3.feedback_workbooks {
-            resolve(path, base);
-        }
-    }
-    if let Some(s5) = &mut manifest.s5 {
-        resolve(&mut s5.config, base);
-        resolve(&mut s5.source, base);
-        for path in [
-            &mut s5.template_path,
-            &mut s5.template_directory,
-            &mut s5.previous_source,
-            &mut s5.external_source,
-        ]
-        .into_iter()
-        .flatten()
-        {
             resolve(path, base);
         }
     }

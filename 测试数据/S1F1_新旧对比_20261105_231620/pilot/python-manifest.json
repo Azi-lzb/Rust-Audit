@@ -1,0 +1,16 @@
+{
+  "batches": [
+    {
+      "history_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\pilot\\python-history.xlsx",
+      "workflow_id": "dag:汇总核查表校验",
+      "name": "pilot",
+      "period": "2026-08",
+      "selected_files": [
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\pilot\\input\\广东博罗农村商业银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx"
+      ],
+      "output_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\pilot\\python-output",
+      "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！130.互联网金融业务信息（月度）202608.xlsx",
+      "input_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\pilot\\input"
+    }
+  ]
+}

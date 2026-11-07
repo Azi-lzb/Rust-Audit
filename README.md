@@ -6,13 +6,15 @@ This repository is an independent Cargo workspace for Audit. Its Excel-Core copi
 
 - `run.bat` runs only `dist\open-data-audit.exe serve`; it never invokes Cargo. `run-audit-dev.bat` is a compatibility alias.
 - `build-release.bat` is the explicit Windows source build. It uses `F:\RustBuild\audit` and copies the Release `open-data-audit.exe` into `dist\` after the build succeeds. Windows S1 formula recalculation uses native Office COM and does not require `lo-convert.exe`. `build-audit-dev.bat` is a compatibility alias.
-- `package.bat` creates a Windows x64 ZIP from the `dist\` executables, default configuration folder, `run.bat`, and this README. It does not compile.
+- `package.bat` creates a Windows x64 ZIP from the existing `dist\open-data-audit.exe`, `run.bat`, this README, and the six local S1/S2/S3 workbooks in `audit-core\config-real\`. It does not compile or include S5, external data, backups, or templates.
 - The Audit GUI starts its local web interface from this repository's working directory. An optional `--config <path>` argument selects the S2 configuration workbook.
 
 The original Open-Data-Audit source snapshot was commit
 `cac9e1068367bdc46f27685e043aff0cfcd2294c` from `main`. Public placeholder
-configuration is in `audit-core/config/`; sanitized local templates belong in
-the ignored `audit-core/config-real/` directory.
+configuration is in `audit-core/config/`; local real S1/S2/S3 configuration
+workbooks belong in the ignored `audit-core/config-real/` directory. The
+Windows package places those six files in `dist/config-real/` beside the EXE,
+which uses them as the startup defaults.
 
 ## Probes
 

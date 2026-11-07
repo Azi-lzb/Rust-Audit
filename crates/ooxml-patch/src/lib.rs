@@ -68,6 +68,7 @@ pub struct FormulaCachesClearedReport {
     pub worksheet_parts: Vec<String>,
     pub formula_cells: usize,
     pub cache_values_removed: usize,
+    pub formula_references_quoted: usize,
 }
 
 /// One Excel error constant that an external calculation engine serialized as
@@ -328,8 +329,33 @@ pub fn clear_formula_caches_for_recalculation(
     source: impl AsRef<Path>,
     output: impl AsRef<Path>,
 ) -> Result<FormulaCachesClearedReport> {
-    let source = source.as_ref();
-    let output = output.as_ref();
+    clear_formula_caches_for_recalculation_with_office_reference_quoting(
+        source.as_ref(),
+        output.as_ref(),
+        false,
+    )
+}
+
+/// Prepare an Office calculation copy while quoting internal sheet references
+/// whose names contain characters that Office formula parsers require quoted.
+/// This is useful for COM engines that otherwise drop these formulas on open.
+/// Formula caches are cleared in the same package pass; the source is unchanged.
+pub fn clear_formula_caches_for_office_recalculation(
+    source: impl AsRef<Path>,
+    output: impl AsRef<Path>,
+) -> Result<FormulaCachesClearedReport> {
+    clear_formula_caches_for_recalculation_with_office_reference_quoting(
+        source.as_ref(),
+        output.as_ref(),
+        true,
+    )
+}
+
+fn clear_formula_caches_for_recalculation_with_office_reference_quoting(
+    source: &Path,
+    output: &Path,
+    quote_unsafe_sheet_references: bool,
+) -> Result<FormulaCachesClearedReport> {
     let canonical_source = fs::canonicalize(source).context("resolve source workbook")?;
     ensure!(
         source != output && (!output.exists() || fs::canonicalize(output)? != canonical_source),
@@ -342,14 +368,31 @@ pub fn clear_formula_caches_for_recalculation(
     validate_header_package(source)
         .context("validate formula recalculation input package safety")?;
 
-    let worksheet_parts = sheet_parts(source)?;
+    let worksheet_parts = strict_sheet_parts(source)?;
+    let sheet_names_owned = worksheet_parts
+        .iter()
+        .map(|(name, _)| name.clone())
+        .collect::<Vec<_>>();
+    let sheet_names = sheet_names_owned
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
     let mut input_zip = ZipArchive::new(fs::File::open(source)?)?;
     let mut replacements = BTreeMap::new();
     let mut report = FormulaCachesClearedReport::default();
     for (_, worksheet_part) in worksheet_parts {
         let xml = read_zip_part(&mut input_zip, &worksheet_part)?;
+        let formula_safe_xml = if quote_unsafe_sheet_references {
+            let (patched, _, quoted_references) =
+                quote_unsafe_formula_sheet_references_xml(&xml, &sheet_names)
+                    .with_context(|| format!("quote Office formula references in {worksheet_part}"))?;
+            report.formula_references_quoted += quoted_references;
+            patched
+        } else {
+            xml.clone()
+        };
         let (patched, formula_cells, cache_values_removed) =
-            clear_formula_caches_for_recalculation_xml(&xml)?;
+            clear_formula_caches_for_recalculation_xml(&formula_safe_xml)?;
         report.formula_cells += formula_cells;
         report.cache_values_removed += cache_values_removed;
         if patched != xml {
@@ -397,6 +440,14 @@ pub fn clear_formula_caches_for_recalculation(
         let mut output_zip = ZipArchive::new(fs::File::open(output)?)?;
         for worksheet_part in &report.worksheet_parts {
             let xml = read_zip_part(&mut output_zip, worksheet_part)?;
+            if quote_unsafe_sheet_references {
+                let (_, _, remaining_unsafe_references) =
+                    quote_unsafe_formula_sheet_references_xml(&xml, &sheet_names)?;
+                ensure!(
+                    remaining_unsafe_references == 0,
+                    "Office formula reference quoting readback failed for {worksheet_part}"
+                );
+            }
             let (_, remaining_formula_cells, remaining_cache_values) =
                 clear_formula_caches_for_recalculation_xml(&xml)?;
             ensure!(
@@ -828,6 +879,129 @@ mod promoted_error_constant_tests {
         }
         Ok(())
     }
+}
+
+fn quote_unsafe_formula_sheet_references_xml(
+    source_xml: &[u8],
+    sheet_names: &[&str],
+) -> Result<(Vec<u8>, usize, usize)> {
+    let xml = std::str::from_utf8(source_xml).context("worksheet XML must be UTF-8")?;
+    let document = Document::parse(xml).context("parse worksheet XML")?;
+    let root = document.root_element();
+    ensure!(
+        root.tag_name().namespace() == Some(MAIN_NS) && root.tag_name().name() == "worksheet",
+        "expected a SpreadsheetML worksheet root"
+    );
+
+    let mut formula_nodes_changed = 0usize;
+    let mut references_quoted = 0usize;
+    let mut edits = Vec::new();
+    let candidates = sheet_names
+        .iter()
+        .copied()
+        .filter(|name| {
+            name.chars()
+                .any(|character| !(character.is_alphanumeric() || character == '_'))
+        })
+        .map(|name| (name, name.chars().collect::<Vec<_>>()))
+        .collect::<Vec<_>>();
+    let mut candidates = candidates;
+    candidates.sort_by_key(|(_, characters)| std::cmp::Reverse(characters.len()));
+    for formula in root.descendants().filter(|node| {
+        node.is_element()
+            && node.tag_name().namespace() == Some(MAIN_NS)
+            && node.tag_name().name() == "f"
+    }) {
+        let children = formula.children().collect::<Vec<_>>();
+        ensure!(
+            children.iter().all(|node| node.is_text()) && children.len() <= 1,
+            "formula contains unsupported nested XML"
+        );
+        let Some(text_node) = children.first().copied() else {
+            continue;
+        };
+        let text = text_node.text().unwrap_or_default();
+        let (quoted, references) = quote_unsafe_formula_sheet_references(text, &candidates);
+        if references == 0 {
+            continue;
+        }
+        edits.push((
+            text_node.range(),
+            escape_xml_text(&quoted).into_bytes(),
+        ));
+        formula_nodes_changed += 1;
+        references_quoted += references;
+    }
+
+    if edits.is_empty() {
+        return Ok((source_xml.to_vec(), 0, 0));
+    }
+    edits.sort_by_key(|(range, _)| std::cmp::Reverse(range.start));
+    let mut output = source_xml.to_vec();
+    for (range, replacement) in edits {
+        output = splice_bytes(&output, range, &replacement);
+    }
+    Ok((output, formula_nodes_changed, references_quoted))
+}
+
+fn quote_unsafe_formula_sheet_references(
+    formula: &str,
+    candidates: &[(&str, Vec<char>)],
+) -> (String, usize) {
+    let characters = formula.chars().collect::<Vec<_>>();
+    let mut output = String::with_capacity(formula.len());
+    let mut in_string = false;
+    let mut in_quoted_sheet = false;
+    let mut references_quoted = 0usize;
+    let mut index = 0usize;
+    while index < characters.len() {
+        let character = characters[index];
+        if character == '"' && !in_quoted_sheet {
+            output.push(character);
+            if in_string && characters.get(index + 1) == Some(&'"') {
+                output.push('"');
+                index += 2;
+                continue;
+            }
+            in_string = !in_string;
+            index += 1;
+            continue;
+        }
+        if !in_string && character == '\'' {
+            output.push(character);
+            if in_quoted_sheet && characters.get(index + 1) == Some(&'\'') {
+                output.push('\'');
+                index += 2;
+                continue;
+            }
+            in_quoted_sheet = !in_quoted_sheet;
+            index += 1;
+            continue;
+        }
+
+        let external_reference_boundary = index > 0 && characters[index - 1] == ']';
+        let matched_name = if !in_string && !in_quoted_sheet && !external_reference_boundary {
+            candidates.iter().find(|(_, name_characters)| {
+                index + name_characters.len() < characters.len()
+                    && characters[index..index + name_characters.len()] == name_characters[..]
+                    && characters[index + name_characters.len()] == '!'
+            })
+        } else {
+            None
+        };
+        if let Some((name, _)) = matched_name {
+            output.push('\'');
+            output.push_str(&name.replace('\'', "''"));
+            output.push_str("'!");
+            index += name.chars().count() + 1;
+            references_quoted += 1;
+            continue;
+        }
+
+        output.push(character);
+        index += 1;
+    }
+    (output, references_quoted)
 }
 
 fn clear_formula_caches_for_recalculation_xml(
@@ -4436,7 +4610,10 @@ mod external_hyperlink_tests {
 
 #[cfg(test)]
 mod formula_cache_recalculation_tests {
-    use super::{clear_formula_caches_for_recalculation, MAIN_NS, PACKAGE_REL_NS, REL_NS};
+    use super::{
+        clear_formula_caches_for_office_recalculation, clear_formula_caches_for_recalculation,
+        MAIN_NS, PACKAGE_REL_NS, REL_NS,
+    };
     use anyhow::Result;
     use roxmltree::Document;
     use std::{
@@ -4576,6 +4753,90 @@ mod formula_cache_recalculation_tests {
         );
         assert!(!patched_xml.contains("<x:v>"));
         assert!(!patched_xml.contains(" t=\"str\""));
+        Ok(())
+    }
+
+    #[test]
+    fn office_recalculation_quotes_only_unsafe_internal_sheet_references() -> Result<()> {
+        let source = temp_path("office-reference-source.xlsx");
+        let output = temp_path("office-reference-output.xlsx");
+        let root_rels = format!(
+            r#"<Relationships xmlns="{PACKAGE_REL_NS}"><Relationship Id="rId0" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>"#
+        );
+        let workbook = format!(
+            r#"<x:workbook xmlns:x="{MAIN_NS}" xmlns:r="{REL_NS}"><x:sheets><x:sheet name="核对" sheetId="1" r:id="rId1"/><x:sheet name="差额（一期）" sheetId="2" r:id="rId2"/></x:sheets></x:workbook>"#
+        );
+        let workbook_rels = format!(
+            r#"<Relationships xmlns="{PACKAGE_REL_NS}"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/></Relationships>"#
+        );
+        let formula = r#"IF('核对'!A1="差额（一期）!A1",差额（一期）!A1,核对!A1)"#;
+        let first_sheet = format!(
+            r#"<x:worksheet xmlns:x="{MAIN_NS}"><x:sheetData><x:row r="1"><x:c r="A1" t="str"><x:f>{formula}</x:f><x:v>cached</x:v></x:c></x:row></x:sheetData></x:worksheet>"#
+        );
+        let second_sheet = format!(
+            r#"<x:worksheet xmlns:x="{MAIN_NS}"><x:sheetData><x:row r="1"><x:c r="A1"><x:v>9</x:v></x:c></x:row></x:sheetData></x:worksheet>"#
+        );
+        let mut zip = ZipWriter::new(File::create(&source)?);
+        for (name, content) in [
+            ("_rels/.rels", root_rels),
+            ("xl/workbook.xml", workbook),
+            ("xl/_rels/workbook.xml.rels", workbook_rels),
+            ("xl/worksheets/sheet1.xml", first_sheet),
+            ("xl/worksheets/sheet2.xml", second_sheet.clone()),
+            ("custom/keep.txt", "keep unchanged".to_owned()),
+        ] {
+            zip.start_file(name, SimpleFileOptions::default())?;
+            zip.write_all(content.as_bytes())?;
+        }
+        zip.finish()?;
+
+        let report = clear_formula_caches_for_office_recalculation(&source, &output)?;
+        assert_eq!(report.formula_cells, 1);
+        assert_eq!(report.cache_values_removed, 1);
+        assert_eq!(report.formula_references_quoted, 1);
+        assert_eq!(report.worksheet_parts, ["xl/worksheets/sheet1.xml"]);
+
+        let mut source_zip = ZipArchive::new(File::open(&source)?)?;
+        let mut source_xml = String::new();
+        source_zip
+            .by_name("xl/worksheets/sheet1.xml")?
+            .read_to_string(&mut source_xml)?;
+        assert!(source_xml.contains("差额（一期）!A1"));
+
+        let mut output_zip = ZipArchive::new(File::open(&output)?)?;
+        let mut output_xml = String::new();
+        output_zip
+            .by_name("xl/worksheets/sheet1.xml")?
+            .read_to_string(&mut output_xml)?;
+        let document = Document::parse(&output_xml)?;
+        let formula_cell = document
+            .descendants()
+            .find(|node| {
+                node.is_element()
+                    && node.tag_name().namespace() == Some(MAIN_NS)
+                    && node.tag_name().name() == "c"
+                    && node.attribute("r") == Some("A1")
+            })
+            .unwrap();
+        let formula = formula_cell
+            .children()
+            .find(|node| node.is_element() && node.tag_name().name() == "f")
+            .unwrap();
+        assert_eq!(
+            formula.text(),
+            Some(r#"IF('核对'!A1="差额（一期）!A1",'差额（一期）'!A1,核对!A1)"#)
+        );
+        assert!(!formula_cell
+            .children()
+            .any(|node| node.is_element() && node.tag_name().name() == "v"));
+        let mut unchanged_sheet = String::new();
+        output_zip
+            .by_name("xl/worksheets/sheet2.xml")?
+            .read_to_string(&mut unchanged_sheet)?;
+        assert_eq!(unchanged_sheet, second_sheet);
+
+        fs::remove_file(source)?;
+        fs::remove_file(output)?;
         Ok(())
     }
 }

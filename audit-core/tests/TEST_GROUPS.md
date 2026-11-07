@@ -29,7 +29,9 @@ Linux 桌面真机可双击仓库根目录 `运行Linux全量测试.sh`：脚本
 Windows 双语 PE 产品属性、关于五连击密码显示入口及脚本语法；
 后端用例检查错误密码、本次运行状态与设置文件不变。前端需要 Node.js，缺失时明确跳过。
 
-## S5：逐笔统计系统（配置版）
+## S5：历史测试图谱（已从当前 Rust 产品移除）
+
+> 以下只记录旧 Python 测试覆盖范围，不是当前 Rust 产品的可运行测试清单。
 
 运行 `python -m pytest -q -rs -m s5 core/tests`。`core/tests/s5/` 包含迁入的合成读取、
 表达式、OOXML、条件格式测试及宿主适配测试，覆盖显式模板、只读输入、V_PRE 缺失与配对、
@@ -185,7 +187,7 @@ Flask 浏览器路由另做隔离冒烟。来源独立 CLI/HTTP 层不迁入，�
 | FAST_OOXML 与 openpyxl 的表单、数值、格式、颜色、隐藏行一致 | `test_central_renderers.py::DualModeParityTests::test_sheet_names_and_order_match`、`::test_cell_values_match`、`::test_number_formats_match`、`::test_warning_fills_match`、`::test_hidden_rows_match` |
 | 3.3 配置检查及内嵌表单引用 | `test_s3_forms_config_check.py::test_formal_config_passes_and_is_not_modified`、`::test_missing_referenced_embedded_form_sheet_is_reported` |
 
-### S5-F01 汇总核查表校验
+### S5-F01 汇总核查表校验（历史记录）
 
 - `s5/test_s5_recognition.py`：模板、业务与报告期识别；日期冲突/缺失、模板/业务歧义明确提示；源工作表全部包含于模板时视为匹配，模板多出的表不降级，源工作簿多出的表单独标注；源目录输出跟随与固定。
 - `s5/test_s5_integration.py::test_complete_f1_explicit_template_source_without_names_final_cf_and_read_only`：源表无命名区域时使用显式模板；批次与单机构结果保留条件格式；输入哈希不变。

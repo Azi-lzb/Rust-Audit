@@ -296,7 +296,9 @@ fn build_dataset<'a>(
             region_name: fields[5].trim().to_owned(),
             order_code: clean_code(&fields[6]),
             indicator,
-            indicator_name: fields[8].trim().to_owned(),
+            // 指标名称是展示字段：保留原始缩进/空白（源生产 csv_importer 同口径）；
+            // 输出时由高级设置决定是否 trim。
+            indicator_name: fields[8].to_owned(),
             data_attr: fields[9].trim().to_owned(),
             currency: fields[10].trim().to_owned(),
             frequency: fields[11].trim().to_owned(),

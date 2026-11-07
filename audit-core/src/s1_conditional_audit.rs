@@ -1,12 +1,13 @@
-//! S1 conditional-format extraction from evaluator results into Audit issues.
+//! S1 conditional-format extraction from native display observations or the
+//! static evaluator fallback into Audit issues.
 //!
-//! This is the business-output stage for the existing static Rust evaluator.
 //! Template configuration loading, the remaining S1 rule engine, history, and
-//! workbook writeback remain separate migration work.
+//! workbook writeback remain separate business stages.
 
 use crate::{
     conditional_format::{
-        evaluate_workbook_dump, evaluate_xlsx_workbook_with_dump, ConditionalDiagnostic,
+        apply_conditional_display_scan, evaluate_workbook_dump,
+        evaluate_xlsx_workbook_with_dump, ConditionalDiagnostic, ConditionalDisplayScan,
         ConditionalEvaluationReport, ConditionalTrigger, EvaluationStatus,
     },
     models::{CopyRange, Issue},
@@ -136,6 +137,73 @@ pub fn extract_conditional_issues(
         structure_ranges,
         metadata,
     )
+}
+
+/// Build S1 conditional-format findings using Excel's actual rendered fill
+/// differences as the trigger truth, while the OOXML rules provide labels and
+/// formula text. This intentionally includes blank targets whose displayed
+/// fill differs from their stored base fill.
+pub fn extract_conditional_issues_with_display_scan(
+    workbook_path: impl AsRef<Path>,
+    source_file: impl AsRef<Path>,
+    scan_areas: &[String],
+    structure_ranges: &[CopyRange],
+    metadata: &S1ConditionalMetadata,
+    display_scan: &ConditionalDisplayScan,
+) -> Result<S1ConditionalAuditResult> {
+    let workbook_path = workbook_path.as_ref();
+    let source_file = source_file.as_ref();
+    if !workbook_path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| matches!(extension.to_ascii_lowercase().as_str(), "xlsx" | "xlsm"))
+    {
+        bail!("条件格式规则求值目前只支持 OOXML 工作簿（.xlsx/.xlsm）");
+    }
+    let (evaluation, workbook) = evaluate_xlsx_workbook_with_dump(workbook_path, scan_areas)?;
+    let evaluation = apply_conditional_display_scan(evaluation, &workbook, display_scan);
+    build_conditional_issues(
+        workbook_path,
+        source_file,
+        &workbook,
+        evaluation,
+        structure_ranges,
+        metadata,
+    )
+}
+
+/// Preserve static findings if Office cannot render a workbook, but mark the
+/// result partial so the caller cannot mistake it for a display-color check.
+pub fn extract_conditional_issues_with_display_failure(
+    workbook_path: impl AsRef<Path>,
+    source_file: impl AsRef<Path>,
+    scan_areas: &[String],
+    structure_ranges: &[CopyRange],
+    metadata: &S1ConditionalMetadata,
+    reason: impl Into<String>,
+) -> Result<S1ConditionalAuditResult> {
+    let mut result = extract_conditional_issues(
+        workbook_path,
+        source_file,
+        scan_areas,
+        structure_ranges,
+        metadata,
+    )?;
+    let reason = reason.into();
+    result.evaluation.status = "static_fallback_display_unavailable";
+    result.evaluation.reader = "calamine+namespace_aware_ooxml_static_fallback";
+    result.evaluation.diagnostics.push(ConditionalDiagnostic {
+        sheet: String::new(),
+        cell: String::new(),
+        applies_to: String::new(),
+        rule_type: "display_format".to_owned(),
+        formula: String::new(),
+        priority: 0,
+        status: EvaluationStatus::Error,
+        reason,
+    });
+    result.status = "completed_with_diagnostics";
+    Ok(result)
 }
 
 /// Evaluate and build S1 findings from a workbook that has already been read
@@ -784,6 +852,36 @@ mod tests {
             resolve_indicator(&sheet, &structure_ranges, 3, 2),
             "贷款余额｜本期"
         );
+    }
+
+    #[test]
+    fn error_valued_header_is_not_used_as_indicator_text() {
+        let sheet = SheetDump {
+            name: "Data".to_owned(),
+            values: [
+                ("B1".to_owned(), json!({"type":"error","value":"Div0"})),
+                ("B2".to_owned(), json!({"type":"string","value":"余额"})),
+            ]
+            .into_iter()
+            .collect(),
+            formulas: Default::default(),
+            formula_status: "read_by_calamine".to_owned(),
+            merges: Vec::new(),
+            merge_status: "read_by_calamine".to_owned(),
+            comments: Default::default(),
+            comments_status: "read_by_namespace_aware_ooxml_supplement".to_owned(),
+            conditional_formatting: Vec::new(),
+            conditional_formatting_status: "read_by_namespace_aware_ooxml_supplement".to_owned(),
+            data_validations: Vec::new(),
+            data_validations_status: "read_by_namespace_aware_ooxml_supplement".to_owned(),
+        };
+        let structure_ranges = [CopyRange {
+            sheet_name: "Data".to_owned(),
+            address: "A1:B3".to_owned(),
+        }];
+
+        assert_eq!(display_value(&sheet, 1, 2), None);
+        assert_eq!(resolve_indicator(&sheet, &structure_ranges, 3, 2), "余额");
     }
 
     #[test]

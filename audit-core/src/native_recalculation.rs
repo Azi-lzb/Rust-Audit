@@ -62,49 +62,85 @@ fn run_native_com_worker(engine: &str) -> Result<()> {
             if request.get("type").and_then(Value::as_str) == Some("shutdown") {
                 return Ok(None);
             }
-            ensure!(
-                request.get("type").and_then(Value::as_str) == Some("recalculate"),
-                "原生 COM 请求类型无效"
-            );
-            let mode = request
-                .get("mode")
+            let request_type = request
+                .get("type")
                 .and_then(Value::as_str)
-                .unwrap_or("full");
+                .context("原生 COM 请求缺少类型")?;
             let input = PathBuf::from(
                 request
                     .get("input")
                     .and_then(Value::as_str)
                     .context("缺少重算输入")?,
             );
-            let output = PathBuf::from(
-                request
-                    .get("output")
-                    .and_then(Value::as_str)
-                    .context("缺少重算输出")?,
-            );
-            ensure!(input.is_file(), "原生 COM 输入工作簿不存在");
-            ensure!(
-                !output.exists() && input != output,
-                "原生 COM 输出已存在或与输入相同"
-            );
-            let stage = output.with_extension("com-progress.txt");
             let session = session.as_mut().with_context(|| {
                 format!(
                     "Office COM 不可用：{}",
                     initialization_error.as_deref().unwrap_or("未知原因")
                 )
             })?;
+            if request_type == "scan_conditional_display_colors" {
+                let scan_areas = request
+                    .get("scan_areas")
+                    .and_then(Value::as_array)
+                    .context("条件格式显示色扫描缺少区域列表")?
+                    .iter()
+                    .map(|value| {
+                        value
+                            .as_str()
+                            .map(str::to_owned)
+                            .context("条件格式扫描区域必须是文本")
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                ensure!(input.is_file(), "条件格式显示色扫描输入不存在");
+                let scan = session.scan_conditional_display_colors(&input, &scan_areas)?;
+                return Ok(Some(serde_json::json!({
+                    "status": "display_colors_scanned",
+                    "engine": scan.engine_name.clone(),
+                    "engine_process_id": scan.engine_process_id,
+                    "scan": scan,
+                })));
+            }
+            ensure!(request_type == "recalculate", "原生 COM 请求类型无效");
+            let mode = request
+                .get("mode")
+                .and_then(Value::as_str)
+                .unwrap_or("full");
+            let output = PathBuf::from(
+                request
+                    .get("output")
+                    .and_then(Value::as_str)
+                    .context("缺少重算输出")?,
+            );
+            let save_in_place = request
+                .get("save_in_place")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            ensure!(input.is_file(), "原生 COM 输入工作簿不存在");
+            if save_in_place {
+                ensure!(
+                    input == output && output.is_file(),
+                    "原生 COM 原位保存必须使用已存在的独立工作簿副本"
+                );
+            } else {
+                ensure!(
+                    !output.exists() && input != output,
+                    "原生 COM 输出已存在或与输入相同"
+                );
+            }
+            let stage = output.with_extension("com-progress.txt");
             let stages = session.recalculate_with_mode(
                 &input,
                 &output,
                 recalculation_timeout(),
                 &stage,
                 mode,
+                save_in_place,
             )?;
             Ok(Some(serde_json::json!({
                 "status": "recalculated",
                 "engine": session.application_name(),
                 "engine_process_id": session.process_id(),
+                "save_mode": if save_in_place { "in_place" } else { "save_as" },
                 "stages_ms": stages,
             })))
         })();
@@ -139,19 +175,20 @@ fn run_native_com_worker(engine: &str) -> Result<()> {
     } else {
         (serde_json::json!({"total_ms": 0}), None)
     };
+    let combined_quit_error = quit_error;
     println!(
         "{}",
         serde_json::json!({
             "status": "shutdown_complete",
             "engine_process_id": session.as_ref().and_then(|item| item.process_id()),
-            "excel_quit_succeeded": quit_error.is_none(),
-            "excel_quit_error": quit_error.as_deref(),
+            "excel_quit_succeeded": combined_quit_error.is_none(),
+            "excel_quit_error": combined_quit_error.as_deref(),
             "shutdown_stages_ms": shutdown_stages,
             "worker_shutdown_total_ms": shutdown_started.elapsed().as_millis() as u64,
         })
     );
     std::io::stdout().flush()?;
-    if let Some(error) = quit_error {
+    if let Some(error) = combined_quit_error {
         bail!("关闭私有 Office COM 实例失败：{error}");
     }
     Ok(())
@@ -160,8 +197,13 @@ fn run_native_com_worker(engine: &str) -> Result<()> {
 pub(crate) fn prepare_engine_input(input: &Path, directory: &Path, com: bool) -> Result<PathBuf> {
     let cacheless = directory.join("formula-cache-cleared.xlsx");
     let prepared = directory.join("recalculation-request.xlsx");
-    ooxml_patch::clear_formula_caches_for_recalculation(input, &cacheless)
-        .context("清除原有公式缓存")?;
+    if com {
+        ooxml_patch::clear_formula_caches_for_office_recalculation(input, &cacheless)
+            .context("规范 Office 公式引用并清除原有公式缓存")?;
+    } else {
+        ooxml_patch::clear_formula_caches_for_recalculation(input, &cacheless)
+            .context("清除原有公式缓存")?;
+    }
     ooxml_patch::patch_workbook_calculation_properties(
         &cacheless,
         &prepared,
@@ -314,6 +356,11 @@ fn promoted_error_constants(
         source.sheets.len() == result.sheets.len(),
         "重算改变了工作表数量"
     );
+    let sheet_names = source
+        .sheets
+        .iter()
+        .map(|sheet| sheet.name.as_str())
+        .collect::<Vec<_>>();
     let mut promoted = Vec::new();
     for (before, after) in source.sheets.iter().zip(&result.sheets) {
         ensure!(before.name == after.name, "重算改变了工作表名称或顺序");
@@ -323,8 +370,11 @@ fn promoted_error_constants(
                 .get(cell)
                 .with_context(|| format!("重算丢失公式 {}!{cell}", before.name))?;
             ensure!(
-                excel_reader::canonicalize_formula_boolean_literals(formula)
-                    == excel_reader::canonicalize_formula_boolean_literals(result_formula),
+                excel_reader::formula_text_equivalent_after_recalculation(
+                    formula,
+                    result_formula,
+                    &sheet_names,
+                ),
                 "重算改变公式 {}!{cell}",
                 before.name
             );
@@ -371,4 +421,89 @@ fn promoted_error_constants(
         }
     }
     Ok(promoted)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{promoted_error_constants, Value};
+    use excel_reader::{SheetDump, WorkbookDump};
+    use std::collections::BTreeMap;
+
+    fn sheet(
+        name: &str,
+        values: BTreeMap<String, Value>,
+        formulas: BTreeMap<String, String>,
+    ) -> SheetDump {
+        SheetDump {
+            name: name.to_owned(),
+            values,
+            formulas,
+            formula_status: "ok".to_owned(),
+            merges: Vec::new(),
+            merge_status: "ok".to_owned(),
+            comments: BTreeMap::new(),
+            comments_status: "ok".to_owned(),
+            conditional_formatting: Vec::new(),
+            conditional_formatting_status: "ok".to_owned(),
+            data_validations: Vec::new(),
+            data_validations_status: "ok".to_owned(),
+        }
+    }
+
+    fn workbook(formula: &str, promoted_error: bool) -> WorkbookDump {
+        let mut values = BTreeMap::from([(
+            "A1".to_owned(),
+            serde_json::json!({"type":"error", "value":"#N/A"}),
+        )]);
+        let mut formulas = BTreeMap::from([("I10".to_owned(), formula.to_owned())]);
+        if promoted_error {
+            formulas.insert("A1".to_owned(), "#N/A".to_owned());
+            values.insert(
+                "A1".to_owned(),
+                serde_json::json!({"type":"error", "value":"#N/A"}),
+            );
+        }
+        WorkbookDump {
+            schema_version: 1,
+            reader: "test",
+            elapsed_ms: 0,
+            sheets: vec![
+                sheet("审核表", values, formulas),
+                sheet(
+                    "个人贷款发生额信息（隐藏发放）",
+                    BTreeMap::new(),
+                    BTreeMap::new(),
+                ),
+            ],
+        }
+    }
+
+    #[test]
+    fn error_constant_recovery_allows_excel_sheet_reference_quoting_only() {
+        let source = workbook(
+            "=IF(个人贷款发生额信息（隐藏发放）!C10=0,TRUE(),FALSE())",
+            false,
+        );
+        let recalculated = workbook(
+            "=IF('个人贷款发生额信息（隐藏发放）'!C10=0,TRUE,FALSE)",
+            true,
+        );
+
+        let promoted = promoted_error_constants(&source, &recalculated)
+            .expect("Excel's optional quoting and a typed error promotion are recoverable");
+        assert_eq!(promoted.len(), 1);
+        assert_eq!(promoted[0].sheet_name, "审核表");
+        assert_eq!(promoted[0].cell_reference, "A1");
+        assert_eq!(promoted[0].error_token, "#N/A");
+    }
+
+    #[test]
+    fn error_constant_recovery_rejects_changed_cell_reference() {
+        let source = workbook("=SUM(个人贷款发生额信息（隐藏发放）!C10)", false);
+        let recalculated = workbook("=SUM('个人贷款发生额信息（隐藏发放）'!D10)", true);
+
+        let error = promoted_error_constants(&source, &recalculated)
+            .expect_err("a changed cell reference must not be normalized away");
+        assert!(error.to_string().contains("重算改变公式"));
+    }
 }

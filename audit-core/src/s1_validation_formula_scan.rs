@@ -1,8 +1,8 @@
 //! S1 validation-formula error scan over template-defined validation areas.
 //!
 //! The template is the authority for scan coordinates. Formula text and
-//! defined names are read without recalculation; source values come from the
-//! stored workbook values exposed by the Rust reader.
+//! defined names are read without recalculation; result values come from the
+//! recalculated audit copy after the named validation ranges are copied into it.
 
 use crate::{
     models::Issue, s1_formula_audit::S1FormulaMetadata, template::normalize_template_name,
@@ -74,7 +74,6 @@ struct ValidationFormulaCell {
 pub struct S1ValidationFormulaScanPlan {
     template_paths: Vec<PathBuf>,
     formulas: BTreeMap<(String, String), String>,
-    template_errors: Vec<S1ValidationFormulaError>,
     template_read_time_ms: u128,
 }
 
@@ -95,8 +94,6 @@ impl S1ValidationFormulaScanPlan {
         }
 
         let mut formulas = BTreeMap::<(String, String), String>::new();
-        let mut template_errors = Vec::<S1ValidationFormulaError>::new();
-        let mut error_indices = HashMap::<(String, String, String), usize>::new();
         for template_path in &unique_paths {
             let names = read_defined_names(template_path)
                 .with_context(|| format!("读取模板命名区域 {}", template_path.display()))?;
@@ -117,50 +114,26 @@ impl S1ValidationFormulaScanPlan {
                 } else {
                     formulas.insert(key.clone(), cell.formula.clone());
                 }
-
-                let tokens = formula_error_tokens(&cell.formula);
-                let cached_value = workbook
-                    .sheets
-                    .iter()
-                    .find(|sheet| sheet.name == cell.sheet)
-                    .and_then(|sheet| read_cell_value(sheet, &cell.cell));
-                let cached_error = cached_value.as_ref().and_then(excel_error_value);
-                if tokens.is_empty() && cached_error.is_none() {
-                    continue;
-                }
-                let value = tokens.first().cloned().or(cached_error).unwrap_or_default();
-                let error = S1ValidationFormulaError {
-                    sheet: cell.sheet,
-                    cell: cell.cell,
-                    value,
-                    formula: cell.formula,
-                    source: String::new(),
-                    origin: "template_formula".to_owned(),
-                    template_paths: vec![template_path.to_string_lossy().into_owned()],
-                    formula_error_tokens: tokens,
-                };
-                merge_scan_error(&mut template_errors, &mut error_indices, &error, false);
             }
         }
 
         Ok(Self {
             template_paths: unique_paths,
             formulas,
-            template_errors,
             template_read_time_ms: started.elapsed().as_millis(),
         })
     }
 
-    /// Compare the formula cells selected by the template with stored source
-    /// values. No formula calculation or workbook modification is performed.
-    pub fn scan(&self, source_path: &Path) -> Result<S1ValidationFormulaScanReport> {
+    /// Compare template-selected formula cells with values in the recalculated
+    /// audit copy. No formula calculation or workbook modification is performed.
+    pub fn scan(&self, audit_copy_path: &Path) -> Result<S1ValidationFormulaScanReport> {
         let started = Instant::now();
         if self.template_paths.is_empty() {
             return Ok(S1ValidationFormulaScanReport {
                 status: "SKIPPED",
                 reader: READER,
                 read_diagnostics: WorkbookReadDiagnostics::default(),
-                reason: "本次规则没有读取布局模板；源工作簿也不提供可信的校验区域定义".to_owned(),
+                reason: "本次规则没有读取布局模板；审核副本也没有可信的校验区域定义".to_owned(),
                 template_count: 0,
                 formula_cells_scanned: 0,
                 missing_sheets: Vec::new(),
@@ -171,27 +144,22 @@ impl S1ValidationFormulaScanPlan {
         }
 
         let read_started = Instant::now();
-        let source_report = read_workbook_with_diagnostics(source_path)
-            .with_context(|| format!("读取源工作簿校验公式结果 {}", source_path.display()))?;
-        let read_diagnostics = source_report.diagnostics;
-        let source = source_report.workbook;
+        let audit_report = read_workbook_with_diagnostics(audit_copy_path)
+            .with_context(|| format!("读取审核副本校验公式结果 {}", audit_copy_path.display()))?;
+        let read_diagnostics = audit_report.diagnostics;
+        let audit_copy = audit_report.workbook;
         let read_time_ms = read_started.elapsed().as_millis();
-        let source_display = resolved_path(source_path);
-        let mut errors = self.template_errors.clone();
-        let mut error_indices = errors
-            .iter()
-            .enumerate()
-            .map(|(index, error)| {
-                (
-                    (error.sheet.clone(), error.cell.clone(), error.value.clone()),
-                    index,
-                )
-            })
-            .collect::<HashMap<_, _>>();
+        let audit_copy_display = resolved_path(audit_copy_path);
+        let mut errors = Vec::new();
+        let mut error_indices = HashMap::new();
         let mut missing_sheets = BTreeSet::new();
 
         for ((sheet_name, cell_address), formula) in &self.formulas {
-            let Some(sheet) = source.sheets.iter().find(|sheet| sheet.name == *sheet_name) else {
+            let Some(sheet) = audit_copy
+                .sheets
+                .iter()
+                .find(|sheet| sheet.name == *sheet_name)
+            else {
                 missing_sheets.insert(sheet_name.clone());
                 continue;
             };
@@ -205,8 +173,8 @@ impl S1ValidationFormulaScanPlan {
                 cell: cell_address.clone(),
                 value,
                 formula: formula.clone(),
-                source: source_display.clone(),
-                origin: "source_cached_value".to_owned(),
+                source: audit_copy_display.clone(),
+                origin: "audit_copy_cached_value".to_owned(),
                 template_paths: Vec::new(),
                 formula_error_tokens: Vec::new(),
             };
@@ -227,18 +195,12 @@ impl S1ValidationFormulaScanPlan {
                 cell: cell.coordinate.clone(),
                 value: cell.token.clone(),
                 formula: formula.clone(),
-                source: source_display.clone(),
-                origin: "source_cached_value".to_owned(),
+                source: audit_copy_display.clone(),
+                origin: "audit_copy_cached_value".to_owned(),
                 template_paths: Vec::new(),
                 formula_error_tokens: vec![cell.token.clone()],
             };
             merge_scan_error(&mut errors, &mut error_indices, &error, true);
-        }
-
-        for error in &mut errors {
-            if error.source.is_empty() {
-                error.source = source_display.clone();
-            }
         }
 
         Ok(S1ValidationFormulaScanReport {
@@ -282,20 +244,10 @@ pub fn issues_from_validation_formula_scan(
         .errors
         .iter()
         .map(|error| {
-            let message = match error.origin.as_str() {
-                "template_formula" => format!(
-                    "模板校验公式本身含 Excel 错误值或引用 {}；原公式：{}",
-                    error.value, error.formula
-                ),
-                "template_formula_and_source_cached_value" => format!(
-                    "模板校验公式及源文件结果均包含 Excel 错误值 {}；原公式：{}",
-                    error.value, error.formula
-                ),
-                _ => format!(
-                    "模板校验公式在源文件中返回 Excel 错误值 {}；原公式：{}",
-                    error.value, error.formula
-                ),
-            };
+            let message = format!(
+                "复制到审核副本后的校验公式返回 Excel 错误值 {}；原公式：{}",
+                error.value, error.formula
+            );
             let issue_id = formula_error_issue_id(source_path, &error.sheet, &error.cell);
             Issue {
                 issue_id: issue_id.clone(),
@@ -325,12 +277,7 @@ pub fn issues_from_validation_formula_scan(
                 comparison_value: Value::String(String::new()),
                 reference_value: Value::String(String::new()),
                 difference_value: Value::String(String::new()),
-                detail: format!(
-                    "来源：{}；模板：{}；公式：{}",
-                    error.origin,
-                    error.template_paths.join("、"),
-                    error.formula
-                ),
+                detail: format!("审核副本：{}；公式：{}", error.source, error.formula),
                 institution_feedback: String::new(),
                 auditor_opinion: String::new(),
             }
@@ -339,7 +286,7 @@ pub fn issues_from_validation_formula_scan(
 
     for sheet_name in &report.missing_sheets {
         let issue_id = scan_issue_id(source_path, sheet_name, "模板校验公式扫描失败");
-        let message = format!("本次源文件缺少模板校验公式所在工作表：{sheet_name}");
+        let message = format!("复制后的审核副本缺少模板校验公式所在工作表：{sheet_name}");
         issues.push(Issue {
             issue_id: issue_id.clone(),
             period: metadata.period.clone(),
@@ -774,15 +721,15 @@ mod tests {
     }
 
     #[test]
-    fn scans_only_source_cells_selected_by_template_validation_names() {
+    fn scans_only_audit_copy_cells_selected_by_template_validation_names() {
         let directory = temporary_directory("range");
         let template_path = directory.join("template.xlsx");
-        let source_path = directory.join("source.xlsx");
+        let audit_copy_path = directory.join("audit-copy.xlsx");
         template(&template_path);
-        source(&source_path, true);
+        source(&audit_copy_path, true);
 
         let plan = S1ValidationFormulaScanPlan::load(&[template_path]).expect("load scan plan");
-        let report = plan.scan(&source_path).expect("scan source values");
+        let report = plan.scan(&audit_copy_path).expect("scan audit-copy values");
         assert_eq!(report.status, "COMPLETED");
         assert_eq!(report.template_count, 1);
         assert_eq!(report.formula_cells_scanned, 1);
@@ -791,7 +738,7 @@ mod tests {
         assert_eq!(report.errors[0].sheet, "校验表");
         assert_eq!(report.errors[0].cell, "A1");
         assert_eq!(report.errors[0].value, "#DIV/0!");
-        assert_eq!(report.errors[0].origin, "source_cached_value");
+        assert_eq!(report.errors[0].origin, "audit_copy_cached_value");
         fs::remove_dir_all(directory).expect("remove temporary fixtures");
     }
 
@@ -817,10 +764,10 @@ mod tests {
     }
 
     #[test]
-    fn reports_literal_template_error_tokens_but_ignores_quoted_formula_text() {
+    fn does_not_report_template_cached_errors_before_audit_copy_recalculation() {
         let directory = temporary_directory("template_error");
         let template_path = directory.join("template.xlsx");
-        let source_path = directory.join("source.xlsx");
+        let audit_copy_path = directory.join("audit-copy.xlsx");
         let mut workbook = Workbook::new();
         let sheet = workbook.add_worksheet();
         sheet.set_name("校验表").expect("name template sheet");
@@ -839,14 +786,13 @@ mod tests {
             .add_worksheet()
             .set_name("校验表")
             .expect("name source sheet");
-        source.save(&source_path).expect("save source workbook");
+        source
+            .save(&audit_copy_path)
+            .expect("save audit-copy workbook");
 
         let plan = S1ValidationFormulaScanPlan::load(&[template_path]).expect("load scan plan");
-        let report = plan.scan(&source_path).expect("scan source values");
-        assert_eq!(report.errors.len(), 1);
-        assert_eq!(report.errors[0].value, "#REF!");
-        assert_eq!(report.errors[0].origin, "template_formula");
-        assert_eq!(report.errors[0].formula_error_tokens, ["#REF!"]);
+        let report = plan.scan(&audit_copy_path).expect("scan audit-copy values");
+        assert!(report.errors.is_empty());
         fs::remove_dir_all(directory).expect("remove temporary fixtures");
     }
 }

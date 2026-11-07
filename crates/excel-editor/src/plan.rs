@@ -1144,6 +1144,7 @@ pub struct ExcelModifier {
     platform: String,
     backends: Vec<Arc<dyn EditBackend>>,
     validator: Arc<dyn OutputValidator>,
+    unverified_engine_opt_ins: Vec<EngineId>,
 }
 
 impl ExcelModifier {
@@ -1161,7 +1162,18 @@ impl ExcelModifier {
             platform,
             backends,
             validator,
+            unverified_engine_opt_ins: Vec::new(),
         })
+    }
+
+    /// Allow an explicitly selected unverified backend to produce a candidate.
+    /// Operation support and preservation claims are then enforced by the
+    /// backend and output validator before anything is published.
+    pub fn with_unverified_engine_opt_in(mut self, engine: EngineId) -> Self {
+        if !self.unverified_engine_opt_ins.contains(&engine) {
+            self.unverified_engine_opt_ins.push(engine);
+        }
+        self
     }
 
     pub fn route(&self, plan: &ExcelEditPlan) -> Vec<BackendRouteDecision> {
@@ -1169,8 +1181,10 @@ impl ExcelModifier {
             .iter()
             .map(|backend| {
                 let capability = backend.capability();
+                let opted_in_unverified = capability.status == CapabilityStatus::Unverified
+                    && self.unverified_engine_opt_ins.contains(&capability.engine);
                 let mut rejected_reasons = Vec::new();
-                if capability.status != CapabilityStatus::Passed {
+                if capability.status != CapabilityStatus::Passed && !opted_in_unverified {
                     rejected_reasons.push(format!("capability status is {:?}", capability.status));
                 }
                 if capability.format != plan.format {
@@ -1179,7 +1193,9 @@ impl ExcelModifier {
                 if !plan.workbook.inventory_complete {
                     rejected_reasons.push("workbook feature inventory is incomplete".to_owned());
                 }
-                if !plan.operation_kinds().is_subset(&capability.operations) {
+                if !opted_in_unverified
+                    && !plan.operation_kinds().is_subset(&capability.operations)
+                {
                     rejected_reasons
                         .push("backend does not cover the whole operation batch".to_owned());
                 }
@@ -1191,7 +1207,7 @@ impl ExcelModifier {
                     rejected_reasons
                         .push("present workbook objects exceed tested scope".to_owned());
                 }
-                if !plan.preserve.is_subset(&capability.preserved) {
+                if !opted_in_unverified && !plan.preserve.is_subset(&capability.preserved) {
                     rejected_reasons
                         .push("required preservation contract is not covered".to_owned());
                 }
@@ -1205,6 +1221,7 @@ impl ExcelModifier {
                             && !evidence.adapter_version.trim().is_empty()
                             && !evidence.engine_version.trim().is_empty()
                             && evidence.platform == self.platform => {}
+                    _ if opted_in_unverified => {}
                     _ => rejected_reasons
                         .push("passed capability has no matching evidence".to_owned()),
                 }

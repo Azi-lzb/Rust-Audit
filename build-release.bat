@@ -19,6 +19,10 @@ if errorlevel 1 goto build_failed
 if not exist "%PROJECT_ROOT%dist" mkdir "%PROJECT_ROOT%dist"
 copy /y "%CARGO_TARGET_DIR%\release\open-data-audit.exe" "%PROJECT_ROOT%dist\open-data-audit.exe" >nul
 if errorlevel 1 goto copy_failed
+set "OPENPYXL_WORKER_DIR=%PROJECT_ROOT%dist\libexec\open-data-audit\openpyxl\worker"
+if not exist "%OPENPYXL_WORKER_DIR%" mkdir "%OPENPYXL_WORKER_DIR%"
+copy /y "%PROJECT_ROOT%crates\excel-editor\python\openpyxl_worker.py" "%OPENPYXL_WORKER_DIR%\openpyxl_worker.py" >nul
+if errorlevel 1 goto copy_failed
 echo Audit Release EXE copied to %PROJECT_ROOT%dist.
 popd
 exit /b 0

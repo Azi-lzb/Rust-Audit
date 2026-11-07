@@ -4,6 +4,7 @@
 //! access is delegated to the shared `excel-reader` Calamine adapter.
 
 use crate::{
+    discovery::ScanDepth,
     report_source::report_source_identity,
     unit_conversion::{convert_amount_from_cell, AmountSourceFormat, DecimalTuple},
 };
@@ -211,6 +212,23 @@ pub fn import_period_directory_with_progress(
     directory: impl AsRef<Path>,
     config: &S2ImportConfig,
     label: &str,
+    on_progress: Option<&mut dyn FnMut(usize, usize, &str)>,
+) -> Result<S2ImportResult> {
+    import_period_directory_with_scan_depth(
+        directory,
+        config,
+        label,
+        ScanDepth::RootOnly,
+        on_progress,
+    )
+}
+
+/// Import one S2 period directory using the GUI-selected recursion depth.
+pub fn import_period_directory_with_scan_depth(
+    directory: impl AsRef<Path>,
+    config: &S2ImportConfig,
+    label: &str,
+    depth: ScanDepth,
     mut on_progress: Option<&mut dyn FnMut(usize, usize, &str)>,
 ) -> Result<S2ImportResult> {
     let directory = directory.as_ref();
@@ -218,26 +236,7 @@ pub fn import_period_directory_with_progress(
         bail!("{label}目录不存在：{}", directory.display());
     }
 
-    let mut files = Vec::new();
-    for entry in fs::read_dir(directory).with_context(|| format!("read {}", directory.display()))? {
-        let entry = entry?;
-        let path = entry.path();
-        let Some(file_name) = path.file_name().and_then(|value| value.to_str()) else {
-            continue;
-        };
-        let extension = path
-            .extension()
-            .and_then(|value| value.to_str())
-            .unwrap_or_default()
-            .to_ascii_lowercase();
-        if path.is_file()
-            && matches!(extension.as_str(), "xls" | "xlsx")
-            && !file_name.starts_with("~$")
-        {
-            files.push(path);
-        }
-    }
-    files.sort();
+    let files = collect_period_workbooks(directory, depth)?;
     if files.is_empty() {
         bail!(
             "{label}目录没有可读取的 .xls/.xlsx 文件：{}",
@@ -467,6 +466,53 @@ pub fn import_period_directory_with_progress(
         result.records.push(record);
     }
     Ok(result)
+}
+
+fn collect_period_workbooks(directory: &Path, max_depth: ScanDepth) -> Result<Vec<PathBuf>> {
+    fn visit(
+        directory: &Path,
+        directory_depth: usize,
+        max_depth: ScanDepth,
+        files: &mut Vec<PathBuf>,
+    ) -> Result<()> {
+        for entry in fs::read_dir(directory)
+            .with_context(|| format!("read {}", directory.display()))?
+        {
+            let entry = entry?;
+            let path = entry.path();
+            let kind = entry.file_type()?;
+            if kind.is_dir() {
+                let should_recurse = match max_depth {
+                    ScanDepth::RootOnly => false,
+                    ScanDepth::MaxDirectoryDepth(max) => directory_depth < max,
+                    ScanDepth::Full => true,
+                };
+                if should_recurse && entry.file_name() != "执行结果" {
+                    visit(&path, directory_depth + 1, max_depth, files)?;
+                }
+            } else if kind.is_file()
+                && matches!(
+                    path.extension()
+                        .and_then(|value| value.to_str())
+                        .unwrap_or_default()
+                        .to_ascii_lowercase()
+                        .as_str(),
+                    "xls" | "xlsx"
+                )
+                && !path
+                    .file_name()
+                    .is_some_and(|name| name.to_string_lossy().starts_with("~$"))
+            {
+                files.push(path);
+            }
+        }
+        Ok(())
+    }
+
+    let mut files = Vec::new();
+    visit(directory, 0, max_depth, &mut files)?;
+    files.sort();
+    Ok(files)
 }
 
 fn read_cell(sheet: &SheetValues, address: &str) -> Result<Option<CellValue>> {

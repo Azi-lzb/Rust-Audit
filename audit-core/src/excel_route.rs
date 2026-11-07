@@ -25,9 +25,9 @@
 use anyhow::Context;
 use excel_editor::{
     BackendCapability, CapabilityEvidence, CapabilityStatus, EditBackend, EditOperationKind,
-    EngineId, ExcelModifier, OoxmlImportBackend, OpenpyxlWorkerConfig, OpenpyxlXlsxBackend,
+    EngineId, ExcelModifier, OOXML_IMPORT_OPERATIONS, OoxmlImportBackend, OpenpyxlXlsxBackend,
     OpenpyxlXlsxValidator, PreservationRequirement, UmyaXlsxBackend, UmyaXlsxValidator,
-    WorkbookFeature, WorkbookFormat, OOXML_IMPORT_OPERATIONS,
+    WorkbookFeature, WorkbookFormat,
 };
 use std::{collections::BTreeSet, sync::Arc};
 
@@ -168,11 +168,19 @@ pub fn ooxml_import_capability(platform: &str) -> BackendCapability {
     }
 }
 
-/// Builds the production Excel modifier for the current platform. On the
-/// verified platform it routes XLSX edit batches to the qualified Umya
-/// backend; elsewhere the modifier has no backends and every batch fails
-/// closed with `NoEligibleBackend`.
+/// Builds the production Excel modifier for the current platform. S1-F01 uses
+/// the configured default order (OOXML, available openpyxl, Umya); other
+/// features retain the existing OOXML/Umya route.
 pub fn production_modifier(
+    feature: &str,
+) -> anyhow::Result<(ExcelModifier, Option<BackendCapability>)> {
+    if feature == "S1-F01" {
+        return s1_f01_modifier(feature, "auto");
+    }
+    production_modifier_generic(feature)
+}
+
+fn production_modifier_generic(
     feature: &str,
 ) -> anyhow::Result<(ExcelModifier, Option<BackendCapability>)> {
     let platform = runtime_platform();
@@ -193,6 +201,66 @@ pub fn production_modifier(
     Ok((modifier, capability))
 }
 
+/// Builds an openpyxl backend only for S1-F01. The worker remains a candidate
+/// path; every resulting workbook must pass the same independent validator.
+fn s1_f01_openpyxl_backend(platform: &str, feature: &str) -> anyhow::Result<Arc<dyn EditBackend>> {
+    let capability = openpyxl_capability(platform, feature)?;
+    let binary = std::env::current_exe().context("定位当前可执行文件以解析 openpyxl 运行时")?;
+    let backend = OpenpyxlXlsxBackend::for_product_binary(capability, binary, "open-data-audit")?;
+    Ok(Arc::new(backend))
+}
+
+/// S1-F01 backend choices. Auto orders candidates OOXML → openpyxl (only when
+/// its interpreter, worker and module are available) → Umya. An automatic
+/// fallback occurs only after an earlier backend explicitly rejects the batch
+/// before writing; backend failures after writing or failed validation stop
+/// the run. Each attempt still starts from an untouched input copy.
+fn s1_f01_modifier(
+    feature: &str,
+    selection: &str,
+) -> anyhow::Result<(ExcelModifier, Option<BackendCapability>)> {
+    let platform = runtime_platform();
+    let Some(umya_capability) = production_capability(&platform) else {
+        // Keep the existing fail-closed behavior on platforms without Umya
+        // production evidence; the OOXML trial does not broaden platform scope.
+        return production_modifier_generic(feature);
+    };
+
+    let mut backends: Vec<Arc<dyn EditBackend>> = Vec::new();
+    let mut unverified = Vec::new();
+    match selection {
+        "auto" | "" => {
+            backends.push(Arc::new(OoxmlImportBackend::new(ooxml_import_capability(
+                &platform,
+            ))?));
+            unverified.push(EngineId::OoxmlPatch);
+            if crate::app_settings::openpyxl_selection_status().0 {
+                backends.push(s1_f01_openpyxl_backend(&platform, feature)?);
+                unverified.push(EngineId::OpenpyxlWorker);
+            }
+            backends.push(Arc::new(UmyaXlsxBackend::new(umya_capability.clone())?));
+        }
+        "ooxml" => {
+            backends.push(Arc::new(OoxmlImportBackend::new(ooxml_import_capability(
+                &platform,
+            ))?));
+            unverified.push(EngineId::OoxmlPatch);
+        }
+        "openpyxl" => {
+            backends.push(s1_f01_openpyxl_backend(&platform, feature)?);
+            unverified.push(EngineId::OpenpyxlWorker);
+        }
+        "umya" => backends.push(Arc::new(UmyaXlsxBackend::new(umya_capability.clone())?)),
+        other => anyhow::bail!("未知 S1-F01 修改引擎：{other}"),
+    }
+    let mut modifier = ExcelModifier::new(platform, backends, Arc::new(OpenpyxlXlsxValidator))
+        .with_context(|| format!("初始化 {feature} Excel-Core 生产路由"))?;
+    for engine in unverified {
+        modifier = modifier.with_unverified_engine_opt_in(engine);
+    }
+    Ok((modifier, Some(umya_capability)))
+}
+
 /// Registered-backend count for user-facing diagnostics.
 pub fn registered_backend_count(platform: &str) -> usize {
     usize::from(production_capability(platform).is_some())
@@ -204,8 +272,8 @@ pub fn registered_backend_count(platform: &str) -> usize {
 const OPENPYXL_EVIDENCE: &str =
     include_str!("../capability_evidence/openpyxl_windows_x86_64_20261029.json");
 
-/// Reads the embedded openpyxl evidence and reports whether the advanced
-/// compatibility option is available on the current platform.
+/// Reads the embedded openpyxl evidence and reports whether its production
+/// capability verification passed on the current platform.
 pub fn openpyxl_evidence_status() -> (bool, String) {
     let Ok(document) = serde_json::from_str::<serde_json::Value>(OPENPYXL_EVIDENCE) else {
         return (false, "openpyxl 能力证据文件无法解析".to_owned());
@@ -293,13 +361,58 @@ fn preservation_requirement_from_name(name: &str) -> Option<PreservationRequirem
     })
 }
 
-/// Builds the openpyxl capability from the embedded evidence. Returns `None`
-/// while the evidence records the engine as unavailable (today) or when the
-/// evidence platform does not match; callers keep failing closed.
-fn openpyxl_capability(platform: &str) -> anyhow::Result<Option<BackendCapability>> {
+/// Builds a verified capability when the embedded evidence passed. Otherwise,
+/// returns an unverified capability for explicit trial selection; the router
+/// requires that opt-in and still validates every candidate before publish.
+fn openpyxl_capability(platform: &str, feature: &str) -> anyhow::Result<BackendCapability> {
     let (available, _) = openpyxl_evidence_status();
     if !available {
-        return Ok(None);
+        // S1-F01 may explicitly trial the isolated worker against its real
+        // ImportRange batch. This is not a general Openpyxl capability grant:
+        // the candidate remains Unverified, is opt-in only, and must pass the
+        // same post-write validator before ExcelModifier publishes it.
+        if feature == "S1-F01" {
+            return Ok(BackendCapability {
+                engine: EngineId::OpenpyxlWorker,
+                status: CapabilityStatus::Unverified,
+                format: WorkbookFormat::Xlsx,
+                operations: [
+                    EditOperationKind::CreateSheet,
+                    EditOperationKind::ImportRange,
+                    EditOperationKind::SetComment,
+                    EditOperationKind::SetWorkbookCalculationProperties,
+                    EditOperationKind::DeleteSheet,
+                ]
+                .into_iter()
+                .collect(),
+                supported_features: production_supported_features(),
+                preserved: [
+                    PreservationRequirement::CellValuesAndTypes,
+                    PreservationRequirement::FormulaText,
+                    PreservationRequirement::CommentsAndPositions,
+                    PreservationRequirement::MergedRanges,
+                    PreservationRequirement::ConditionalFormatting,
+                    PreservationRequirement::DataValidations,
+                    PreservationRequirement::DefinedNames,
+                    PreservationRequirement::Relationships,
+                    PreservationRequirement::SheetIdentityAndOrder,
+                ]
+                .into_iter()
+                .collect(),
+                platform: platform.to_owned(),
+                evidence: None,
+            });
+        }
+        return Ok(BackendCapability {
+            engine: EngineId::OpenpyxlWorker,
+            status: CapabilityStatus::Unverified,
+            format: WorkbookFormat::Xlsx,
+            operations: BTreeSet::new(),
+            supported_features: production_supported_features(),
+            preserved: BTreeSet::new(),
+            platform: platform.to_owned(),
+            evidence: None,
+        });
     }
     let document = serde_json::from_str::<serde_json::Value>(OPENPYXL_EVIDENCE)
         .context("解析 openpyxl 能力证据失败")?;
@@ -358,52 +471,45 @@ fn openpyxl_capability(platform: &str) -> anyhow::Result<Option<BackendCapabilit
             platform: platform.to_owned(),
         }),
     };
-    Ok(Some(capability))
+    Ok(capability)
 }
 
 /// Production modifier honoring the GUI 高级设置 edit-engine selection.
-/// `umya` keeps the verified default route; `openpyxl` only routes when the
-/// embedded evidence declares the engine available on this platform, and its
-/// batches are validated by the openpyxl worker's own validator.
+/// The selection controls only S1-F01; other features retain their existing
+/// production routes regardless of this preference.
 pub fn production_modifier_with_edit_engine(
     feature: &str,
     edit_engine: &str,
 ) -> anyhow::Result<(ExcelModifier, Option<BackendCapability>)> {
-    match edit_engine {
-        "umya" | "" => production_modifier(feature),
-        "openpyxl" => {
-            let platform = runtime_platform();
-            let Some(capability) = openpyxl_capability(&platform)? else {
-                let (_, reason) = openpyxl_evidence_status();
-                anyhow::bail!("{feature} 的 openpyxl 修改引擎不可用：{reason}");
-            };
-            // Product deployments stage the openpyxl runtime and worker next
-            // to the binary (packaging/openpyxl); the resolver marks the
-            // registration unsupported when that layout is absent, keeping
-            // the router fail-closed instead of silently switching engines.
-            let binary = std::env::current_exe().context("定位当前可执行文件以解析 openpyxl 运行时")?;
-            let backend = Arc::new(OpenpyxlXlsxBackend::for_product_binary(
-                capability,
-                binary,
-                "open-data-audit",
-            )?);
-            let modifier = ExcelModifier::new(
-                platform,
-                vec![backend],
-                Arc::new(OpenpyxlXlsxValidator),
-            )
-            .with_context(|| format!("初始化 {feature} openpyxl 修改路由"))?;
-            Ok((modifier, None))
-        }
-        other => anyhow::bail!("未知修改引擎：{other}"),
+    if feature != "S1-F01" {
+        return production_modifier_generic(feature);
     }
+    s1_f01_modifier(feature, edit_engine)
 }
-
-
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use excel_editor::{EditOperation, ExcelEditPlan, WorkbookProfile};
+
+    fn minimal_s1_f01_plan() -> ExcelEditPlan {
+        ExcelEditPlan {
+            request_id: "s1-f01-route-test".to_owned(),
+            input: std::env::temp_dir().join("s1-f01-route-input.xlsx"),
+            output: std::env::temp_dir().join("s1-f01-route-output.xlsx"),
+            format: WorkbookFormat::Xlsx,
+            workbook: WorkbookProfile {
+                format: WorkbookFormat::Xlsx,
+                inventory_complete: true,
+                features_present: BTreeSet::new(),
+            },
+            operations: vec![EditOperation::CreateSheet {
+                name: "审核规则".to_owned(),
+            }],
+            preserve: BTreeSet::new(),
+            drop_allowed: Default::default(),
+        }
+    }
 
     #[test]
     fn evidence_registry_is_platform_specific_and_fails_closed_for_unknown_platforms() {
@@ -412,12 +518,93 @@ mod tests {
                 .expect("platform with registered production evidence");
             assert_eq!(capability.platform, platform);
             assert_eq!(
-                capability.evidence.as_ref().map(|evidence| evidence.platform.as_str()),
+                capability
+                    .evidence
+                    .as_ref()
+                    .map(|evidence| evidence.platform.as_str()),
                 Some(platform)
             );
             assert_eq!(registered_backend_count(platform), 1);
         }
         assert!(production_capability("macos-aarch64").is_none());
         assert_eq!(registered_backend_count("macos-aarch64"), 0);
+    }
+
+    #[test]
+    fn unverified_openpyxl_trial_is_scoped_to_s1_f01_import_batches() {
+        let candidate = openpyxl_capability("windows-x86_64", "S1-F01")
+            .expect("construct S1-F01 Openpyxl candidate");
+        assert_eq!(candidate.status, CapabilityStatus::Unverified);
+        assert!(
+            candidate
+                .operations
+                .contains(&EditOperationKind::ImportRange)
+        );
+        assert!(
+            candidate
+                .preserved
+                .contains(&PreservationRequirement::Relationships)
+        );
+
+        let other = openpyxl_capability("windows-x86_64", "S3-F03")
+            .expect("construct non-S1 Openpyxl capability");
+        assert!(other.operations.is_empty());
+    }
+
+    #[test]
+    fn s1_f01_auto_route_orders_ooxml_openpyxl_umya() {
+        let (modifier, capability) = production_modifier_with_edit_engine("S1-F01", "auto")
+            .expect("construct S1-F01 automatic edit route");
+        assert_eq!(
+            capability.as_ref().map(|value| value.engine),
+            Some(EngineId::UmyaSpreadsheet)
+        );
+        let decisions = modifier.route(&minimal_s1_f01_plan());
+        let expected = if crate::app_settings::openpyxl_selection_status().0 {
+            vec![
+                EngineId::OoxmlPatch,
+                EngineId::OpenpyxlWorker,
+                EngineId::UmyaSpreadsheet,
+            ]
+        } else {
+            vec![EngineId::OoxmlPatch, EngineId::UmyaSpreadsheet]
+        };
+        assert_eq!(
+            decisions
+                .iter()
+                .map(|decision| decision.engine)
+                .collect::<Vec<_>>(),
+            expected
+        );
+        assert!(decisions.iter().all(|decision| decision.eligible));
+    }
+
+    #[test]
+    fn explicit_s1_f01_engine_selection_registers_only_that_backend() {
+        for (selection, expected) in [
+            ("ooxml", EngineId::OoxmlPatch),
+            ("openpyxl", EngineId::OpenpyxlWorker),
+            ("umya", EngineId::UmyaSpreadsheet),
+        ] {
+            let (modifier, _) = production_modifier_with_edit_engine("S1-F01", selection)
+                .expect("construct explicit S1-F01 edit route");
+            let decisions = modifier.route(&minimal_s1_f01_plan());
+            assert_eq!(decisions.len(), 1, "selection={selection}");
+            assert_eq!(decisions[0].engine, expected, "selection={selection}");
+        }
+    }
+
+    #[test]
+    fn edit_engine_selection_does_not_change_s3_routes() {
+        for selection in ["auto", "ooxml", "openpyxl", "umya"] {
+            let (modifier, _) = production_modifier_with_edit_engine("S3-F03", selection)
+                .expect("S3 route ignores the S1-F01-only preference");
+            let engines = modifier
+                .route(&minimal_s1_f01_plan())
+                .into_iter()
+                .map(|decision| decision.engine)
+                .collect::<Vec<_>>();
+            assert_eq!(engines, [EngineId::OoxmlPatch, EngineId::UmyaSpreadsheet]);
+        }
     }
 }

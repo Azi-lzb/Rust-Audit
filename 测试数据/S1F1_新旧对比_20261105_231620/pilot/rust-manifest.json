@@ -1,0 +1,9 @@
+{
+  "s1": {
+    "sidecar": null,
+    "sourceDirectory": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\pilot\\input",
+    "externalData": null,
+    "mappingConfig": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\pilot\\rust-history.xlsx",
+    "templateDirectory": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates"
+  }
+}

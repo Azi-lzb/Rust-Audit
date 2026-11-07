@@ -6,7 +6,7 @@
 - This is an independent Git/Cargo project. Keep Audit business logic, frontend and configuration under audit-core/; maintain its own Excel reader, writer, editor and OOXML patch sources under crates/. Change them only for an actual Audit need, with scoped evidence. Do not add outside path dependencies, submodules, cross-project synchronization or a dependency on PyTools.
 - The Python source at C:\Users\AZI\Desktop\VibeCode\3.open-data-audit and old project/worktree/history material are read-only references. Keep real or sensitive workbooks in ignored local-only directories; commit only explicitly approved fixtures.
 - Preserve the agreed business scope in audit-core/AUDIT_RUST_V2_BUSINESS_REQUIREMENTS.md, the current status in DEVELOPMENT_GOAL.md, and the historical evidence in audit-core/MIGRATION_INVENTORY.md. Follow audit-core/AGENTS.md and applicable rules/ and audit-core/rules/ subject to this file and current user instructions; historical workspace, mandatory test and parity gates do not override these rules.
-- The isolated openpyxl worker is only a capability-gated existing-workbook modification compatibility path. It must not perform Audit business logic. Python comparison helpers are baselines, not product business dependencies.
+- The isolated openpyxl worker is an explicit existing-workbook modification trial path when production capability evidence has not passed; a trial candidate must pass the normal output validator before publication. It must not perform Audit business logic. Python comparison helpers are baselines, not product business dependencies.
 
 ## Build, test and launch authorization
 
@@ -16,7 +16,7 @@
 
 ## Feature workflow and correctness
 
-- Work incrementally on a specified real Audit feature. Do not restart migration, redesign Excel-Core or the GUI, remove existing behavior without a tested replacement, or invent new business features. S1-F3/F4/F5 and S4 remain deferred; S3 V2 F2 and F3 are separate workflows. S5 uses Rust rules and direct calculation rather than unnecessary template-formula injection.
+- Work incrementally on a specified real Audit feature. Do not restart migration, redesign Excel-Core or the GUI, remove existing behavior without a tested replacement, or invent new business features. S1-F3/F4/F5 and S4 remain deferred; S3 V2 F2 and F3 are separate workflows. S5 has been removed from the active product; current product scope is S1/S2/S3.
 - The default workflow is implementation, static inspection, delivery for user-initiated build and manual testing, then focused fixes from feedback. A missing broad automated comparison is not a reason to withhold an honest manual-test build. Do not call code presence or menu visibility completed acceptance.
 - Do not proactively run full Python/Rust parity, routine font/border/style-by-style comparisons, unrelated engine expansion, purposeless complete source audits, repeated architecture unification, or a new long-running migration plan. Preserve data, formulas, critical structure, audit conclusions and input-file safety; conditional formatting that affects audit judgments is business logic, not ordinary appearance.
 - Preserve the existing Rust + HTML GUI. A TUI is optional future work; do not introduce Electron, Tauri, WebKitGTK or TypeScript restructuring without a request.

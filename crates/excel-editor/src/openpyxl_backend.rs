@@ -1,15 +1,16 @@
 //! Isolated Python/openpyxl adapter for batch edits to existing XLSX files.
 //!
-//! The adapter is opt-in and evidence gated. It launches one bundled Python
+//! The adapter is opt-in and capability scoped. It launches one Python
 //! process per workbook plan; the Python runtime and worker are never linked
-//! into the Rust process.
+//! into the Rust process. Linux requires the isolated packaged runtime;
+//! Windows may use Python from PATH after the user selects this engine.
 
 use crate::{
     BackendCapability, BackendFailure, EditBackend, EditOperation, EditOperationKind,
     ExcelEditPlan, OutputValidator, PreservationRequirement, RangeStyleMode, WorkbookFormat,
 };
-use anyhow::{bail, Context, Result};
-use excel_reader::{read_workbook, SheetDump};
+use anyhow::{Context, Result, bail};
+use excel_reader::{SheetDump, read_workbook};
 use serde::Deserialize;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -56,9 +57,11 @@ impl OpenpyxlWorkerConfig {
         Ok(self)
     }
 
-    /// Resolve the isolated runtime layout installed with a product binary.
-    /// For `/usr/bin/pytools`, this returns paths under
-    /// `/usr/libexec/pytools/openpyxl/`; no PATH lookup is performed.
+    /// Resolve the optional openpyxl worker layout for a product binary.
+    /// Linux uses only the isolated runtime under `/usr/libexec/<product>`.
+    /// Windows prefers a staged runtime beside the EXE and otherwise allows
+    /// an explicitly selected system Python from PATH; the worker remains a
+    /// product resource and is never imported into the Rust process.
     pub fn for_product_binary(binary: impl AsRef<Path>, product: &str) -> Option<Self> {
         if product.is_empty()
             || !product
@@ -68,16 +71,61 @@ impl OpenpyxlWorkerConfig {
             return None;
         }
         let binary = binary.as_ref();
-        let installation_root = binary.parent()?.parent()?;
-        let base = installation_root
-            .join("libexec")
-            .join(product)
-            .join("openpyxl");
-        Some(Self {
-            python_executable: base.join("runtime/bin/python3"),
-            worker_script: base.join("worker/openpyxl_worker.py"),
-            timeout: DEFAULT_TIMEOUT,
-        })
+        #[cfg(windows)]
+        {
+            let base = binary
+                .parent()?
+                .join("libexec")
+                .join(product)
+                .join("openpyxl");
+            let bundled_python = base.join("runtime/python.exe");
+            let python_executable = if bundled_python.is_file() {
+                bundled_python
+            } else {
+                find_python_on_path()?
+            };
+            let bundled_worker = base.join("worker/openpyxl_worker.py");
+            let worker_script = if bundled_worker.is_file() {
+                bundled_worker
+            } else if cfg!(debug_assertions) {
+                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("python/openpyxl_worker.py")
+            } else {
+                bundled_worker
+            };
+            Some(Self {
+                python_executable,
+                worker_script,
+                timeout: DEFAULT_TIMEOUT,
+            })
+        }
+        #[cfg(not(windows))]
+        {
+            let installation_root = binary.parent()?.parent()?;
+            let base = installation_root
+                .join("libexec")
+                .join(product)
+                .join("openpyxl");
+            let bundled_worker = base.join("worker/openpyxl_worker.py");
+            let worker_script = if bundled_worker.is_file() && !cfg!(debug_assertions) {
+                bundled_worker
+            } else if cfg!(debug_assertions) {
+                let source_worker =
+                    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("python/openpyxl_worker.py");
+                if source_worker.is_file() {
+                    source_worker
+                } else {
+                    bundled_worker
+                }
+            } else {
+                bundled_worker
+            };
+            Some(Self {
+                python_executable: base.join("runtime/bin/python3"),
+                worker_script,
+                timeout: DEFAULT_TIMEOUT,
+            })
+        }
     }
 
     fn validate_paths(&self) -> Result<()> {
@@ -113,6 +161,19 @@ impl OpenpyxlWorkerConfig {
         #[cfg(not(unix))]
         true
     }
+
+    /// Whether both the interpreter and the worker resource are present.
+    pub fn is_available(&self) -> bool {
+        self.available()
+    }
+}
+
+#[cfg(windows)]
+fn find_python_on_path() -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .map(|directory| directory.join("python.exe"))
+        .find(|candidate| candidate.is_file())
 }
 
 pub struct OpenpyxlXlsxBackend {
@@ -181,9 +242,10 @@ impl OpenpyxlXlsxBackend {
         let unavailable_reason = match &config {
             Some(config) if config.available() => None,
             Some(_) => Some(
-                "bundled Python/openpyxl worker paths are missing or not executable".to_owned(),
+                "Python interpreter or openpyxl worker script is missing or not executable"
+                    .to_owned(),
             ),
-            None => Some("bundled Python/openpyxl worker paths could not be resolved".to_owned()),
+            None => Some("Python interpreter or openpyxl worker path could not be resolved".to_owned()),
         };
         if unavailable_reason.is_some() {
             capability.status = crate::CapabilityStatus::Unsupported;
@@ -248,7 +310,7 @@ impl EditBackend for OpenpyxlXlsxBackend {
             Err(error) => {
                 return Err(BackendFailure::failed(format!(
                     "inspect merged-cell payloads before openpyxl: {error:#}"
-                )))
+                )));
             }
         }
         if !plan
@@ -294,7 +356,7 @@ impl EditBackend for OpenpyxlXlsxBackend {
                     Err(error) => {
                         return Err(BackendFailure::failed(format!(
                             "inspect ImportRange merged-cell payloads before openpyxl: {error:#}"
-                        )))
+                        )));
                     }
                 }
             }
@@ -334,7 +396,7 @@ impl EditBackend for OpenpyxlXlsxBackend {
             Err(error) => {
                 return Err(BackendFailure::failed(format!(
                     "create worker request file: {error:#}"
-                )))
+                )));
             }
         };
         let response_file = match ScratchFile::create(parent, "openpyxl-response") {
@@ -342,7 +404,7 @@ impl EditBackend for OpenpyxlXlsxBackend {
             Err(error) => {
                 return Err(BackendFailure::failed(format!(
                     "create worker response file: {error:#}"
-                )))
+                )));
             }
         };
         let stdout_file = match ScratchFile::create(parent, "openpyxl-stdout") {
@@ -350,7 +412,7 @@ impl EditBackend for OpenpyxlXlsxBackend {
             Err(error) => {
                 return Err(BackendFailure::failed(format!(
                     "create worker stdout file: {error:#}"
-                )))
+                )));
             }
         };
         let stderr_file = match ScratchFile::create(parent, "openpyxl-stderr") {
@@ -358,7 +420,7 @@ impl EditBackend for OpenpyxlXlsxBackend {
             Err(error) => {
                 return Err(BackendFailure::failed(format!(
                     "create worker stderr file: {error:#}"
-                )))
+                )));
             }
         };
         let request = serde_json::json!({
@@ -1021,12 +1083,20 @@ fn validate_preserved_ooxml_metadata(
         .preserve
         .contains(&PreservationRequirement::ConditionalFormatting)
     {
+        let source_styles = differential_styles(input_path)?;
+        let output_styles = differential_styles(output_path)?;
+        let source_conditional_formatting =
+            semantic_conditional_formatting(&source.conditional_formatting, &source_styles)?;
+        let output_conditional_formatting =
+            semantic_conditional_formatting(&output.conditional_formatting, &output_styles)?;
         anyhow::ensure!(
-            per_sheet_entries_match(
-                &source.conditional_formatting,
-                &output.conditional_formatting
+            per_sheet_entries_match_after_plan(
+                &source_conditional_formatting,
+                &output_conditional_formatting,
+                &plan.operations,
+                Vec::is_empty,
             ),
-            "openpyxl changed conditional formatting rules"
+            "openpyxl changed conditional formatting rules or effective differential styles"
         );
     }
     if plan
@@ -1034,7 +1104,12 @@ fn validate_preserved_ooxml_metadata(
         .contains(&PreservationRequirement::DataValidations)
     {
         anyhow::ensure!(
-            per_sheet_entries_match(&source.data_validations, &output.data_validations),
+            per_sheet_entries_match_after_plan(
+                &source.data_validations,
+                &output.data_validations,
+                &plan.operations,
+                Option::is_none,
+            ),
             "openpyxl changed data validations"
         );
     }
@@ -1079,6 +1154,45 @@ fn per_sheet_entries_match<T: PartialEq>(source: &[(String, T)], output: &[(Stri
                 .find(|(output_name, _)| output_name == name)
                 .is_some_and(|(_, actual)| actual == expected)
         })
+}
+
+fn per_sheet_entries_match_after_plan<T: PartialEq>(
+    source: &[(String, T)],
+    output: &[(String, T)],
+    operations: &[EditOperation],
+    is_empty: impl Fn(&T) -> bool,
+) -> bool {
+    let (renamed, deleted) = sheet_name_changes(operations);
+    let created = operations
+        .iter()
+        .filter_map(|operation| match operation {
+            EditOperation::CreateSheet { name } | EditOperation::CreateSheetAt { name, .. } => {
+                Some(name.as_str())
+            }
+            _ => None,
+        })
+        .collect::<BTreeSet<_>>();
+    let mut preserved_names = BTreeSet::new();
+    for (name, expected) in source {
+        if deleted.contains(name) {
+            continue;
+        }
+        let output_name = renamed.get(name).unwrap_or(name);
+        let Some((_, actual)) = output
+            .iter()
+            .find(|(candidate, _)| candidate == output_name)
+        else {
+            return false;
+        };
+        if actual != expected {
+            return false;
+        }
+        preserved_names.insert(output_name.as_str());
+    }
+    output.iter().all(|(name, actual)| {
+        preserved_names.contains(name.as_str())
+            || (created.contains(name.as_str()) && is_empty(actual))
+    })
 }
 
 fn preserved_sheet_metadata_matches(
@@ -1440,9 +1554,21 @@ fn validate_preserved_relationships(
     // relationship targets and XML references are valid.
     let mut comment_relationship_changes = Vec::new();
     for operation in &plan.operations {
-        let EditOperation::SetComment { sheet, .. } = operation else {
-            continue;
+        let sheet = match operation {
+            EditOperation::SetComment { sheet, .. } => Some(sheet),
+            EditOperation::CopyRange {
+                target_sheet,
+                copy_comments: true,
+                ..
+            }
+            | EditOperation::ImportRange {
+                target_sheet,
+                copy_comments: true,
+                ..
+            } => Some(target_sheet),
+            _ => None,
         };
+        let Some(sheet) = sheet else { continue };
         // New or replaced worksheets already use their dedicated relationship
         // exception below; they have no retained source relationship mapping.
         if created_sheet_names.contains(sheet.as_str()) || deleted_sheets.contains_key(sheet) {
@@ -1488,15 +1614,22 @@ fn validate_preserved_relationships(
         .iter()
         .map(|(_, output_name)| output_name.clone())
         .collect::<BTreeSet<_>>();
-    let normalize_worksheet_relationship_ids = plan
-        .operations
-        .iter()
-        .any(|operation| matches!(operation, EditOperation::MoveSheet { .. }));
+    let normalize_worksheet_relationship_ids = plan.operations.iter().any(|operation| {
+        matches!(
+            operation,
+            EditOperation::CreateSheet { .. }
+                | EditOperation::CreateSheetAt { .. }
+                | EditOperation::DeleteSheet { .. }
+                | EditOperation::MoveSheet { .. }
+                | EditOperation::RenameSheet { .. }
+        )
+    });
 
     let source_relationships = relationships_outside_sheet_relationships(
         source,
         &source_relationship_exceptions,
         &source_recreated_names,
+        &BTreeSet::new(),
         &source_comment_relationship_sheets,
         normalize_worksheet_relationship_ids,
     );
@@ -1504,12 +1637,28 @@ fn validate_preserved_relationships(
         output,
         &output_relationship_exceptions,
         &output_recreated_names,
+        &created_sheet_names,
         &output_comment_relationship_sheets,
         normalize_worksheet_relationship_ids,
     );
+    let source_by_part = source_relationships.into_iter().collect::<BTreeMap<_, _>>();
+    let output_by_part = output_relationships.into_iter().collect::<BTreeMap<_, _>>();
+    let relationship_parts = source_by_part
+        .keys()
+        .chain(output_by_part.keys())
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let differences = relationship_parts
+        .into_iter()
+        .filter_map(|part| {
+            let source = source_by_part.get(&part);
+            let output = output_by_part.get(&part);
+            (source != output).then_some((part, source, output))
+        })
+        .collect::<Vec<_>>();
     anyhow::ensure!(
-        source_relationships == output_relationships,
-        "openpyxl changed OOXML relationships outside explicitly allowed worksheet relationship changes"
+        differences.is_empty(),
+        "openpyxl changed OOXML relationships outside explicitly allowed worksheet relationship changes: {differences:#?}"
     );
     Ok(())
 }
@@ -1518,6 +1667,7 @@ fn relationships_outside_sheet_relationships(
     snapshot: &WorkbookPreservationSnapshot,
     worksheet_relationship_exceptions: &BTreeSet<String>,
     recreated_worksheet_names: &BTreeSet<String>,
+    created_worksheet_names: &BTreeSet<&str>,
     comment_relationship_sheets: &BTreeSet<String>,
     normalize_worksheet_relationship_ids: bool,
 ) -> Vec<(String, Vec<CanonicalXmlElement>)> {
@@ -1528,11 +1678,15 @@ fn relationships_outside_sheet_relationships(
     let relationship_exception_names: BTreeSet<&str> = worksheet_relationship_exceptions
         .iter()
         .map(String::as_str)
+        .chain(created_worksheet_names.iter().copied())
         .collect();
     let relationship_ids: BTreeSet<&str> = snapshot
         .worksheet_parts
         .iter()
-        .filter(|(name, _, _)| recreated_names.contains(name.as_str()))
+        .filter(|(name, _, _)| {
+            recreated_names.contains(name.as_str())
+                || created_worksheet_names.contains(name.as_str())
+        })
         .map(|(_, _, relationship_id)| relationship_id.as_str())
         .collect();
     let worksheet_relationship_parts: BTreeMap<String, &str> = snapshot
@@ -1584,41 +1738,147 @@ fn relationships_outside_sheet_relationships(
                     }
                     let id = canonical_xml_attribute(element, "Id");
                     let kind = canonical_xml_attribute(element, "Type");
-                    !id.is_some_and(|id| relationship_ids.contains(id))
+                    let created_worksheet_relationship = is_workbook_relationship_part
+                        && kind.is_some_and(|kind| kind.ends_with("/worksheet"))
+                        && id
+                            .and_then(|id| worksheet_names_by_relationship_id.get(id))
+                            .is_some_and(|name| created_worksheet_names.contains(name));
+                    !created_worksheet_relationship
+                        && !id.is_some_and(|id| relationship_ids.contains(id))
                         && !kind.is_some_and(|kind| kind.ends_with("/sharedStrings"))
                 })
                 .map(|element| {
                     let mut element = element.clone();
-                    if is_workbook_relationship_part && normalize_worksheet_relationship_ids {
-                        let is_worksheet = canonical_xml_attribute(&element, "Type")
-                            .is_some_and(|kind| kind.ends_with("/worksheet"));
-                        if is_worksheet {
-                            let relationship_id = canonical_xml_attribute(&element, "Id");
-                            let sheet_name = relationship_id
-                                .and_then(|id| worksheet_names_by_relationship_id.get(id));
-                            let target = canonical_xml_attribute(&element, "Target");
-                            if let (Some(sheet_name), Some(target), Some(expected_part)) = (
-                                sheet_name,
-                                target,
-                                sheet_name.and_then(|name| worksheet_parts_by_name.get(name)),
-                            ) {
-                                if relationship_target_matches_part(
-                                    part_name,
-                                    target,
-                                    expected_part,
-                                ) {
-                                    if let Some((_, _, value)) = element.attributes.iter_mut().find(
-                                        |(namespace, name, _)| namespace.is_empty() && name == "Id",
+                    if part_name == "_rels/.rels" {
+                        // Package root relationships have no source XML part
+                        // that can reference their IDs, so normalize those IDs
+                        // by the stable relationship semantics.
+                        if let (Some(kind), Some(target)) = (
+                            canonical_xml_attribute(&element, "Type").map(str::to_owned),
+                            canonical_xml_attribute(&element, "Target").map(str::to_owned),
+                        ) {
+                            if let Some((_, _, value)) = element
+                                .attributes
+                                .iter_mut()
+                                .find(|(namespace, name, _)| namespace.is_empty() && name == "Id")
+                            {
+                                *value = format!("package:{kind}:{target}");
+                            }
+                        }
+                    } else if is_workbook_relationship_part {
+                        // Workbook relationship targets may serialize as either
+                        // package-relative paths ("worksheets/sheet1.xml") or
+                        // package-absolute paths ("/xl/worksheets/sheet1.xml").
+                        // Compare their resolved package parts, while keeping
+                        // worksheet rIds strict unless a planned sheet edit
+                        // allows remapping them by sheet identity.
+                        let kind = canonical_xml_attribute(&element, "Type").map(str::to_owned);
+                        if !is_external_relationship(&element) {
+                            if kind
+                                .as_deref()
+                                .is_some_and(|kind| kind.ends_with("/worksheet"))
+                            {
+                                let relationship_id = canonical_xml_attribute(&element, "Id");
+                                let sheet_name = relationship_id
+                                    .and_then(|id| worksheet_names_by_relationship_id.get(id));
+                                let target = canonical_xml_attribute(&element, "Target");
+                                let expected_part =
+                                    sheet_name.and_then(|name| worksheet_parts_by_name.get(*name));
+                                if let (Some(sheet_name), Some(target), Some(expected_part)) =
+                                    (sheet_name, target, expected_part)
+                                {
+                                    if relationship_target_matches_part(
+                                        part_name,
+                                        target,
+                                        expected_part,
                                     ) {
-                                        *value = format!("worksheet:{sheet_name}");
+                                        if normalize_worksheet_relationship_ids {
+                                            if let Some((_, _, value)) = element
+                                                .attributes
+                                                .iter_mut()
+                                                .find(|(namespace, name, _)| {
+                                                    namespace.is_empty() && name == "Id"
+                                                })
+                                            {
+                                                *value = format!("worksheet:{sheet_name}");
+                                            }
+                                            if let Some((_, _, value)) = element
+                                                .attributes
+                                                .iter_mut()
+                                                .find(|(namespace, name, _)| {
+                                                    namespace.is_empty() && name == "Target"
+                                                })
+                                            {
+                                                *value = format!("worksheet:{sheet_name}");
+                                            }
+                                        } else if let Some((_, _, value)) = element
+                                            .attributes
+                                            .iter_mut()
+                                            .find(|(namespace, name, _)| {
+                                                namespace.is_empty() && name == "Target"
+                                            })
+                                        {
+                                            *value = expected_part.to_string();
+                                        }
                                     }
-                                    if let Some((_, _, value)) = element.attributes.iter_mut().find(
-                                        |(namespace, name, _)| {
-                                            namespace.is_empty() && name == "Target"
-                                        },
-                                    ) {
-                                        *value = format!("worksheet:{sheet_name}");
+                                }
+                            } else if let Some(target) =
+                                normalize_relationship_target(part_name, &element)
+                            {
+                                if let Some((_, _, value)) =
+                                    element.attributes.iter_mut().find(|(namespace, name, _)| {
+                                        namespace.is_empty() && name == "Target"
+                                    })
+                                {
+                                    *value = target.clone();
+                                }
+                                // These IDs are not referenced from workbook.xml;
+                                // openpyxl may renumber them independently of any
+                                // sheet-layout operation. The kind and resolved
+                                // target still have to match exactly.
+                                if kind.as_deref().is_some_and(|kind| {
+                                    kind.ends_with("/styles") || kind.ends_with("/theme")
+                                }) {
+                                    if let Some(kind) = kind.as_deref() {
+                                        if let Some((_, _, value)) = element
+                                            .attributes
+                                            .iter_mut()
+                                            .find(|(namespace, name, _)| {
+                                                namespace.is_empty() && name == "Id"
+                                            })
+                                        {
+                                            *value = format!("workbook:{kind}:{target}");
+                                        }
                                     }
+                                }
+                            }
+                        }
+                    } else if let (Some(sheet_name), Some(kind)) =
+                        (worksheet_name, canonical_xml_attribute(&element, "Type"))
+                    {
+                        if kind.ends_with("/comments") || kind.ends_with("/vmlDrawing") {
+                            // openpyxl relocates legacy comments/VML parts and
+                            // assigns arbitrary relationship IDs on save.
+                            // Preserve the relationship type and its owning
+                            // retained worksheet; comments themselves are
+                            // compared by cell, text and author separately,
+                            // while package integrity verifies the new target.
+                            let kind_name = kind.rsplit('/').next().unwrap_or(kind);
+                            let relationship_key = format!("worksheet:{sheet_name}:{kind_name}");
+                            for (namespace, name, value) in &mut element.attributes {
+                                if namespace.is_empty() && (name == "Id" || name == "Target") {
+                                    *value = relationship_key.clone();
+                                }
+                            }
+                        } else if !is_external_relationship(&element) {
+                            if let Some(target) = normalize_relationship_target(part_name, &element)
+                            {
+                                if let Some((_, _, value)) =
+                                    element.attributes.iter_mut().find(|(namespace, name, _)| {
+                                        namespace.is_empty() && name == "Target"
+                                    })
+                                {
+                                    *value = target;
                                 }
                             }
                         }
@@ -1627,6 +1887,9 @@ fn relationships_outside_sheet_relationships(
                 })
                 .collect::<Vec<_>>();
             elements.sort();
+            if elements.is_empty() {
+                return None;
+            }
             Some((normalized_part_name, elements))
         })
         .collect()
@@ -1645,6 +1908,23 @@ fn relationship_target_matches_part(
         .map(|(parent, _)| parent)
         .unwrap_or("");
     resolve_opc_target(base, target).is_ok_and(|resolved| resolved == expected_part)
+}
+
+fn is_external_relationship(element: &CanonicalXmlElement) -> bool {
+    canonical_xml_attribute(element, "TargetMode")
+        .is_some_and(|mode| mode.eq_ignore_ascii_case("External"))
+}
+
+fn normalize_relationship_target(
+    relationship_part: &str,
+    element: &CanonicalXmlElement,
+) -> Option<String> {
+    let source_part = relationship_source_part(relationship_part).ok()?;
+    let base = source_part
+        .rsplit_once('/')
+        .map(|(parent, _)| parent)
+        .unwrap_or("");
+    resolve_opc_target(base, canonical_xml_attribute(element, "Target")?).ok()
 }
 
 fn canonical_xml_attribute<'a>(element: &'a CanonicalXmlElement, name: &str) -> Option<&'a str> {
@@ -1807,6 +2087,7 @@ fn validate_relationship_package_integrity(
         }
     }
 
+    validate_comment_vml_positions(path, snapshot, &relationships_by_source, &mut archive)?;
     validate_shared_string_indexes(
         &mut archive,
         &package_parts,
@@ -1814,6 +2095,127 @@ fn validate_relationship_package_integrity(
         snapshot,
     )?;
     Ok(())
+}
+
+fn validate_comment_vml_positions(
+    path: &Path,
+    snapshot: &WorkbookPreservationSnapshot,
+    relationships_by_source: &BTreeMap<String, Vec<PackageRelationship>>,
+    archive: &mut zip::ZipArchive<File>,
+) -> Result<()> {
+    let comments_by_sheet = excel_reader::read_ooxml_comments(path)
+        .with_context(|| format!("read worksheet comments from {}", path.display()))?;
+    for (sheet, worksheet_part, _) in &snapshot.worksheet_parts {
+        let source_part_relationships = relationships_by_source
+            .get(worksheet_part)
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        let comment_relationships = source_part_relationships
+            .iter()
+            .filter(|relationship| relationship.kind.ends_with("/comments"))
+            .collect::<Vec<_>>();
+        let vml_relationships = source_part_relationships
+            .iter()
+            .filter(|relationship| relationship.kind.ends_with("/vmlDrawing"))
+            .collect::<Vec<_>>();
+        let has_comment_relationship = !comment_relationships.is_empty();
+        let has_vml_relationship = !vml_relationships.is_empty();
+
+        let mut comment_cells = BTreeSet::new();
+        if let Some(comments) = comments_by_sheet.get(sheet) {
+            comment_cells.extend(comments.keys().map(|address| normalize_address(address)));
+        }
+        let mut vml_cells = BTreeSet::new();
+        for relationship in vml_relationships {
+            anyhow::ensure!(
+                !relationship.target_mode.eq_ignore_ascii_case("External"),
+                "worksheet {sheet:?} has an external VML drawing relationship"
+            );
+            let base = worksheet_part
+                .rsplit_once('/')
+                .map(|(parent, _)| parent)
+                .unwrap_or("");
+            let target = resolve_opc_target(base, &relationship.target)
+                .with_context(|| format!("resolve VML drawing for worksheet {sheet:?}"))?;
+            let xml = read_zip_part(archive, &target)
+                .with_context(|| format!("read VML drawing {target} for worksheet {sheet:?}"))?;
+            for cell in
+                vml_note_cells(&xml).with_context(|| format!("read note anchors from {target}"))?
+            {
+                anyhow::ensure!(
+                    vml_cells.insert(cell.clone()),
+                    "worksheet {sheet:?} has multiple VML Note shapes at {cell}"
+                );
+            }
+        }
+        anyhow::ensure!(
+            comment_cells == vml_cells,
+            "worksheet {sheet:?} comment cells and VML Note anchors differ: comments={comment_cells:?}, VML={vml_cells:?}"
+        );
+
+        if !comment_cells.is_empty() {
+            anyhow::ensure!(
+                has_comment_relationship && has_vml_relationship,
+                "worksheet {sheet:?} contains comments without both comments and VML relationships"
+            );
+        }
+    }
+    Ok(())
+}
+
+fn vml_note_cells(xml: &str) -> Result<BTreeSet<String>> {
+    const EXCEL_VML_NAMESPACES: [&str; 3] = [
+        "http://schemas.microsoft.com/office/excel/2006/main",
+        "http://schemas.microsoft.com/office/excel",
+        "urn:schemas-microsoft-com:office:excel",
+    ];
+    let document = roxmltree::Document::parse(xml).context("parse VML drawing XML")?;
+    let mut cells = BTreeSet::new();
+    for client_data in document.descendants().filter(|node| {
+        node.is_element()
+            && node.tag_name().name() == "ClientData"
+            && EXCEL_VML_NAMESPACES.contains(&node.tag_name().namespace().unwrap_or_default())
+            && node.attribute("ObjectType") == Some("Note")
+    }) {
+        let row_nodes = client_data
+            .children()
+            .filter(|node| {
+                node.is_element()
+                    && node.tag_name().name() == "Row"
+                    && EXCEL_VML_NAMESPACES
+                        .contains(&node.tag_name().namespace().unwrap_or_default())
+            })
+            .collect::<Vec<_>>();
+        let column_nodes = client_data
+            .children()
+            .filter(|node| {
+                node.is_element()
+                    && node.tag_name().name() == "Column"
+                    && EXCEL_VML_NAMESPACES
+                        .contains(&node.tag_name().namespace().unwrap_or_default())
+            })
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            row_nodes.len() == 1 && column_nodes.len() == 1,
+            "VML Note shape must have exactly one Row and Column anchor"
+        );
+        let row = row_nodes[0]
+            .text()
+            .unwrap_or_default()
+            .parse::<u32>()
+            .context("parse VML Note row anchor")?;
+        let column = column_nodes[0]
+            .text()
+            .unwrap_or_default()
+            .parse::<u32>()
+            .context("parse VML Note column anchor")?;
+        anyhow::ensure!(
+            row < 1_048_576 && column < 16_384,
+            "VML Note anchor is outside the Excel worksheet limits"
+        );
+        cells.insert(format!("{}{}", column_letters(column + 1), row + 1));
+    }
+    Ok(cells)
 }
 
 fn relationship_source_part(relationship_part: &str) -> Result<String> {
@@ -2020,6 +2422,88 @@ fn canonical_xml_element(node: roxmltree::Node<'_, '_>) -> CanonicalXmlElement {
     }
 }
 
+fn differential_styles(path: &Path) -> Result<Vec<CanonicalXmlElement>> {
+    const MAIN_NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+    let mut archive = zip::ZipArchive::new(File::open(path)?)?;
+    let xml = read_zip_part(&mut archive, "xl/styles.xml")
+        .with_context(|| format!("read differential styles from {}", path.display()))?;
+    let document = roxmltree::Document::parse(&xml)
+        .with_context(|| format!("parse differential styles from {}", path.display()))?;
+    Ok(document
+        .root_element()
+        .children()
+        .find(|node| {
+            node.is_element()
+                && node.tag_name().namespace() == Some(MAIN_NS)
+                && node.tag_name().name() == "dxfs"
+        })
+        .map(|dxfs| {
+            dxfs.children()
+                .filter(|node| {
+                    node.is_element()
+                        && node.tag_name().namespace() == Some(MAIN_NS)
+                        && node.tag_name().name() == "dxf"
+                })
+                .map(canonical_xml_element)
+                .collect()
+        })
+        .unwrap_or_default())
+}
+
+fn semantic_conditional_formatting(
+    entries: &[(String, Vec<CanonicalXmlElement>)],
+    differential_styles: &[CanonicalXmlElement],
+) -> Result<Vec<(String, Vec<CanonicalXmlElement>)>> {
+    entries
+        .iter()
+        .map(|(sheet, elements)| {
+            let elements = elements
+                .iter()
+                .cloned()
+                .map(|mut element| {
+                    if let Some((_, _, sqref)) = element
+                        .attributes
+                        .iter_mut()
+                        .find(|(namespace, name, _)| namespace.is_empty() && name == "sqref")
+                    {
+                        let mut ranges = sqref
+                            .split_whitespace()
+                            .map(normalize_range)
+                            .collect::<Vec<_>>();
+                        ranges.sort();
+                        *sqref = ranges.join(" ");
+                    }
+                    for rule in element
+                        .children
+                        .iter_mut()
+                        .filter(|child| child.name.ends_with(":cfRule"))
+                    {
+                        let Some((_, _, dxf_id)) = rule
+                            .attributes
+                            .iter_mut()
+                            .find(|(namespace, name, _)| namespace.is_empty() && name == "dxfId")
+                        else {
+                            continue;
+                        };
+                        let index = dxf_id.parse::<usize>().with_context(|| {
+                            format!("conditional formatting has invalid dxfId {dxf_id:?}")
+                        })?;
+                        let style = differential_styles.get(index).with_context(|| {
+                            format!("conditional formatting dxfId {index} has no style")
+                        })?;
+                        // dxfId is only an index into styles.xml. Compare the
+                        // resolved style so openpyxl may deduplicate identical
+                        // differential formats without masking a style change.
+                        *dxf_id = format!("resolved:{style:?}");
+                    }
+                    Ok(element)
+                })
+                .collect::<Result<Vec<_>>>()?;
+            Ok((sheet.clone(), elements))
+        })
+        .collect()
+}
+
 fn canonical_defined_names(
     node: roxmltree::Node<'_, '_>,
     sheet_order: &[String],
@@ -2107,6 +2591,12 @@ fn validate_preserved_defined_names(
                     // against the saved worksheet and its generated name.
                     continue;
                 }
+                if !sheet_has_auto_filter(source, source_scope) {
+                    // openpyxl drops reserved _FilterDatabase names when the
+                    // worksheet has no AutoFilter to back them. These stale
+                    // names do not describe an active filter or user range.
+                    continue;
+                }
                 if preserved_filter_scope
                     && filter_database_matches_auto_filter(defined_name, source)
                 {
@@ -2156,7 +2646,9 @@ fn validate_preserved_defined_names(
         let validated_scope = explicit_auto_filters.contains_key(scope)
             || (plan.preserve.contains(&PreservationRequirement::AutoFilter)
                 && retained_output_sheets.contains(scope));
-        if is_filter_database_name(&defined_name.element)
+        if is_filter_database_name(&defined_name.element) && !sheet_has_auto_filter(output, scope) {
+            false
+        } else if is_filter_database_name(&defined_name.element)
             && validated_scope
             && filter_database_matches_auto_filter(defined_name, output)
         {
@@ -2259,6 +2751,20 @@ fn filter_database_matches_auto_filter(
         && !formula_sheet.contains(']')
         && formula_sheet.eq_ignore_ascii_case(scope)
         && normalize_range(formula_range) == normalize_range(auto_filter_range)
+}
+
+fn sheet_has_auto_filter(workbook: &WorkbookPreservationSnapshot, sheet: &str) -> bool {
+    workbook
+        .auto_filters
+        .iter()
+        .find(|(name, _)| name == sheet)
+        .and_then(|(_, filter)| filter.as_ref())
+        .and_then(|filter| {
+            filter.attributes.iter().find(|(namespace, name, value)| {
+                namespace.is_empty() && name == "ref" && !value.trim().is_empty()
+            })
+        })
+        .is_some()
 }
 
 fn planned_sheet_provenance(
@@ -3430,7 +3936,7 @@ fn worksheet_cells_with_style(xml: &str, cell_xf_has_style: &[bool]) -> Result<B
                 None => {
                     return Some(Err(anyhow::anyhow!(
                         "worksheet cell has no coordinate in ImportRange source"
-                    )))
+                    )));
                 }
             };
             let index = match cell
@@ -3447,7 +3953,7 @@ fn worksheet_cells_with_style(xml: &str, cell_xf_has_style: &[bool]) -> Result<B
                 None => {
                     return Some(Err(anyhow::anyhow!(
                         "worksheet cell references missing cell XF {index}"
-                    )))
+                    )));
                 }
             };
             has_style.then(|| Ok(reference.replace('$', "").to_ascii_uppercase()))
@@ -4808,6 +5314,70 @@ fn read_diagnostic(path: &Path) -> String {
 mod tests {
     use super::*;
 
+    fn canonical_xml_fixture(xml: &str) -> CanonicalXmlElement {
+        let document = roxmltree::Document::parse(xml).expect("parse canonical XML fixture");
+        canonical_xml_element(document.root_element())
+    }
+
+    fn conditional_formatting_fixture(xml: &str) -> Vec<CanonicalXmlElement> {
+        let document = roxmltree::Document::parse(xml).expect("parse conditional formatting");
+        document
+            .root_element()
+            .children()
+            .filter(|node| node.is_element() && node.tag_name().name() == "conditionalFormatting")
+            .map(canonical_xml_element)
+            .collect()
+    }
+
+    #[test]
+    fn vml_note_positions_ignore_non_note_shapes() {
+        let cells = vml_note_cells(
+            r#"<xml xmlns:x="urn:schemas-microsoft-com:office:excel"><shape><x:ClientData ObjectType="Note"><x:Row>0</x:Row><x:Column>1</x:Column></x:ClientData></shape><shape><x:ClientData ObjectType="Button"/></shape></xml>"#,
+        )
+        .unwrap();
+        assert_eq!(cells, BTreeSet::from(["B1".to_owned()]));
+
+        let missing_anchor = vml_note_cells(
+            r#"<xml xmlns:x="urn:schemas-microsoft-com:office:excel"><shape><x:ClientData ObjectType="Note"><x:Row>0</x:Row></x:ClientData></shape></xml>"#,
+        );
+        assert!(missing_anchor.is_err());
+    }
+
+    #[test]
+    fn conditional_formatting_comparison_resolves_dxf_ids_and_range_order() {
+        const MAIN_NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+        let source = vec![(
+            "Sheet1".to_owned(),
+            conditional_formatting_fixture(&format!(
+                r#"<worksheet xmlns="{MAIN_NS}"><conditionalFormatting sqref="B2 A1"><cfRule type="expression" dxfId="2" priority="1"><formula>A1&gt;0</formula></cfRule></conditionalFormatting></worksheet>"#
+            )),
+        )];
+        let output = vec![(
+            "Sheet1".to_owned(),
+            conditional_formatting_fixture(&format!(
+                r#"<worksheet xmlns="{MAIN_NS}"><conditionalFormatting sqref="A1 B2"><cfRule type="expression" dxfId="0" priority="1"><formula>A1&gt;0</formula></cfRule></conditionalFormatting></worksheet>"#
+            )),
+        )];
+        let style = |color: &str| {
+            canonical_xml_fixture(&format!(
+                r#"<dxf xmlns="{MAIN_NS}"><fill><patternFill><fgColor rgb="{color}"/></patternFill></fill></dxf>"#
+            ))
+        };
+        let source_styles = vec![style("FFFF0000"), style("FF00FF00"), style("FF0000FF")];
+        let output_styles = vec![style("FF0000FF")];
+
+        assert_eq!(
+            semantic_conditional_formatting(&source, &source_styles).unwrap(),
+            semantic_conditional_formatting(&output, &output_styles).unwrap()
+        );
+
+        let changed_styles = vec![style("FFFF0000")];
+        assert_ne!(
+            semantic_conditional_formatting(&source, &source_styles).unwrap(),
+            semantic_conditional_formatting(&output, &changed_styles).unwrap()
+        );
+    }
+
     fn defined_name(scope: Option<&str>, name: &str, text: &str) -> CanonicalDefinedName {
         CanonicalDefinedName {
             scope: scope.map(str::to_owned),
@@ -4999,8 +5569,8 @@ mod tests {
     }
 
     #[test]
-    fn relationships_allow_only_deleted_and_recreated_sheet_and_shared_string_normalization(
-    ) -> Result<()> {
+    fn relationships_allow_only_deleted_and_recreated_sheet_and_shared_string_normalization()
+    -> Result<()> {
         let operations = vec![
             EditOperation::DeleteSheet {
                 name: "History".to_owned(),
@@ -5013,6 +5583,189 @@ mod tests {
         let source = relationship_snapshot(false);
         let output = relationship_snapshot(true);
         validate_preserved_relationships(&source, &output, &relationship_plan(operations))?;
+        Ok(())
+    }
+
+    #[test]
+    fn workbook_relationship_path_forms_and_unreferenced_style_ids_are_normalized() -> Result<()> {
+        let workbook_relationship_part = "xl/_rels/workbook.xml.rels";
+        let theme_type =
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme";
+        let mut source = relationship_snapshot(false);
+        let source_relationships = source
+            .relationships
+            .iter_mut()
+            .find(|(part, _)| part == workbook_relationship_part)
+            .expect("source workbook relationships exist");
+        source_relationships
+            .1
+            .push(relationship_element("rId4", theme_type, "theme/theme1.xml"));
+        source_relationships.1.sort();
+
+        let mut output = source.clone();
+        let output_relationships = output
+            .relationships
+            .iter_mut()
+            .find(|(part, _)| part == workbook_relationship_part)
+            .expect("output workbook relationships exist");
+        for relationship in &mut output_relationships.1 {
+            let kind = canonical_xml_attribute(relationship, "Type").unwrap_or_default();
+            let id = canonical_xml_attribute(relationship, "Id").unwrap_or_default();
+            let (target, replacement_id) = if kind.ends_with("/worksheet") {
+                let target = match id {
+                    "rId1" => "/xl/worksheets/history.xml",
+                    "rId2" => "/xl/worksheets/other.xml",
+                    _ => panic!("unexpected worksheet relationship ID {id:?}"),
+                };
+                (target, None)
+            } else if kind.ends_with("/styles") {
+                ("/xl/styles.xml", Some("rId4"))
+            } else if kind.ends_with("/theme") {
+                ("/xl/theme/theme1.xml", Some("rId3"))
+            } else {
+                panic!("unexpected workbook relationship type {kind:?}");
+            };
+            for (namespace, name, value) in &mut relationship.attributes {
+                if namespace.is_empty() && name == "Target" {
+                    *value = target.to_owned();
+                }
+                if namespace.is_empty() && name == "Id" {
+                    if let Some(replacement_id) = replacement_id {
+                        *value = replacement_id.to_owned();
+                    }
+                }
+            }
+        }
+        output_relationships.1.sort();
+
+        validate_preserved_relationships(&source, &output, &relationship_plan(Vec::new()))
+            .expect("equivalent package paths and unreferenced style/theme IDs are stable");
+
+        let mut changed_worksheet_target = output.clone();
+        let relationships = changed_worksheet_target
+            .relationships
+            .iter_mut()
+            .find(|(part, _)| part == workbook_relationship_part)
+            .expect("output workbook relationships exist");
+        let history = relationships
+            .1
+            .iter_mut()
+            .find(|relationship| canonical_xml_attribute(relationship, "Id") == Some("rId1"))
+            .expect("History worksheet relationship exists");
+        let target = history
+            .attributes
+            .iter_mut()
+            .find(|(namespace, name, _)| namespace.is_empty() && name == "Target")
+            .expect("worksheet relationship has a target");
+        target.2 = "/xl/worksheets/other.xml".to_owned();
+        assert!(
+            validate_preserved_relationships(
+                &source,
+                &changed_worksheet_target,
+                &relationship_plan(Vec::new())
+            )
+            .is_err()
+        );
+
+        let mut changed_worksheet_id = output;
+        let relationships = changed_worksheet_id
+            .relationships
+            .iter_mut()
+            .find(|(part, _)| part == workbook_relationship_part)
+            .expect("output workbook relationships exist");
+        let history = relationships
+            .1
+            .iter_mut()
+            .find(|relationship| canonical_xml_attribute(relationship, "Id") == Some("rId1"))
+            .expect("History worksheet relationship exists");
+        let id = history
+            .attributes
+            .iter_mut()
+            .find(|(namespace, name, _)| namespace.is_empty() && name == "Id")
+            .expect("worksheet relationship has an ID");
+        id.2 = "rId99".to_owned();
+        assert!(
+            validate_preserved_relationships(
+                &source,
+                &changed_worksheet_id,
+                &relationship_plan(Vec::new())
+            )
+            .is_err()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn relationships_allow_planned_new_worksheet_but_preserve_external_link_relationships()
+    -> Result<()> {
+        let external_link_type =
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/externalLink";
+        let worksheet_type =
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet";
+        let workbook_relationship_part = "xl/_rels/workbook.xml.rels";
+        let mut source = relationship_snapshot(false);
+        let source_workbook_relationships = source
+            .relationships
+            .iter_mut()
+            .find(|(part, _)| part == workbook_relationship_part)
+            .expect("source workbook relationships exist");
+        source_workbook_relationships.1.push(relationship_element(
+            "rId4",
+            external_link_type,
+            "externalLinks/externalLink1.xml",
+        ));
+        source_workbook_relationships.1.sort();
+
+        let mut output = source.clone();
+        output.sheet_order.push("ExternalLookup".to_owned());
+        output.worksheet_parts.push((
+            "ExternalLookup".to_owned(),
+            "xl/worksheets/externalLookup.xml".to_owned(),
+            "rId5".to_owned(),
+        ));
+        let output_workbook_relationships = output
+            .relationships
+            .iter_mut()
+            .find(|(part, _)| part == workbook_relationship_part)
+            .expect("output workbook relationships exist");
+        output_workbook_relationships.1.push(relationship_element(
+            "rId5",
+            worksheet_type,
+            "worksheets/externalLookup.xml",
+        ));
+        output_workbook_relationships.1.sort();
+        output.relationships.push((
+            "xl/worksheets/_rels/externalLookup.xml.rels".to_owned(),
+            Vec::new(),
+        ));
+        output
+            .relationships
+            .sort_by(|left, right| left.0.cmp(&right.0));
+
+        let plan = relationship_plan(vec![EditOperation::CreateSheet {
+            name: "ExternalLookup".to_owned(),
+        }]);
+        validate_preserved_relationships(&source, &output, &plan)
+            .expect("only the explicitly created worksheet relation may be added");
+
+        let mut changed_external_link = output;
+        let workbook_relationships = changed_external_link
+            .relationships
+            .iter_mut()
+            .find(|(part, _)| part == workbook_relationship_part)
+            .expect("output workbook relationships exist");
+        let external_link = workbook_relationships
+            .1
+            .iter_mut()
+            .find(|relationship| canonical_xml_attribute(relationship, "Id") == Some("rId4"))
+            .expect("preserved external link relationship exists");
+        let target = external_link
+            .attributes
+            .iter_mut()
+            .find(|(namespace, name, _)| namespace.is_empty() && name == "Target")
+            .expect("external link relationship has a target");
+        target.2 = "externalLinks/otherWorkbook.xml".to_owned();
+        assert!(validate_preserved_relationships(&source, &changed_external_link, &plan).is_err());
         Ok(())
     }
 
@@ -5039,22 +5792,22 @@ mod tests {
             "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink",
             "https://example.invalid/changed",
         )];
-        assert!(validate_preserved_relationships(
-            &source,
-            &changed_other_sheet,
-            &relationship_plan(operations.clone())
-        )
-        .is_err());
+        assert!(
+            validate_preserved_relationships(
+                &source,
+                &changed_other_sheet,
+                &relationship_plan(operations.clone())
+            )
+            .is_err()
+        );
 
         let no_recreation = relationship_plan(vec![EditOperation::DeleteSheet {
             name: "History".to_owned(),
         }]);
-        assert!(validate_preserved_relationships(
-            &source,
-            &relationship_snapshot(true),
-            &no_recreation
-        )
-        .is_err());
+        assert!(
+            validate_preserved_relationships(&source, &relationship_snapshot(true), &no_recreation)
+                .is_err()
+        );
     }
 
     #[test]
@@ -5400,7 +6153,7 @@ mod tests {
         duplicate_workbook_relationship_id: bool,
     ) -> Result<PathBuf> {
         use std::{fs, io::Write};
-        use zip::{write::SimpleFileOptions, ZipWriter};
+        use zip::{ZipWriter, write::SimpleFileOptions};
 
         const PACKAGE_REL_NS: &str = "http://schemas.openxmlformats.org/package/2006/relationships";
         const MAIN_NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
@@ -5509,9 +6262,11 @@ mod tests {
             &invalid_shared_index_snapshot,
         )
         .expect_err("out-of-range shared string index must be rejected");
-        assert!(error
-            .to_string()
-            .contains("exceeds sharedStrings item count"));
+        assert!(
+            error
+                .to_string()
+                .contains("exceeds sharedStrings item count")
+        );
         fs::remove_file(invalid_shared_index)?;
 
         let invalid_vml = relationship_integrity_fixture(0, true, false, false, false)?;
@@ -5580,8 +6335,8 @@ mod tests {
     }
 
     #[test]
-    fn empty_default_page_setup_properties_are_normalized_but_explicit_settings_remain(
-    ) -> Result<()> {
+    fn empty_default_page_setup_properties_are_normalized_but_explicit_settings_remain()
+    -> Result<()> {
         const NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
         let source_xml = format!(
             r#"<worksheet xmlns="{NS}"><sheetPr><pageSetUpPr/></sheetPr><pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/></worksheet>"#
@@ -6276,8 +7031,8 @@ mod tests {
     }
 
     #[test]
-    fn import_unstyled_source_preserves_target_direct_components_and_projects_legacy_defaults(
-    ) -> Result<()> {
+    fn import_unstyled_source_preserves_target_direct_components_and_projects_legacy_defaults()
+    -> Result<()> {
         let target = ScratchFile::create(&std::env::temp_dir(), "unstyled-import-style-target")?;
         let target_components = rust_xlsxwriter::Format::new()
             .set_font_name("Target Font")
@@ -6368,9 +7123,11 @@ mod tests {
                 style.number_format().map(|format| format.format_code()),
                 Some("General")
             );
-            assert!(style
-                .alignment()
-                .is_none_or(|alignment| alignment == &umya_spreadsheet::Alignment::default()));
+            assert!(
+                style
+                    .alignment()
+                    .is_none_or(|alignment| alignment == &umya_spreadsheet::Alignment::default())
+            );
             assert!(style
                 .protection()
                 .is_none_or(|protection| protection == &umya_spreadsheet::Protection::default()));
@@ -6532,6 +7289,42 @@ mod tests {
         assert!(!per_sheet_entries_match(&source, &changed));
         // A dropped worksheet still fails.
         assert!(!per_sheet_entries_match(&source, &reordered[0..1].to_vec()));
+    }
+
+    #[test]
+    fn per_sheet_snapshot_allows_empty_metadata_on_planned_created_sheets() {
+        let source = vec![("核查表".to_owned(), Some("existing-validation"))];
+        let output = vec![
+            ("核查表".to_owned(), Some("existing-validation")),
+            ("参照表".to_owned(), None),
+        ];
+        let operations = vec![EditOperation::CreateSheet {
+            name: "参照表".to_owned(),
+        }];
+        assert!(per_sheet_entries_match_after_plan(
+            &source,
+            &output,
+            &operations,
+            Option::is_none,
+        ));
+
+        let mut changed_existing = output.clone();
+        changed_existing[0].1 = Some("changed-validation");
+        assert!(!per_sheet_entries_match_after_plan(
+            &source,
+            &changed_existing,
+            &operations,
+            Option::is_none,
+        ));
+
+        let mut unexpected_created_metadata = output;
+        unexpected_created_metadata[1].1 = Some("unexpected-validation");
+        assert!(!per_sheet_entries_match_after_plan(
+            &source,
+            &unexpected_created_metadata,
+            &operations,
+            Option::is_none,
+        ));
     }
 
     fn sheet_dump(name: &str, merges: &[&str]) -> SheetDump {
@@ -6935,6 +7728,7 @@ mod tests {
         );
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn packaged_runtime_uses_an_absolute_internal_path_and_never_path_lookup() {
         let config =
@@ -6943,10 +7737,13 @@ mod tests {
             config.python_executable,
             PathBuf::from("/usr/libexec/pytools/openpyxl/runtime/bin/python3")
         );
-        assert_eq!(
-            config.worker_script,
+        let expected_worker = if cfg!(debug_assertions) {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("python/openpyxl_worker.py")
+        } else {
             PathBuf::from("/usr/libexec/pytools/openpyxl/worker/openpyxl_worker.py")
-        );
+        };
+        assert_eq!(config.worker_script, expected_worker);
         assert!(
             OpenpyxlWorkerConfig::for_product_binary("/usr/bin/pytools", "../python").is_none()
         );
@@ -6983,54 +7780,78 @@ mod tests {
             evidence: None,
         };
         let backend = OpenpyxlXlsxBackend::build(capability, None).unwrap();
-        assert!(backend
-            .capability()
-            .operations
-            .contains(&EditOperationKind::SetCellValue));
-        assert!(!backend
-            .capability()
-            .operations
-            .contains(&EditOperationKind::DeleteRows));
-        assert!(!backend
-            .capability()
-            .preserved
-            .contains(&PreservationRequirement::UnmodifiedPackageParts));
-        assert!(backend
-            .capability()
-            .preserved
-            .contains(&PreservationRequirement::Styles));
-        assert!(backend
-            .capability()
-            .preserved
-            .contains(&PreservationRequirement::PageSettings));
-        assert!(backend
-            .capability()
-            .preserved
-            .contains(&PreservationRequirement::RowAndColumnDimensions));
-        assert!(backend
-            .capability()
-            .preserved
-            .contains(&PreservationRequirement::Relationships));
-        assert!(backend
-            .capability()
-            .preserved
-            .contains(&PreservationRequirement::DefinedNames));
-        assert!(backend
-            .capability()
-            .preserved
-            .contains(&PreservationRequirement::HeaderFooterText));
-        assert!(backend
-            .capability()
-            .preserved
-            .contains(&PreservationRequirement::ConditionalFormatting));
-        assert!(backend
-            .capability()
-            .preserved
-            .contains(&PreservationRequirement::DataValidations));
-        assert!(backend
-            .capability()
-            .preserved
-            .contains(&PreservationRequirement::CellValuesAndTypes));
+        assert!(
+            backend
+                .capability()
+                .operations
+                .contains(&EditOperationKind::SetCellValue)
+        );
+        assert!(
+            !backend
+                .capability()
+                .operations
+                .contains(&EditOperationKind::DeleteRows)
+        );
+        assert!(
+            !backend
+                .capability()
+                .preserved
+                .contains(&PreservationRequirement::UnmodifiedPackageParts)
+        );
+        assert!(
+            backend
+                .capability()
+                .preserved
+                .contains(&PreservationRequirement::Styles)
+        );
+        assert!(
+            backend
+                .capability()
+                .preserved
+                .contains(&PreservationRequirement::PageSettings)
+        );
+        assert!(
+            backend
+                .capability()
+                .preserved
+                .contains(&PreservationRequirement::RowAndColumnDimensions)
+        );
+        assert!(
+            backend
+                .capability()
+                .preserved
+                .contains(&PreservationRequirement::Relationships)
+        );
+        assert!(
+            backend
+                .capability()
+                .preserved
+                .contains(&PreservationRequirement::DefinedNames)
+        );
+        assert!(
+            backend
+                .capability()
+                .preserved
+                .contains(&PreservationRequirement::HeaderFooterText)
+        );
+        assert!(
+            backend
+                .capability()
+                .preserved
+                .contains(&PreservationRequirement::ConditionalFormatting)
+        );
+        assert!(
+            backend
+                .capability()
+                .preserved
+                .contains(&PreservationRequirement::DataValidations)
+        );
+        assert!(
+            backend
+                .capability()
+                .preserved
+                .contains(&PreservationRequirement::CellValuesAndTypes)
+        );
         assert_eq!(
             backend.capability().status,
             crate::CapabilityStatus::Unsupported

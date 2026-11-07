@@ -1,0 +1,24 @@
+{
+  "rust_file": "测试数据\\S1F1_新旧对比_20261105_231620\\pilot\\rust\\steps\\S1-F01\\S1-F1_审核结果_20261105_231900_175\\汇总核查表校验.xlsx",
+  "python_file": "测试数据\\S1F1_新旧对比_20261105_231620\\pilot\\python-output\\汇总核查表校验_20261105232019.xlsx",
+  "rust_sheets": {
+    "本期审核结果": {
+      "rows": 1,
+      "columns": 13
+    }
+  },
+  "python_sheets": {
+    "本期审核结果": {
+      "rows": 1,
+      "columns": 13
+    }
+  },
+  "common_sheets": [
+    "本期审核结果"
+  ],
+  "exact_common_sheet_matches": {
+    "本期审核结果": true
+  },
+  "rust_only_sheets": [],
+  "python_only_sheets": []
+}

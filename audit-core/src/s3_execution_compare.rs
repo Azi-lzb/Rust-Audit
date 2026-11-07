@@ -8,7 +8,7 @@ use crate::central_csv::{CentralDataset, CentralRecord, CentralValue};
 use anyhow::{ensure, Context, Result};
 use chrono::{Datelike, Duration, NaiveDate};
 use excel_reader::{read_value_columns, CellValue, SheetValues};
-use excel_writer::{Color, Format, FormatAlign, Workbook, Worksheet};
+use excel_writer::{Color, ExcelDateTime, Format, FormatAlign, Workbook, Worksheet};
 use regex::Regex;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
@@ -220,58 +220,61 @@ pub fn load_execution_compare_config(
         ..S3ExecutionCompareConfig::default()
     };
 
-    let run_sheet =
-        find_sheet(&common_sheets, "运行参数").context("3.0 大集中通用配置缺少“运行参数”工作表")?;
-    config.run_parameters = read_parameter_rows(run_sheet)?;
-    if let Some(unit) = config.run_parameters.get("默认源数据单位") {
-        if !unit.trim().is_empty() {
-            config.source_unit = unit.trim().to_owned();
+    let run_sheet = find_sheet(&feature_sheets, "运行参数");
+    if let Some(run_sheet) = run_sheet {
+        config.run_parameters = read_parameter_rows(run_sheet)?;
+        if let Some(unit) = config.run_parameters.get("默认源数据单位") {
+            if !unit.trim().is_empty() {
+                config.source_unit = unit.trim().to_owned();
+            }
         }
-    }
-    if let Some(unit) = config.run_parameters.get("默认目标单位") {
-        if !unit.trim().is_empty() {
-            config.target_unit = unit.trim().to_owned();
-        }
-    }
-
-    let exception_sheet = find_sheet(&common_sheets, "单位换算例外")
-        .context("3.0 大集中通用配置缺少“单位换算例外”工作表")?;
-    for row in read_rows(exception_sheet, &["指标代码", "启用"])? {
-        let code = row.get("指标代码").map(String::as_str).unwrap_or_default();
-        if !code.trim().is_empty()
-            && enabled(row.get("启用").map(String::as_str).unwrap_or_default())
-        {
-            config
-                .exempt_indicators
-                .insert(code.replace('\'', "").trim().to_owned());
+        if let Some(unit) = config.run_parameters.get("默认目标单位") {
+            if !unit.trim().is_empty() {
+                config.target_unit = unit.trim().to_owned();
+            }
         }
     }
 
-    let alert_sheet =
-        find_sheet(&common_sheets, "环比警戒").context("3.0 大集中通用配置缺少“环比警戒”工作表")?;
-    config.alert_bands = read_rows(
-        alert_sheet,
-        &[
-            "下限",
-            "上限",
-            "备注文字",
-            "填充颜色",
-            "是否整行填充",
-            "金额变动阈值",
-            "是否说明",
-        ],
-    )?
-    .into_iter()
-    .map(|row| S3AlertBand {
-        lower: row["下限"].clone(),
-        upper: row["上限"].clone(),
-        remark_text: row["备注文字"].clone(),
-        fill_color: row["填充颜色"].clone(),
-        fill_entire_row: row["是否整行填充"].clone(),
-        amount_threshold: row["金额变动阈值"].clone(),
-        explanation: row["是否说明"].clone(),
-    })
-    .collect();
+    // 与源生产 run_comparison 口径一致：运行参数/单位换算例外/环比警戒均
+    // 只读 3.1 配置本身；工作表缺省时用默认值或空列表，不再回读 3.0。
+    if let Some(exception_sheet) = find_sheet(&feature_sheets, "单位换算例外") {
+        for row in read_rows(exception_sheet, &["指标代码", "启用"])? {
+            let code = row.get("指标代码").map(String::as_str).unwrap_or_default();
+            if !code.trim().is_empty()
+                && enabled(row.get("启用").map(String::as_str).unwrap_or_default())
+            {
+                config
+                    .exempt_indicators
+                    .insert(code.replace('\'', "").trim().to_owned());
+            }
+        }
+    }
+
+    if let Some(alert_sheet) = find_sheet(&feature_sheets, "环比警戒") {
+        config.alert_bands = read_rows(
+            alert_sheet,
+            &[
+                "下限",
+                "上限",
+                "备注文字",
+                "填充颜色",
+                "是否整行填充",
+                "金额变动阈值",
+                "是否说明",
+            ],
+        )?
+        .into_iter()
+        .map(|row| S3AlertBand {
+            lower: row["下限"].clone(),
+            upper: row["上限"].clone(),
+            remark_text: row["备注文字"].clone(),
+            fill_color: row["填充颜色"].clone(),
+            fill_entire_row: row["是否整行填充"].clone(),
+            amount_threshold: row["金额变动阈值"].clone(),
+            explanation: row["是否说明"].clone(),
+        })
+        .collect();
+    }
 
     let indicator_sheet = find_sheet(&feature_sheets, "指标参照")
         .context("3.1 大集中执行比较配置缺少“指标参照”工作表")?;
@@ -878,11 +881,15 @@ pub fn run_execution_compare_files(
 
     on_step("写入并验证比较结果工作簿");
     let workbook_started = Instant::now();
+    // 高级设置：比较结果指标名称显示列去首尾空格（默认关闭，不影响匹配）。
+    let trim_indicator_names =
+        crate::app_settings::AppSettings::load().central_trim_indicator_names();
     write_execution_compare_workbook(
         &output_path,
         &rows,
         &config.target_unit,
         &current.record_date,
+        trim_indicator_names,
     )?;
     let workbook_write_time_ms = workbook_started.elapsed().as_millis();
     // Stage attribution for the write phase is derived from the validation
@@ -941,6 +948,7 @@ fn write_execution_compare_workbook(
     rows: &[S3ExecutionCompareRow],
     target_unit: &str,
     record_date: &str,
+    trim_indicator_names: bool,
 ) -> Result<()> {
     ensure!(
         rows.len() <= 1_048_575,
@@ -1001,9 +1009,27 @@ fn write_execution_compare_workbook(
                     .fill_color
                     .filter(|_| !row.fill_scope.is_empty())
                     .and_then(vba_color_index_rgb);
+                // 指标名称显示列：设置开启时去首尾空格（不影响匹配与说明文字）。
+                let display_indicator_name = if row.indicator_name_out.is_empty() {
+                    record.indicator_name.as_str()
+                } else {
+                    row.indicator_name_out.as_str()
+                };
+                let display_indicator_name = if trim_indicator_names {
+                    display_indicator_name.trim()
+                } else {
+                    display_indicator_name
+                };
+                // 源生产 exporter 口径：数值显示单元格统一按 15 位有效数字
+                // 落盘，环比按写入的增减额/上期值重算后再取 15 位；规则匹配
+                // 仍使用行内原始值。
+                let display_value = display_central_15g(&record.value);
+                let display_previous = display_central_15g(&row.previous_value);
+                let display_change = display_central_15g(&row.change);
+                let display_ratio =
+                    display_ratio_cell(&row.ratio, &display_change, &display_previous);
                 let text_values = [
                     (0, record.biz_class.as_str()),
-                    (1, record.record_date.as_str()),
                     (2, record.org_code.as_str()),
                     (3, record.org_name.as_str()),
                     (4, record.region_code.as_str()),
@@ -1017,18 +1043,10 @@ fn write_execution_compare_workbook(
                         },
                     ),
                     (7, record.indicator.as_str()),
-                    (
-                        8,
-                        if row.indicator_name_out.is_empty() {
-                            record.indicator_name.as_str()
-                        } else {
-                            row.indicator_name_out.as_str()
-                        },
-                    ),
+                    (8, display_indicator_name),
                     (9, record.data_attr.as_str()),
                     (10, record.currency.as_str()),
                     (11, record.frequency.as_str()),
-                    (12, record.batch.as_str()),
                     (17, row.remark.as_str()),
                     (18, row.need_explanation.as_str()),
                     (19, row.explanation_content.as_str()),
@@ -1038,32 +1056,80 @@ fn write_execution_compare_workbook(
                     let applies_fill = fill_color.is_some()
                         && ((row.fill_scope == "row" && column <= 17)
                             || (row.fill_scope != "row" && column == 17));
-                    if column == 1 || applies_fill {
-                        let format = if column == 1 {
-                            if applies_fill {
-                                formats
-                                    .date_by_fill
-                                    .get(&fill_color.expect("fill applies to date"))
-                                    .expect("date fill format was precomputed")
-                            } else {
-                                &formats.date
-                            }
-                        } else {
-                            formats
-                                .text_by_fill
-                                .get(&fill_color.expect("fill applies to text"))
-                                .expect("text fill format was precomputed")
-                        };
+                    if applies_fill {
+                        let format = formats
+                            .text_by_fill
+                            .get(&fill_color.expect("fill applies to text"))
+                            .expect("text fill format was precomputed");
                         worksheet.write_string_with_format(output_row, column, value, format)?;
                     } else {
                         worksheet.write_string(output_row, column, value)?;
+                    }
+                }
+                // 数据日期：写原生 Excel 日期值（源生产写 date 对象）。
+                {
+                    let applies_fill = fill_color.is_some() && row.fill_scope == "row";
+                    let format = if applies_fill {
+                        formats
+                            .date_by_fill
+                            .get(&fill_color.expect("fill applies to date"))
+                            .expect("date fill format was precomputed")
+                    } else {
+                        &formats.date
+                    };
+                    match excel_datetime(&record.record_date) {
+                        Some(datetime) => {
+                            worksheet
+                                .write_datetime_with_format(output_row, 1, &datetime, format)?;
+                        }
+                        None => {
+                            worksheet.write_string_with_format(
+                                output_row,
+                                1,
+                                record.record_date.as_str(),
+                                format,
+                            )?;
+                        }
+                    }
+                }
+                // 批次：规范整数写数值，其余保持文本（源生产 _batch_cell）。
+                {
+                    let applies_fill = fill_color.is_some() && row.fill_scope == "row";
+                    if let Some(batch) = canonical_batch_number(&record.batch) {
+                        if applies_fill {
+                            let format = formats
+                                .central
+                                .get(&(None, fill_color))
+                                .context("S3-F01 批次数值格式缓存缺少所需格式")?;
+                            worksheet.write_number_with_format(
+                                output_row,
+                                12,
+                                batch as f64,
+                                format,
+                            )?;
+                        } else {
+                            worksheet.write_number(output_row, 12, batch as f64)?;
+                        }
+                    } else if applies_fill {
+                        let format = formats
+                            .text_by_fill
+                            .get(&fill_color.expect("fill applies to text"))
+                            .expect("text fill format was precomputed");
+                        worksheet.write_string_with_format(
+                            output_row,
+                            12,
+                            record.batch.as_str(),
+                            format,
+                        )?;
+                    } else {
+                        worksheet.write_string(output_row, 12, record.batch.as_str())?;
                     }
                 }
                 write_central_value(
                     worksheet,
                     output_row,
                     13,
-                    &record.value,
+                    &display_value,
                     Some("0.00"),
                     fill_color.filter(|_| row.fill_scope == "row"),
                     &formats,
@@ -1072,7 +1138,7 @@ fn write_execution_compare_workbook(
                     worksheet,
                     output_row,
                     14,
-                    &row.previous_value,
+                    &display_previous,
                     Some("0.00"),
                     fill_color.filter(|_| row.fill_scope == "row"),
                     &formats,
@@ -1081,7 +1147,7 @@ fn write_execution_compare_workbook(
                     worksheet,
                     output_row,
                     15,
-                    &row.change,
+                    &display_change,
                     Some("0.00"),
                     fill_color.filter(|_| row.fill_scope == "row"),
                     &formats,
@@ -1090,7 +1156,7 @@ fn write_execution_compare_workbook(
                     worksheet,
                     output_row,
                     16,
-                    &row.ratio,
+                    &display_ratio,
                     Some("0.00%"),
                     fill_color.filter(|_| row.fill_scope == "row"),
                     &formats,
@@ -1115,7 +1181,13 @@ fn write_execution_compare_workbook(
         }
         let workbook_saved_ms = workbook_save_started.elapsed().as_millis();
 
-        validate_execution_compare_workbook(&temporary_path, &sheet_name, &headers, rows)?;
+        validate_execution_compare_workbook(
+            &temporary_path,
+            &sheet_name,
+            &headers,
+            rows,
+            trim_indicator_names,
+        )?;
         let workbook_validated_ms = workbook_save_started.elapsed().as_millis();
         eprintln!(
             "{}",
@@ -1204,6 +1276,71 @@ fn write_central_value(
         }
     }
     Ok(())
+}
+
+/// 源生产 `_excel_number_cell`/`_ratio_cell`：浮点按 15 位有效数字落盘。
+fn excel_15g(value: f64) -> f64 {
+    format!("{value:.14e}").parse::<f64>().unwrap_or(value)
+}
+
+fn display_central_15g(value: &CentralValue) -> CentralValue {
+    match value {
+        CentralValue::Number(number) => CentralValue::Number(excel_15g(*number)),
+        other => other.clone(),
+    }
+}
+
+/// 环比显示值：可整除时按写入后的增减额/上期值重算（源生产
+/// `_comparison_output_cells`），否则保留原值；结果统一取 15 位。
+fn display_ratio_cell(
+    ratio: &CentralValue,
+    change: &CentralValue,
+    previous: &CentralValue,
+) -> CentralValue {
+    if let (CentralValue::Number(change), CentralValue::Number(previous)) = (change, previous) {
+        if previous != &0.0 {
+            return CentralValue::Number(excel_15g(change / previous));
+        }
+    }
+    display_central_15g(ratio)
+}
+
+/// ISO 日期文本 -> 原生 Excel 日期值；解析失败保持文本写入。
+fn excel_datetime(text: &str) -> Option<ExcelDateTime> {
+    ExcelDateTime::parse_from_str(text.trim()).ok()
+}
+
+/// 源生产 `_batch_cell`：规范整数（0 或无前导零十进制）写数值。
+/// Excel 日期序列号文本（calamine DateTimeSerial）→ `YYYY-MM-DD`。
+/// Excel 1899-12-30 起算；解析失败返回 None。
+fn excel_serial_date_text(text: &str) -> Option<String> {
+    let Ok(serial) = text.parse::<f64>() else {
+        return None;
+    };
+    if !(1_000.0..=200_000.0).contains(&serial) {
+        return None;
+    }
+    let date = NaiveDate::from_ymd_opt(1899, 12, 30)?
+        .checked_add_signed(chrono::Duration::days(serial.round() as i64))?;
+    Some(date.format("%Y-%m-%d").to_string())
+}
+
+fn canonical_batch_number(batch: &str) -> Option<i64> {
+    let text = batch.trim();
+    if text.is_empty() {
+        return None;
+    }
+    if text == "0" {
+        return Some(0);
+    }
+    let first = text.chars().next()?;
+    if !first.is_ascii_digit() || first == '0' {
+        return None;
+    }
+    if !text.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    text.parse::<i64>().ok()
 }
 
 struct ExecutionCompareFormats {
@@ -1323,6 +1460,7 @@ fn validate_execution_compare_workbook(
     expected_sheet_name: &str,
     headers: &[String],
     rows: &[S3ExecutionCompareRow],
+    trim_indicator_names: bool,
 ) -> Result<()> {
     let sheets = read_value_columns(path, 22).context("独立读回 S3-F01 比较结果失败")?;
     ensure!(sheets.len() == 1, "S3-F01 比较结果应只有一个工作表");
@@ -1347,9 +1485,18 @@ fn validate_execution_compare_workbook(
     for (index, row) in rows.iter().enumerate() {
         let output_row = index + 2;
         let record = &row.record;
+        let display_indicator_name = if row.indicator_name_out.is_empty() {
+            record.indicator_name.as_str()
+        } else {
+            row.indicator_name_out.as_str()
+        };
+        let display_indicator_name = if trim_indicator_names {
+            display_indicator_name.trim()
+        } else {
+            display_indicator_name
+        };
         let text_values = [
             (1, record.biz_class.as_str()),
-            (2, record.record_date.as_str()),
             (3, record.org_code.as_str()),
             (4, record.org_name.as_str()),
             (5, record.region_code.as_str()),
@@ -1363,18 +1510,10 @@ fn validate_execution_compare_workbook(
                 },
             ),
             (8, record.indicator.as_str()),
-            (
-                9,
-                if row.indicator_name_out.is_empty() {
-                    record.indicator_name.as_str()
-                } else {
-                    row.indicator_name_out.as_str()
-                },
-            ),
+            (9, display_indicator_name),
             (10, record.data_attr.as_str()),
             (11, record.currency.as_str()),
             (12, record.frequency.as_str()),
-            (13, record.batch.as_str()),
             (18, row.remark.as_str()),
             (19, row.need_explanation.as_str()),
             (20, row.explanation_content.as_str()),
@@ -1388,11 +1527,50 @@ fn validate_execution_compare_workbook(
                 column
             );
         }
+        // 数据日期写原生日期值：读回可能是 Excel 序列号或 ISO 日期时间，
+        // 统一还原成同一天判定。
+        {
+            let expected = record.record_date.as_str();
+            let actual = cell_text(sheet, output_row, 2);
+            let matches = actual == expected
+                || actual
+                    .strip_suffix("T00:00:00")
+                    .is_some_and(|date| date == expected)
+                || excel_serial_date_text(&actual).is_some_and(|date| date == expected);
+            ensure!(
+                matches,
+                "S3-F01 比较结果第 {} 行第 2 列数据日期读回不匹配：{actual} vs {expected}",
+                output_row
+            );
+        }
+        // 批次写规范整数数值：按数值读回比较，非规范批次仍按文本。
+        {
+            let actual = cell_text(sheet, output_row, 13);
+            if let Some(batch) = canonical_batch_number(&record.batch) {
+                let parsed = actual.parse::<f64>().ok();
+                ensure!(
+                    parsed == Some(batch as f64),
+                    "S3-F01 比较结果第 {} 行第 13 列批次读回不匹配：{actual} vs {batch}",
+                    output_row
+                );
+            } else {
+                ensure!(
+                    actual == record.batch.as_str(),
+                    "S3-F01 比较结果第 {} 行第 13 列批次文本读回不匹配",
+                    output_row
+                );
+            }
+        }
+        // 数值列按写入口径（15 位有效数字 + 环比重算）读回比较。
+        let display_value = display_central_15g(&record.value);
+        let display_previous = display_central_15g(&row.previous_value);
+        let display_change = display_central_15g(&row.change);
+        let display_ratio = display_ratio_cell(&row.ratio, &display_change, &display_previous);
         for (column, expected) in [
-            (14, &record.value),
-            (15, &row.previous_value),
-            (16, &row.change),
-            (17, &row.ratio),
+            (14, &display_value),
+            (15, &display_previous),
+            (16, &display_change),
+            (17, &display_ratio),
         ] {
             let actual = sheet
                 .values
@@ -1486,7 +1664,9 @@ fn compile_expression_rules(
             .to_owned();
         let tolerance_text = field(fields, &["容差值(万元)", "Thd值(万元)"]);
         let tolerance = if tolerance_text.trim().is_empty() {
-            0.01
+            // 配置未填按全局默认容差（设置中心可调，元；默认 100 元 = 0.01 万元）。
+            // 配置了容差的规则按配置值执行（万元 → 元），仍与既有口径一致。
+            crate::app_settings::AppSettings::load().central_diff_tolerance_yuan()
         } else {
             parse_config_number(tolerance_text).with_context(|| {
                 format!("3.1 表达式规则 {rule_id} 的容差不是数值：{tolerance_text}")
@@ -2761,6 +2941,8 @@ fn apply_alert_band(
 }
 
 fn matching_alert_band(ratio: f64, bands: &[S3AlertBand]) -> Option<&S3AlertBand> {
+    // 源生产 alert_band_for 口径：配置为百分数数值；空下限=无下界、
+    // 空上限=无上界（命中）；上下限是非数值文本时整档跳过。
     let percent = ratio * 100.0;
     bands.iter().find(|band| {
         let Some(lower) = parse_optional_bound(&band.lower) else {
@@ -2785,6 +2967,7 @@ pub(crate) fn indicator_split_fill_color_index(ratio: f64, bands: &[S3AlertBand]
     vba_color_index_rgb(color).map(|_| color)
 }
 
+/// `None` = 上下限不是数值文本（整档跳过）；`Some(None)` = 空（无界）。
 fn parse_optional_bound(value: &str) -> Option<Option<f64>> {
     if value.trim().is_empty() {
         Some(None)
@@ -3600,7 +3783,7 @@ mod tests {
             fill_scope: String::new(),
         };
 
-        write_execution_compare_workbook(&output, &[row, blank_row], "亿元", "2026-08-31")?;
+        write_execution_compare_workbook(&output, &[row, blank_row], "亿元", "2026-08-31", false)?;
         let sheets = read_value_columns(&output, 22)?;
         assert_eq!(sheets.len(), 1);
         assert_eq!(sheets[0].name, "2026年8月对比结果");
@@ -3710,7 +3893,9 @@ mod tests {
             assert_eq!(custom_num_format(address)?, "0.00");
         }
         assert_eq!(custom_num_format("Q3")?, "0.00%");
-        assert!(write_execution_compare_workbook(&output, &[], "亿元", "2026-08-31").is_err());
+        assert!(
+            write_execution_compare_workbook(&output, &[], "亿元", "2026-08-31", false).is_err()
+        );
         let _ = std::fs::remove_file(output);
         Ok(())
     }

@@ -6,6 +6,7 @@
 
 use anyhow::{bail, ensure, Context, Result};
 use std::{
+    collections::HashSet,
     ffi::c_void,
     mem,
     path::Path,
@@ -16,13 +17,13 @@ use windows_sys::{
     core::GUID,
     Win32::{
         Foundation::{
-            CloseHandle, SysAllocString, SysStringLen, FILETIME, VARIANT_BOOL, VARIANT_FALSE,
-            VARIANT_TRUE,
+            CloseHandle, SysAllocString, SysFreeString, SysStringLen, FILETIME, VARIANT_BOOL,
+            VARIANT_FALSE, VARIANT_TRUE,
         },
         System::{
             Com::{
                 CLSIDFromProgID, CoCreateInstance, CoInitializeEx, CoUninitialize,
-                CLSCTX_LOCAL_SERVER, COINIT_APARTMENTTHREADED, DISPATCH_METHOD,
+                EXCEPINFO, CLSCTX_LOCAL_SERVER, COINIT_APARTMENTTHREADED, DISPATCH_METHOD,
                 DISPATCH_PROPERTYGET, DISPATCH_PROPERTYPUT, DISPPARAMS,
             },
             Diagnostics::ToolHelp::{
@@ -34,7 +35,10 @@ use windows_sys::{
                 GetProcessTimes, OpenProcess, TerminateProcess, WaitForSingleObject,
                 PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
             },
-            Variant::{VariantClear, VARIANT, VT_BOOL, VT_BSTR, VT_DISPATCH, VT_I2, VT_I4},
+            Variant::{
+                VariantClear, VARIANT, VT_BOOL, VT_BSTR, VT_DISPATCH, VT_EMPTY, VT_I2, VT_I4,
+                VT_NULL, VT_R8,
+            },
         },
         UI::WindowsAndMessaging::GetWindowThreadProcessId,
     },
@@ -88,7 +92,7 @@ struct DispatchVtable {
         flags: u16,
         params: *mut DISPPARAMS,
         result: *mut VARIANT,
-        exception: *mut c_void,
+        exception: *mut EXCEPINFO,
         argument_error: *mut u32,
     ) -> i32,
 }
@@ -161,6 +165,7 @@ impl Dispatch {
             cNamedArgs: u32::from(is_property_put),
         };
         let mut value = OwnedVariant::empty();
+        let mut exception = EXCEPINFO::default();
         let mut argument_error = u32::MAX;
         let invoke = unsafe { (*(*self.object).vtable).invoke };
         let result = unsafe {
@@ -172,11 +177,42 @@ impl Dispatch {
                 flags,
                 &mut parameters,
                 &mut value.0,
-                ptr::null_mut(),
+                &mut exception,
                 &mut argument_error,
             )
         };
-        ensure_hresult(result, format!("Excel COM call {name}"))?;
+        if result < 0 {
+            if let Some(fill_in) = exception.pfnDeferredFillIn {
+                unsafe {
+                    let _ = fill_in(&mut exception);
+                }
+            }
+            let source = unsafe { exception_bstr_to_string(exception.bstrSource) };
+            let description = unsafe { exception_bstr_to_string(exception.bstrDescription) };
+            unsafe {
+                for value in [
+                    exception.bstrSource,
+                    exception.bstrDescription,
+                    exception.bstrHelpFile,
+                ] {
+                    if !value.is_null() {
+                        SysFreeString(value);
+                    }
+                }
+            }
+            let details = match (source.trim(), description.trim()) {
+                ("", "") => String::new(),
+                ("", description) => format!("；COM 说明：{description}"),
+                (source, "") => format!("；COM 来源：{source}"),
+                (source, description) => {
+                    format!("；COM 来源：{source}；COM 说明：{description}")
+                }
+            };
+            bail!(
+                "Excel COM call {name}失败（HRESULT 0x{:08X}{details}）",
+                result as u32
+            );
+        }
         Ok(value)
     }
 
@@ -185,6 +221,13 @@ impl Dispatch {
         // IDispatch 下以 METHOD|PROPERTYGET 组合暴露；VB 自动化客户端同样
         // 传组合标志。单 METHOD 会在这些成员上返回 0x80020003/0x80020006。
         self.invoke(name, arguments, DISPATCH_METHOD | DISPATCH_PROPERTYGET)
+    }
+
+    fn invoke_method_only(&self, name: &str, arguments: &[OwnedVariant]) -> Result<OwnedVariant> {
+        // Workbooks.Open is a method, not a property getter. Excel raises
+        // DISP_E_EXCEPTION (“Cannot get the Open property of the Workbooks
+        // class”) when this member is invoked with METHOD|PROPERTYGET.
+        self.invoke(name, arguments, DISPATCH_METHOD)
     }
 
     fn get(&self, name: &str) -> Result<OwnedVariant> {
@@ -203,6 +246,15 @@ impl Dispatch {
     fn get_i32(&self, name: &str) -> Result<i32> {
         self.get(name)?.as_i32(name)
     }
+}
+
+unsafe fn exception_bstr_to_string(value: windows_sys::core::BSTR) -> String {
+    if value.is_null() {
+        return String::new();
+    }
+    let length = unsafe { SysStringLen(value) as usize };
+    let units = unsafe { std::slice::from_raw_parts(value, length) };
+    String::from_utf16_lossy(units)
 }
 
 impl Drop for Dispatch {
@@ -256,6 +308,29 @@ impl OwnedVariant {
         match value.vt {
             VT_I4 => Ok(unsafe { value.Anonymous.lVal }),
             VT_I2 => Ok(i32::from(unsafe { value.Anonymous.iVal })),
+            other => bail!("Excel COM {label} 返回意外 Variant 类型 {other}"),
+        }
+    }
+
+    fn as_optional_i32(&self, label: &str) -> Result<Option<i32>> {
+        let value = unsafe { &self.0.Anonymous.Anonymous };
+        match value.vt {
+            VT_I4 => Ok(Some(unsafe { value.Anonymous.lVal })),
+            VT_I2 => Ok(Some(i32::from(unsafe { value.Anonymous.iVal }))),
+            // Excel often marshals Interior.Color / DisplayFormat color as
+            // VT_R8 even though the RGB value is an integral 24-bit number.
+            VT_R8 => {
+                let number = unsafe { value.Anonymous.dblVal };
+                ensure!(
+                    number.is_finite()
+                        && number.fract() == 0.0
+                        && number >= f64::from(i32::MIN)
+                        && number <= f64::from(i32::MAX),
+                    "Excel COM {label} 返回非整数颜色值 {number}"
+                );
+                Ok(Some(number as i32))
+            }
+            VT_NULL | VT_EMPTY => Ok(None),
             other => bail!("Excel COM {label} 返回意外 Variant 类型 {other}"),
         }
     }
@@ -386,7 +461,7 @@ impl ExcelComSession {
         let app = self.app.as_ref().expect("COM app initialized");
         let workbook = app
             .get_dispatch("Workbooks")?
-            .invoke_method(
+            .invoke_method_only(
                 "Open",
                 &[
                     OwnedVariant::string(&input.to_string_lossy())?,
@@ -411,6 +486,202 @@ impl ExcelComSession {
         Ok(())
     }
 
+    /// Read actual conditional-format fill rendering for the named scan areas.
+    /// A single private Office instance is reused across all workbooks in the
+    /// S1-F1 batch. Uniform rectangles are checked in bulk and recursively
+    /// subdivided only when their stored/display colors differ within them.
+    pub fn scan_conditional_display_colors(
+        &mut self,
+        input: &Path,
+        scan_areas: &[String],
+    ) -> Result<crate::conditional_format::ConditionalDisplayScan> {
+        use crate::conditional_format::ConditionalDisplayScan;
+
+        ensure!(input.is_file(), "条件格式显示色扫描输入不存在");
+        ensure!(
+            !scan_areas.is_empty(),
+            "模板没有配置条件格式扫描区域；无法按实际显示色审核"
+        );
+        let started = Instant::now();
+        let app = self.app.as_ref().context("Office COM 会话已关闭")?;
+        let workbooks = app.get_dispatch("Workbooks")?;
+        let workbook = workbooks
+            .invoke_method_only(
+                "Open",
+                &[
+                    OwnedVariant::string(&input.to_string_lossy())?,
+                    OwnedVariant::i32(0),
+                    OwnedVariant::boolean(true),
+                ],
+            )?
+            .into_dispatch()
+            .with_context(|| format!("Excel COM 无法只读打开条件格式来源 {}", input.display()))?;
+
+        let is_wps = self.application_name.eq_ignore_ascii_case("ket.Application")
+            || self.application_name.eq_ignore_ascii_case("KET.Application");
+        let scan_result = (|| -> Result<ConditionalDisplayScan> {
+            let sheets = workbook.get_dispatch("Worksheets")?;
+            let mut scan = ConditionalDisplayScan::default();
+            let mut seen_changes = HashSet::new();
+            if is_wps {
+                // WPS may return the underlying Interior color or an empty
+                // DisplayFormat color while launched hidden with screen
+                // updates disabled. The Python Audit refreshes WPS rendering
+                // by activating the workbook/sheet and calculating before
+                // reading DisplayFormat; mirror that behavior here.
+                if let Err(error) = app.set("ScreenUpdating", OwnedVariant::boolean(true)) {
+                    scan.diagnostics
+                        .push(format!("WPS 条件格式刷新无法启用屏幕更新：{error:#}"));
+                }
+                if let Err(error) = workbook.invoke_method("Activate", &[]) {
+                    scan.diagnostics
+                        .push(format!("WPS 条件格式刷新无法激活工作簿：{error:#}"));
+                }
+            }
+            let mut refreshed_wps_sheets = HashSet::new();
+            for specification in scan_areas {
+                let Some((raw_sheet_name, range_address)) = specification.rsplit_once('!') else {
+                    scan.diagnostics.push(format!(
+                        "条件格式扫描范围格式无效：{specification}"
+                    ));
+                    continue;
+                };
+                let sheet_name = raw_sheet_name.trim_matches('\'').replace("''", "'");
+                let sheet = match sheets
+                    .invoke_method("Item", &[OwnedVariant::string(&sheet_name)?])
+                    .and_then(OwnedVariant::into_dispatch)
+                {
+                    Ok(sheet) => sheet,
+                    Err(error) => {
+                        scan.diagnostics.push(format!(
+                            "条件格式扫描工作表不存在或不可读：{sheet_name}：{error:#}"
+                        ));
+                        continue;
+                    }
+                };
+                if is_wps && refreshed_wps_sheets.insert(sheet_name.to_ascii_lowercase()) {
+                    if let Err(error) = sheet.invoke_method("Activate", &[]) {
+                        scan.diagnostics.push(format!(
+                            "WPS 条件格式刷新无法激活工作表 {sheet_name}：{error:#}"
+                        ));
+                    }
+                    match app.invoke_method("CalculateFullRebuild", &[]) {
+                        Ok(_) => {}
+                        Err(full_rebuild_error) => {
+                            if let Err(calculate_error) = app.invoke_method("Calculate", &[]) {
+                                scan.diagnostics.push(format!(
+                                    "WPS 条件格式刷新计算失败：{sheet_name}；全量重建：{full_rebuild_error:#}；普通计算：{calculate_error:#}"
+                                ));
+                            }
+                        }
+                    }
+                }
+                let range = match sheet
+                    .invoke_method("Range", &[OwnedVariant::string(range_address.trim())?])
+                    .and_then(OwnedVariant::into_dispatch)
+                {
+                    Ok(range) => range,
+                    Err(error) => {
+                        scan.diagnostics.push(format!(
+                            "条件格式扫描区域不可读：{specification}：{error:#}"
+                        ));
+                        continue;
+                    }
+                };
+                let areas = match range.get_dispatch("Areas") {
+                    Ok(areas) => areas,
+                    Err(error) => {
+                        scan.diagnostics.push(format!(
+                            "条件格式扫描区域无法枚举：{specification}：{error:#}"
+                        ));
+                        continue;
+                    }
+                };
+                let area_count = match areas.get_i32("Count") {
+                    Ok(count) => count.max(0),
+                    Err(error) => {
+                        scan.diagnostics.push(format!(
+                            "条件格式扫描区域数量无法读取：{specification}：{error:#}"
+                        ));
+                        continue;
+                    }
+                };
+                for area_index in 1..=area_count {
+                    let area = match areas
+                        .invoke_method("Item", &[OwnedVariant::i32(area_index)])
+                        .and_then(OwnedVariant::into_dispatch)
+                    {
+                        Ok(area) => area,
+                        Err(error) => {
+                            scan.diagnostics.push(format!(
+                                "条件格式扫描区域第 {area_index} 段无法读取：{specification}：{error:#}"
+                            ));
+                            continue;
+                        }
+                    };
+                    let dimensions = (|| -> Result<(i32, i32, i32, i32)> {
+                        let row = area.get_i32("Row")?;
+                        let column = area.get_i32("Column")?;
+                        let rows = area.get_dispatch("Rows")?.get_i32("Count")?;
+                        let columns = area.get_dispatch("Columns")?.get_i32("Count")?;
+                        ensure!(row > 0 && column > 0 && rows > 0 && columns > 0, "Excel 返回了空条件格式扫描范围");
+                        Ok((row, column, rows, columns))
+                    })();
+                    let (row, column, rows, columns) = match dimensions {
+                        Ok(dimensions) => dimensions,
+                        Err(error) => {
+                            scan.diagnostics.push(format!(
+                                "条件格式扫描区域尺寸无法读取：{specification}：{error:#}"
+                            ));
+                            continue;
+                        }
+                    };
+                    if let Err(error) = scan_display_rectangle(
+                        &sheet_name,
+                        &sheet,
+                        row,
+                        column,
+                        rows,
+                        columns,
+                        &mut scan,
+                        &mut seen_changes,
+                    ) {
+                        scan.diagnostics.push(format!(
+                            "条件格式实际显示色读取失败：{specification}：{error:#}"
+                        ));
+                    }
+                }
+            }
+            scan.elapsed_ms = started.elapsed().as_millis();
+            scan.engine_name = self.application_name.clone();
+            scan.engine_process_id = self.process_id;
+            Ok(scan)
+        })();
+        let reset_screen_result = if is_wps {
+            app.set("ScreenUpdating", OwnedVariant::boolean(false))
+        } else {
+            Ok(())
+        };
+        let scan_result = match (scan_result, reset_screen_result) {
+            (Ok(scan), Ok(())) => Ok(scan),
+            (Ok(mut scan), Err(error)) => {
+                scan.diagnostics
+                    .push(format!("WPS 条件格式扫描后无法关闭屏幕更新：{error:#}"));
+                Ok(scan)
+            }
+            (Err(error), Ok(())) => Err(error),
+            (Err(error), Err(reset_error)) => Err(error.context(format!(
+                "WPS 条件格式扫描后也无法关闭屏幕更新：{reset_error:#}"
+            ))),
+        };
+        let close_result = workbook.invoke_method("Close", &[OwnedVariant::boolean(false)]);
+        match (scan_result, close_result) {
+            (Ok(scan), Ok(_)) => Ok(scan),
+            (Err(error), _) => Err(error),
+            (Ok(_), Err(error)) => Err(error).context("关闭只读条件格式工作簿"),
+        }
+    }
+
     pub fn recalculate(
         &mut self,
         input: &Path,
@@ -418,7 +689,7 @@ impl ExcelComSession {
         timeout: Duration,
         stage_path: &Path,
     ) -> Result<serde_json::Value> {
-        self.recalculate_with_mode(input, output, timeout, stage_path, "full")
+        self.recalculate_with_mode(input, output, timeout, stage_path, "full", false)
     }
 
     /// `mode` selects the calculation invocation so benchmarks can attribute
@@ -433,9 +704,17 @@ impl ExcelComSession {
         timeout: Duration,
         stage_path: &Path,
         mode: &str,
+        save_in_place: bool,
     ) -> Result<serde_json::Value> {
         write_stage(stage_path, "opening_workbook");
-        let result = self.recalculate_inner(input, output, timeout, stage_path, mode);
+        let result = self.recalculate_inner(
+            input,
+            output,
+            timeout,
+            stage_path,
+            mode,
+            save_in_place,
+        );
         if result.is_err() {
             write_stage(stage_path, "closing_failed_workbook");
         }
@@ -484,6 +763,7 @@ impl ExcelComSession {
         timeout: Duration,
         stage_path: &Path,
         mode: &str,
+        save_in_place: bool,
     ) -> Result<(serde_json::Value,)> {
         // Stage-level timing (goal-mandated): every COM phase is measured so
         // hot/cold differences against the Python channel are attributable.
@@ -500,14 +780,18 @@ impl ExcelComSession {
         let workbooks = app.get_dispatch("Workbooks")?;
         let input_text = input.to_string_lossy();
         let workbook = workbooks
-            .invoke_method(
+            .invoke_method_only(
                 "Open",
                 &[
                     OwnedVariant::string(&input_text)?,
                     OwnedVariant::i32(0),
-                    OwnedVariant::boolean(false),
+                    // The engine input is a calculation-only copy. Open it
+                    // read-only so workbook write protection/lock state cannot
+                    // block formula evaluation or cause Excel to modify it.
+                    OwnedVariant::boolean(!save_in_place),
                 ],
-            )?
+            )
+            .context("Office COM Workbooks.Open 调用失败")?
             .into_dispatch()
             .context("Excel COM Workbooks.Open 未返回工作簿")?;
         record("open", open_started);
@@ -585,11 +869,15 @@ impl ExcelComSession {
 
             let save_started = Instant::now();
             write_stage(stage_path, "saving_output");
-            let output_text = output.to_string_lossy();
-            workbook.invoke_method(
-                "SaveAs",
-                &[OwnedVariant::string(&output_text)?, OwnedVariant::i32(51)],
-            )?;
+            if save_in_place {
+                workbook.invoke_method("Save", &[])?;
+            } else {
+                let output_text = output.to_string_lossy();
+                workbook.invoke_method(
+                    "SaveAs",
+                    &[OwnedVariant::string(&output_text)?, OwnedVariant::i32(51)],
+                )?;
+            }
             record("save_as", save_started);
 
             let close_started = Instant::now();
@@ -607,6 +895,189 @@ impl ExcelComSession {
         }
         calculation.map(|()| (serde_json::Value::Object(stages),))
     }
+}
+
+fn scan_display_rectangle(
+    sheet_name: &str,
+    sheet: &Dispatch,
+    row: i32,
+    column: i32,
+    rows: i32,
+    columns: i32,
+    scan: &mut crate::conditional_format::ConditionalDisplayScan,
+    seen_changes: &mut HashSet<String>,
+) -> Result<()> {
+    use crate::conditional_format::ConditionalDisplayColorChange;
+
+    let end_row = row
+        .checked_add(rows - 1)
+        .context("条件格式范围行号溢出")?;
+    let end_column = column
+        .checked_add(columns - 1)
+        .context("条件格式范围列号溢出")?;
+    let address = format!(
+        "{}:{}",
+        excel_cell_address(column, row)?,
+        excel_cell_address(end_column, end_row)?
+    );
+    let range = sheet
+        .invoke_method("Range", &[OwnedVariant::string(&address)?])?
+        .into_dispatch()?;
+    let base_color = range_fill_color(&range, false)?;
+    let display_color = range_fill_color(&range, true)?;
+
+    if let (Some(base_color), Some(display_color)) = (base_color, display_color) {
+        let cell_count = (rows as usize)
+            .checked_mul(columns as usize)
+            .context("条件格式扫描单元格数量溢出")?;
+        scan.scanned_cells = scan
+            .scanned_cells
+            .checked_add(cell_count)
+            .context("条件格式扫描单元格累计数量溢出")?;
+        if base_color != display_color {
+            for cell_row in row..=end_row {
+                for cell_column in column..=end_column {
+                    let cell = excel_cell_address(cell_column, cell_row)?;
+                    let key = format!("{}!{}", sheet_name.to_ascii_lowercase(), cell);
+                    if seen_changes.insert(key) {
+                        scan.changes.push(ConditionalDisplayColorChange {
+                            sheet: sheet_name.to_owned(),
+                            cell,
+                            base_fill_color: base_color,
+                            display_fill_color: display_color,
+                        });
+                    }
+                }
+            }
+        }
+        return Ok(());
+    }
+
+    if rows == 1 && columns == 1 {
+        scan.scanned_cells = scan.scanned_cells.saturating_add(1);
+        // A one-cell range cannot contain mixed formatting. If ColorIndex is
+        // nevertheless unavailable, use that cell's scalar Color directly.
+        // On larger ranges Color alone is unsafe: Excel can return a scalar
+        // even when cells in the range have different displayed fills.
+        let base_color = range_fill_color_value(&range, false)?;
+        let display_color = range_fill_color_value(&range, true)?;
+        if let (Some(base_color), Some(display_color)) = (base_color, display_color) {
+            if base_color != display_color {
+                let cell = excel_cell_address(column, row)?;
+                let key = format!("{}!{}", sheet_name.to_ascii_lowercase(), cell);
+                if seen_changes.insert(key) {
+                    scan.changes.push(ConditionalDisplayColorChange {
+                        sheet: sheet_name.to_owned(),
+                        cell,
+                        base_fill_color: base_color,
+                        display_fill_color: display_color,
+                    });
+                }
+            }
+            return Ok(());
+        }
+        scan.diagnostics.push(format!(
+            "{}!{} 的基础/实际显示填充色不是单一可读颜色",
+            sheet_name,
+            excel_cell_address(column, row)?
+        ));
+        return Ok(());
+    }
+
+    if rows >= columns && rows > 1 {
+        let first_rows = rows / 2;
+        let second_rows = rows - first_rows;
+        scan_display_rectangle(
+            sheet_name,
+            sheet,
+            row,
+            column,
+            first_rows,
+            columns,
+            scan,
+            seen_changes,
+        )?;
+        scan_display_rectangle(
+            sheet_name,
+            sheet,
+            row + first_rows,
+            column,
+            second_rows,
+            columns,
+            scan,
+            seen_changes,
+        )
+    } else {
+        let first_columns = columns / 2;
+        let second_columns = columns - first_columns;
+        scan_display_rectangle(
+            sheet_name,
+            sheet,
+            row,
+            column,
+            rows,
+            first_columns,
+            scan,
+            seen_changes,
+        )?;
+        scan_display_rectangle(
+            sheet_name,
+            sheet,
+            row,
+            column + first_columns,
+            rows,
+            second_columns,
+            scan,
+            seen_changes,
+        )
+    }
+}
+
+fn range_fill_color(range: &Dispatch, display_format: bool) -> Result<Option<i32>> {
+    let interior = if display_format {
+        range.get_dispatch("DisplayFormat")?.get_dispatch("Interior")?
+    } else {
+        range.get_dispatch("Interior")?
+    };
+    let index_label = if display_format {
+        "DisplayFormat.Interior.ColorIndex"
+    } else {
+        "Interior.ColorIndex"
+    };
+    // ColorIndex is VT_NULL for a mixed-format range, while Color can still
+    // misleadingly return one cell's color. Use it as the uniformity check.
+    if interior.get("ColorIndex")?.as_optional_i32(index_label)?.is_none() {
+        return Ok(None);
+    }
+    range_fill_color_value(range, display_format)
+}
+
+fn range_fill_color_value(range: &Dispatch, display_format: bool) -> Result<Option<i32>> {
+    let interior = if display_format {
+        range.get_dispatch("DisplayFormat")?.get_dispatch("Interior")?
+    } else {
+        range.get_dispatch("Interior")?
+    };
+    interior.get("Color")?.as_optional_i32(if display_format {
+        "DisplayFormat.Interior.Color"
+    } else {
+        "Interior.Color"
+    })
+}
+
+fn excel_cell_address(column: i32, row: i32) -> Result<String> {
+    ensure!(
+        column > 0 && row > 0 && column <= 16_384 && row <= 1_048_576,
+        "条件格式单元格坐标越界"
+    );
+    let mut value = column;
+    let mut letters = String::new();
+    while value > 0 {
+        value -= 1;
+        letters.insert(0, char::from(b'A' + (value % 26) as u8));
+        value /= 26;
+    }
+    Ok(format!("{letters}{row}"))
 }
 
 /// A private Word/WPS COM instance used for document conversion and checks.

@@ -1,0 +1,2426 @@
+{
+  "scope": {
+    "source_workbooks": 129,
+    "business_categories": 19,
+    "template_categories_matched": 19,
+    "external_data_supplied": true,
+    "external_data_sha256_after": "5DF655ABC0074D9A70896794F478E82A33E0992AAA70C6ADD96FAA3232908F6E"
+  },
+  "rust": {
+    "run_status": "failed",
+    "elapsed_ms": 211460,
+    "file_statuses": {
+      "COMPLETED": 94,
+      "FAILED": 35
+    },
+    "files_total": 129,
+    "structure_passed": 129,
+    "reviewed_files": 94,
+    "waiting_manual_recalc": 0,
+    "failed_files": 35,
+    "skipped": 0,
+    "formula_issues": 3224,
+    "conditional_issues": 59,
+    "total_issues": 3283,
+    "audit_copies": 94,
+    "result_workbook": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\汇总核查表校验.xlsx",
+    "input_unchanged_report": true
+  },
+  "python": {
+    "batches": 19,
+    "completed_batches": 19,
+    "files": 129,
+    "issue_rows": 3616,
+    "issue_objects": 3616,
+    "elapsed_ms_sum": 409212,
+    "issue_type_counts": {
+      "错误": 3267,
+      "条件格式触发": 349
+    }
+  },
+  "parity": {
+    "python_issue_rows": 3616,
+    "rust_issue_rows": 3283,
+    "exact_row_matches": 3140,
+    "common_issue_keys_file_sheet_cell_type": 3171,
+    "python_only_exact_rows": 476,
+    "rust_only_exact_rows": 143,
+    "per_file_count_equal": 83,
+    "per_file_total": 129
+  },
+  "source_sha256_unchanged": true,
+  "python_batches": [
+    {
+      "business": "五篇大文章-互联网金融业务信息（月度）",
+      "status": "completed",
+      "elapsed_ms": 15242,
+      "files": 7,
+      "issue_rows": 0,
+      "issue_objects": 0,
+      "output": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-with-external\\batch_01\\汇总核查表校验_20261105234211.xlsx"
+    },
+    {
+      "business": "五篇大文章-养老产业贷款信息",
+      "status": "completed",
+      "elapsed_ms": 19232,
+      "files": 7,
+      "issue_rows": 0,
+      "issue_objects": 0,
+      "output": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-with-external\\batch_02\\汇总核查表校验_20261105234226.xlsx"
+    },
+    {
+      "business": "五篇大文章-数字经济产业贷款信息",
+      "status": "completed",
+      "elapsed_ms": 19104,
+      "files": 7,
+      "issue_rows": 0,
+      "issue_objects": 0,
+      "output": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-with-external\\batch_03\\汇总核查表校验_20261105234245.xlsx"
+    },
+    {
+      "business": "五篇大文章-普惠贷款信息",
+      "status": "completed",
+      "elapsed_ms": 19686,
+      "files": 7,
+      "issue_rows": 0,
+      "issue_objects": 0,
+      "output": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-with-external\\batch_04\\汇总核查表校验_20261105234304.xlsx"
+    },
+    {
+      "business": "五篇大文章-科技贷款信息",
+      "status": "completed",
+      "elapsed_ms": 19103,
+      "files": 7,
+      "issue_rows": 0,
+      "issue_objects": 0,
+      "output": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-with-external\\batch_05\\汇总核查表校验_20261105234324.xlsx"
+    },
+    {
+      "business": "五篇大文章-绿色贷款信息",
+      "status": "completed",
+      "elapsed_ms": 16137,
+      "files": 7,
+      "issue_rows": 0,
+      "issue_objects": 0,
+      "output": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-with-external\\batch_06\\汇总核查表校验_20261105234343.xlsx"
+    },
+    {
+      "business": "金融基础数据-个人贷款",
+      "status": "completed",
+      "elapsed_ms": 23334,
+      "files": 7,
+      "issue_rows": 0,
+      "issue_objects": 0,
+      "output": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-with-external\\batch_07\\汇总核查表校验_运行日志_20261105234404.xlsx"
+    },
+    {
+      "business": "金融基础数据-单位贷款",
+      "status": "completed",
+      "elapsed_ms": 22214,
+      "files": 7,
+      "issue_rows": 0,
+      "issue_objects": 0,
+      "output": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-with-external\\batch_08\\汇总核查表校验_运行日志_20261105234427.xlsx"
+    },
+    {
+      "business": "金融基础数据-存量专项贷款一批报文",
+      "status": "completed",
+      "elapsed_ms": 19588,
+      "files": 7,
+      "issue_rows": 0,
+      "issue_objects": 0,
+      "output": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-with-external\\batch_09\\汇总核查表校验_20261105234445.xlsx"
+    },
+    {
+      "business": "金融基础数据-存量专项贷款二批报文",
+      "status": "completed",
+      "elapsed_ms": 17469,
+      "files": 7,
+      "issue_rows": 0,
+      "issue_objects": 0,
+      "output": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-with-external\\batch_10\\汇总核查表校验_20261105234504.xlsx"
+    },
+    {
+      "business": "金融基础数据-存量个人存款",
+      "status": "completed",
+      "elapsed_ms": 17616,
+      "files": 6,
+      "issue_rows": 32,
+      "issue_objects": 32,
+      "output": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-with-external\\batch_11\\汇总核查表校验_20261105234522.xlsx"
+    },
+    {
+      "business": "金融基础数据-票据业务",
+      "status": "completed",
+      "elapsed_ms": 43767,
+      "files": 7,
+      "issue_rows": 3076,
+      "issue_objects": 3076,
+      "output": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-with-external\\batch_12\\汇总核查表校验_20261105234540.xlsx"
+    },
+    {
+      "business": "金融基础数据采集（代发工资）",
+      "status": "completed",
+      "elapsed_ms": 13762,
+      "files": 4,
+      "issue_rows": 37,
+      "issue_objects": 37,
+      "output": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-with-external\\batch_13\\汇总核查表校验_20261105234623.xlsx"
+    },
+    {
+      "business": "金融基础数据采集（债券业务）",
+      "status": "completed",
+      "elapsed_ms": 26169,
+      "files": 7,
+      "issue_rows": 25,
+      "issue_objects": 25,
+      "output": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-with-external\\batch_14\\汇总核查表校验_20261105234637.xlsx"
+    },
+    {
+      "business": "金融基础数据采集（单位存款）",
+      "status": "completed",
+      "elapsed_ms": 34053,
+      "files": 7,
+      "issue_rows": 252,
+      "issue_objects": 252,
+      "output": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-with-external\\batch_15\\汇总核查表校验_20261105234704.xlsx"
+    },
+    {
+      "business": "金融基础数据采集（单位贷款置换旧债发生额）",
+      "status": "completed",
+      "elapsed_ms": 18084,
+      "files": 7,
+      "issue_rows": 26,
+      "issue_objects": 26,
+      "output": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-with-external\\batch_16\\汇总核查表校验_20261105234738.xlsx"
+    },
+    {
+      "business": "金融基础数据采集（同业业务）",
+      "status": "completed",
+      "elapsed_ms": 22790,
+      "files": 7,
+      "issue_rows": 102,
+      "issue_objects": 102,
+      "output": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-with-external\\batch_17\\汇总核查表校验_20261105234756.xlsx"
+    },
+    {
+      "business": "金融基础数据采集（委托贷款）",
+      "status": "completed",
+      "elapsed_ms": 20551,
+      "files": 7,
+      "issue_rows": 51,
+      "issue_objects": 51,
+      "output": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-with-external\\batch_18\\汇总核查表校验_20261105234819.xlsx"
+    },
+    {
+      "business": "金融基础数据采集（股权和特定目的载体投资）",
+      "status": "completed",
+      "elapsed_ms": 21311,
+      "files": 7,
+      "issue_rows": 15,
+      "issue_objects": 15,
+      "output": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-with-external\\batch_19\\汇总核查表校验_20261105234840.xlsx"
+    }
+  ],
+  "rust_issue_type_counts": {
+    "错误": 3224,
+    "条件格式触发": 59
+  },
+  "rust_files": [
+    {
+      "business": "五篇大文章-互联网金融业务信息（月度）",
+      "source": "TCL科技集团财务有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-养老产业贷款信息",
+      "source": "TCL科技集团财务有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-数字经济产业贷款信息",
+      "source": "TCL科技集团财务有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-普惠贷款信息",
+      "source": "TCL科技集团财务有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-科技贷款信息",
+      "source": "TCL科技集团财务有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-绿色贷款信息",
+      "source": "TCL科技集团财务有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-个人贷款",
+      "source": "TCL科技集团财务有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 3,
+      "python_issues": 0,
+      "counts_equal": false,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-单位贷款",
+      "source": "TCL科技集团财务有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 7,
+      "python_issues": 0,
+      "counts_equal": false,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-存量专项贷款一批报文",
+      "source": "TCL科技集团财务有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-存量专项贷款二批报文",
+      "source": "TCL科技集团财务有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-票据业务",
+      "source": "TCL科技集团财务有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 447,
+      "python_issues": 437,
+      "counts_equal": false,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据采集（债券业务）",
+      "source": "TCL科技集团财务有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 3,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：通过 Excel-Core 复制 S1 模板公式和外部数据: AllBackendsRejectedBeforeWrite: all qualified backends rejected the file before writing: umya_spreadsheet: unverified range import source structure: refusing unverified workbook parts: xl/externalLinks/externalLink1.xml, xl/externalLinks/_rels/externalLink1.xml.rels"
+    },
+    {
+      "business": "金融基础数据采集（单位存款）",
+      "source": "TCL科技集团财务有限公司_金融基础数据采集（单位存款）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 57,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（单位存款余额!C122, C83, C92, F12, F14, F82, F91）"
+    },
+    {
+      "business": "金融基础数据采集（单位贷款置换旧债发生额）",
+      "source": "TCL科技集团财务有限公司_金融基础数据采集（单位贷款置换旧债发生额）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 6,
+      "python_issues": 6,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据采集（同业业务）",
+      "source": "TCL科技集团财务有限公司_金融基础数据采集（同业业务）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 22,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量同业借贷!F45）"
+    },
+    {
+      "business": "金融基础数据采集（委托贷款）",
+      "source": "TCL科技集团财务有限公司_金融基础数据采集（委托贷款）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 7,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量委托贷款!C11, C113, C157, C158, C159, C160, C161, C162）"
+    },
+    {
+      "business": "金融基础数据采集（股权和特定目的载体投资）",
+      "source": "TCL科技集团财务有限公司_金融基础数据采集（股权和特定目的载体投资）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量股权投资!C72, C73, C74, C75, C76, C77, C78, C79）"
+    },
+    {
+      "business": "五篇大文章-互联网金融业务信息（月度）",
+      "source": "广东博罗农村商业银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-养老产业贷款信息",
+      "source": "广东博罗农村商业银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-数字经济产业贷款信息",
+      "source": "广东博罗农村商业银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-普惠贷款信息",
+      "source": "广东博罗农村商业银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-科技贷款信息",
+      "source": "广东博罗农村商业银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-绿色贷款信息",
+      "source": "广东博罗农村商业银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-个人贷款",
+      "source": "广东博罗农村商业银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 12,
+      "python_issues": 0,
+      "counts_equal": false,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-单位贷款",
+      "source": "广东博罗农村商业银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 4,
+      "python_issues": 0,
+      "counts_equal": false,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-存量专项贷款一批报文",
+      "source": "广东博罗农村商业银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-存量专项贷款二批报文",
+      "source": "广东博罗农村商业银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-存量个人存款",
+      "source": "广东博罗农村商业银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 6,
+      "python_issues": 6,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-票据业务",
+      "source": "广东博罗农村商业银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 449,
+      "python_issues": 449,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据采集（代发工资）",
+      "source": "广东博罗农村商业银行股份有限公司_金融基础数据采集（代发工资）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 9,
+      "python_issues": 9,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据采集（债券业务）",
+      "source": "广东博罗农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 3,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：通过 Excel-Core 复制 S1 模板公式和外部数据: AllBackendsRejectedBeforeWrite: all qualified backends rejected the file before writing: umya_spreadsheet: unverified range import source structure: refusing unverified workbook parts: xl/externalLinks/externalLink1.xml, xl/externalLinks/_rels/externalLink1.xml.rels"
+    },
+    {
+      "business": "金融基础数据采集（单位存款）",
+      "source": "广东博罗农村商业银行股份有限公司_金融基础数据采集（单位存款）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 32,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（单位存款余额!C122, C83, C92, F12, F14, F82, F91）"
+    },
+    {
+      "business": "金融基础数据采集（单位贷款置换旧债发生额）",
+      "source": "广东博罗农村商业银行股份有限公司_金融基础数据采集（单位贷款置换旧债发生额）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 2,
+      "python_issues": 2,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据采集（同业业务）",
+      "source": "广东博罗农村商业银行股份有限公司_金融基础数据采集（同业业务）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 24,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量同业借贷!F45）"
+    },
+    {
+      "business": "金融基础数据采集（委托贷款）",
+      "source": "广东博罗农村商业银行股份有限公司_金融基础数据采集（委托贷款）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 7,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量委托贷款!C11, C113, C157, C158, C159, C160, C161, C162）"
+    },
+    {
+      "business": "金融基础数据采集（股权和特定目的载体投资）",
+      "source": "广东博罗农村商业银行股份有限公司_金融基础数据采集（股权和特定目的载体投资）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 3,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量股权投资!C72, C73, C74, C75, C76, C77, C78, C79）"
+    },
+    {
+      "business": "五篇大文章-互联网金融业务信息（月度）",
+      "source": "广东惠东农村商业银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-养老产业贷款信息",
+      "source": "广东惠东农村商业银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-数字经济产业贷款信息",
+      "source": "广东惠东农村商业银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-普惠贷款信息",
+      "source": "广东惠东农村商业银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-科技贷款信息",
+      "source": "广东惠东农村商业银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-绿色贷款信息",
+      "source": "广东惠东农村商业银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-个人贷款",
+      "source": "广东惠东农村商业银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 12,
+      "python_issues": 0,
+      "counts_equal": false,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-单位贷款",
+      "source": "广东惠东农村商业银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 10,
+      "python_issues": 0,
+      "counts_equal": false,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-存量专项贷款一批报文",
+      "source": "广东惠东农村商业银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-存量专项贷款二批报文",
+      "source": "广东惠东农村商业银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-存量个人存款",
+      "source": "广东惠东农村商业银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 6,
+      "python_issues": 6,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-票据业务",
+      "source": "广东惠东农村商业银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 448,
+      "python_issues": 448,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据采集（代发工资）",
+      "source": "广东惠东农村商业银行股份有限公司_金融基础数据采集（代发工资）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 9,
+      "python_issues": 9,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据采集（债券业务）",
+      "source": "广东惠东农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 3,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：通过 Excel-Core 复制 S1 模板公式和外部数据: AllBackendsRejectedBeforeWrite: all qualified backends rejected the file before writing: umya_spreadsheet: unverified range import source structure: refusing unverified workbook parts: xl/externalLinks/externalLink1.xml, xl/externalLinks/_rels/externalLink1.xml.rels"
+    },
+    {
+      "business": "金融基础数据采集（单位存款）",
+      "source": "广东惠东农村商业银行股份有限公司_金融基础数据采集（单位存款）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 57,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（单位存款余额!C122, C83, C92, F12, F14, F82, F91）"
+    },
+    {
+      "business": "金融基础数据采集（单位贷款置换旧债发生额）",
+      "source": "广东惠东农村商业银行股份有限公司_金融基础数据采集（单位贷款置换旧债发生额）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 2,
+      "python_issues": 2,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据采集（同业业务）",
+      "source": "广东惠东农村商业银行股份有限公司_金融基础数据采集（同业业务）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 15,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量同业借贷!F45）"
+    },
+    {
+      "business": "金融基础数据采集（委托贷款）",
+      "source": "广东惠东农村商业银行股份有限公司_金融基础数据采集（委托贷款）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 7,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量委托贷款!C11, C113, C157, C158, C159, C160, C161, C162）"
+    },
+    {
+      "business": "金融基础数据采集（股权和特定目的载体投资）",
+      "source": "广东惠东农村商业银行股份有限公司_金融基础数据采集（股权和特定目的载体投资）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 1,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量股权投资!C72, C73, C74, C75, C76, C77, C78, C79）"
+    },
+    {
+      "business": "五篇大文章-互联网金融业务信息（月度）",
+      "source": "广东龙门农村商业银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-养老产业贷款信息",
+      "source": "广东龙门农村商业银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-数字经济产业贷款信息",
+      "source": "广东龙门农村商业银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-普惠贷款信息",
+      "source": "广东龙门农村商业银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-科技贷款信息",
+      "source": "广东龙门农村商业银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-绿色贷款信息",
+      "source": "广东龙门农村商业银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-个人贷款",
+      "source": "广东龙门农村商业银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 10,
+      "python_issues": 0,
+      "counts_equal": false,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-单位贷款",
+      "source": "广东龙门农村商业银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 2,
+      "python_issues": 0,
+      "counts_equal": false,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-存量专项贷款一批报文",
+      "source": "广东龙门农村商业银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-存量专项贷款二批报文",
+      "source": "广东龙门农村商业银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-存量个人存款",
+      "source": "广东龙门农村商业银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 6,
+      "python_issues": 6,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-票据业务",
+      "source": "广东龙门农村商业银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 437,
+      "python_issues": 437,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据采集（代发工资）",
+      "source": "广东龙门农村商业银行股份有限公司_金融基础数据采集（代发工资）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 2,
+      "python_issues": 2,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据采集（债券业务）",
+      "source": "广东龙门农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 2,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：通过 Excel-Core 复制 S1 模板公式和外部数据: AllBackendsRejectedBeforeWrite: all qualified backends rejected the file before writing: umya_spreadsheet: unverified range import source structure: refusing unverified workbook parts: xl/externalLinks/externalLink1.xml, xl/externalLinks/_rels/externalLink1.xml.rels"
+    },
+    {
+      "business": "金融基础数据采集（单位存款）",
+      "source": "广东龙门农村商业银行股份有限公司_金融基础数据采集（单位存款）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 26,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（单位存款余额!C122, C83, C92, F12, F14, F82, F91）"
+    },
+    {
+      "business": "金融基础数据采集（单位贷款置换旧债发生额）",
+      "source": "广东龙门农村商业银行股份有限公司_金融基础数据采集（单位贷款置换旧债发生额）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 2,
+      "python_issues": 2,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据采集（同业业务）",
+      "source": "广东龙门农村商业银行股份有限公司_金融基础数据采集（同业业务）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 6,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量同业借贷!F45）"
+    },
+    {
+      "business": "金融基础数据采集（委托贷款）",
+      "source": "广东龙门农村商业银行股份有限公司_金融基础数据采集（委托贷款）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 7,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量委托贷款!C11, C113, C157, C158, C159, C160, C161, C162）"
+    },
+    {
+      "business": "金融基础数据采集（股权和特定目的载体投资）",
+      "source": "广东龙门农村商业银行股份有限公司_金融基础数据采集（股权和特定目的载体投资）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 3,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量股权投资!C72, C73, C74, C75, C76, C77, C78, C79）"
+    },
+    {
+      "business": "五篇大文章-互联网金融业务信息（月度）",
+      "source": "惠东惠民村镇银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-养老产业贷款信息",
+      "source": "惠东惠民村镇银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-数字经济产业贷款信息",
+      "source": "惠东惠民村镇银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-普惠贷款信息",
+      "source": "惠东惠民村镇银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-科技贷款信息",
+      "source": "惠东惠民村镇银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-绿色贷款信息",
+      "source": "惠东惠民村镇银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-个人贷款",
+      "source": "惠东惠民村镇银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 5,
+      "python_issues": 0,
+      "counts_equal": false,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-单位贷款",
+      "source": "惠东惠民村镇银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 7,
+      "python_issues": 0,
+      "counts_equal": false,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-存量专项贷款一批报文",
+      "source": "惠东惠民村镇银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-存量专项贷款二批报文",
+      "source": "惠东惠民村镇银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-存量个人存款",
+      "source": "惠东惠民村镇银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 4,
+      "python_issues": 4,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-票据业务",
+      "source": "惠东惠民村镇银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 434,
+      "python_issues": 434,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据采集（债券业务）",
+      "source": "惠东惠民村镇银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 2,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：通过 Excel-Core 复制 S1 模板公式和外部数据: AllBackendsRejectedBeforeWrite: all qualified backends rejected the file before writing: umya_spreadsheet: unverified range import source structure: refusing unverified workbook parts: xl/externalLinks/externalLink1.xml, xl/externalLinks/_rels/externalLink1.xml.rels"
+    },
+    {
+      "business": "金融基础数据采集（单位存款）",
+      "source": "惠东惠民村镇银行股份有限公司_金融基础数据采集（单位存款）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 11,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（单位存款余额!C122, C83, C92, F12, F14, F82, F91）"
+    },
+    {
+      "business": "金融基础数据采集（单位贷款置换旧债发生额）",
+      "source": "惠东惠民村镇银行股份有限公司_金融基础数据采集（单位贷款置换旧债发生额）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 6,
+      "python_issues": 6,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据采集（同业业务）",
+      "source": "惠东惠民村镇银行股份有限公司_金融基础数据采集（同业业务）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 4,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量同业借贷!F45）"
+    },
+    {
+      "business": "金融基础数据采集（委托贷款）",
+      "source": "惠东惠民村镇银行股份有限公司_金融基础数据采集（委托贷款）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 7,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量委托贷款!C11, C113, C157, C158, C159, C160, C161, C162）"
+    },
+    {
+      "business": "金融基础数据采集（股权和特定目的载体投资）",
+      "source": "惠东惠民村镇银行股份有限公司_金融基础数据采集（股权和特定目的载体投资）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量股权投资!C72, C73, C74, C75, C76, C77, C78, C79）"
+    },
+    {
+      "business": "五篇大文章-互联网金融业务信息（月度）",
+      "source": "惠州农村商业银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-养老产业贷款信息",
+      "source": "惠州农村商业银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-数字经济产业贷款信息",
+      "source": "惠州农村商业银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-普惠贷款信息",
+      "source": "惠州农村商业银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-科技贷款信息",
+      "source": "惠州农村商业银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-绿色贷款信息",
+      "source": "惠州农村商业银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-个人贷款",
+      "source": "惠州农村商业银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 15,
+      "python_issues": 0,
+      "counts_equal": false,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-单位贷款",
+      "source": "惠州农村商业银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 7,
+      "python_issues": 0,
+      "counts_equal": false,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-存量专项贷款一批报文",
+      "source": "惠州农村商业银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-存量专项贷款二批报文",
+      "source": "惠州农村商业银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-存量个人存款",
+      "source": "惠州农村商业银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 7,
+      "python_issues": 7,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-票据业务",
+      "source": "惠州农村商业银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 437,
+      "python_issues": 437,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据采集（代发工资）",
+      "source": "惠州农村商业银行股份有限公司_金融基础数据采集（代发工资）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 17,
+      "python_issues": 17,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据采集（债券业务）",
+      "source": "惠州农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 9,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：通过 Excel-Core 复制 S1 模板公式和外部数据: AllBackendsRejectedBeforeWrite: all qualified backends rejected the file before writing: umya_spreadsheet: unverified range import source structure: refusing unverified workbook parts: xl/externalLinks/externalLink1.xml, xl/externalLinks/_rels/externalLink1.xml.rels"
+    },
+    {
+      "business": "金融基础数据采集（单位存款）",
+      "source": "惠州农村商业银行股份有限公司_金融基础数据采集（单位存款）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 62,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（单位存款余额!C122, C83, C92, F12, F14, F82, F91）"
+    },
+    {
+      "business": "金融基础数据采集（单位贷款置换旧债发生额）",
+      "source": "惠州农村商业银行股份有限公司_金融基础数据采集（单位贷款置换旧债发生额）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 2,
+      "python_issues": 2,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据采集（同业业务）",
+      "source": "惠州农村商业银行股份有限公司_金融基础数据采集（同业业务）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 27,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量同业借贷!F45）"
+    },
+    {
+      "business": "金融基础数据采集（委托贷款）",
+      "source": "惠州农村商业银行股份有限公司_金融基础数据采集（委托贷款）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 9,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量委托贷款!C11, C113, C157, C158, C159, C160, C161, C162）"
+    },
+    {
+      "business": "金融基础数据采集（股权和特定目的载体投资）",
+      "source": "惠州农村商业银行股份有限公司_金融基础数据采集（股权和特定目的载体投资）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 8,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量股权投资!C72, C73, C74, C75, C76, C77, C78, C79）"
+    },
+    {
+      "business": "五篇大文章-互联网金融业务信息（月度）",
+      "source": "惠州博罗长江村镇银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-养老产业贷款信息",
+      "source": "惠州博罗长江村镇银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-数字经济产业贷款信息",
+      "source": "惠州博罗长江村镇银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-普惠贷款信息",
+      "source": "惠州博罗长江村镇银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-科技贷款信息",
+      "source": "惠州博罗长江村镇银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "五篇大文章-绿色贷款信息",
+      "source": "惠州博罗长江村镇银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-个人贷款",
+      "source": "惠州博罗长江村镇银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 8,
+      "python_issues": 0,
+      "counts_equal": false,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-单位贷款",
+      "source": "惠州博罗长江村镇银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-存量专项贷款一批报文",
+      "source": "惠州博罗长江村镇银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-存量专项贷款二批报文",
+      "source": "惠州博罗长江村镇银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-存量个人存款",
+      "source": "惠州博罗长江村镇银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 3,
+      "python_issues": 3,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据-票据业务",
+      "source": "惠州博罗长江村镇银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 434,
+      "python_issues": 434,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据采集（债券业务）",
+      "source": "惠州博罗长江村镇银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 3,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：通过 Excel-Core 复制 S1 模板公式和外部数据: AllBackendsRejectedBeforeWrite: all qualified backends rejected the file before writing: umya_spreadsheet: unverified range import source structure: refusing unverified workbook parts: xl/externalLinks/externalLink1.xml, xl/externalLinks/_rels/externalLink1.xml.rels"
+    },
+    {
+      "business": "金融基础数据采集（单位存款）",
+      "source": "惠州博罗长江村镇银行股份有限公司_金融基础数据采集（单位存款）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 7,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（单位存款余额!C122, C83, C92, F12, F14, F82, F91）"
+    },
+    {
+      "business": "金融基础数据采集（单位贷款置换旧债发生额）",
+      "source": "惠州博罗长江村镇银行股份有限公司_金融基础数据采集（单位贷款置换旧债发生额）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "COMPLETED",
+      "rust_issues": 6,
+      "python_issues": 6,
+      "counts_equal": true,
+      "reason": null
+    },
+    {
+      "business": "金融基础数据采集（同业业务）",
+      "source": "惠州博罗长江村镇银行股份有限公司_金融基础数据采集（同业业务）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 4,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量同业借贷!F45）"
+    },
+    {
+      "business": "金融基础数据采集（委托贷款）",
+      "source": "惠州博罗长江村镇银行股份有限公司_金融基础数据采集（委托贷款）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 7,
+      "counts_equal": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量委托贷款!C11, C113, C157, C158, C159, C160, C161, C162）"
+    },
+    {
+      "business": "金融基础数据采集（股权和特定目的载体投资）",
+      "source": "惠州博罗长江村镇银行股份有限公司_金融基础数据采集（股权和特定目的载体投资）_2026-08-31_数据核对表.xlsx",
+      "rust_status": "FAILED",
+      "rust_issues": 0,
+      "python_issues": 0,
+      "counts_equal": true,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量股权投资!C72, C73, C74, C75, C76, C77, C78, C79）"
+    }
+  ],
+  "rust_file_results": [
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0001-TCL科技集团财务有限公司_五篇大文章-互联网金融业务信息_月度__B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0002-TCL科技集团财务有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0003-TCL科技集团财务有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0004-TCL科技集团财务有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0005-TCL科技集团财务有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0006-TCL科技集团财务有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0007-TCL科技集团财务有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0008-TCL科技集团财务有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0009-TCL科技集团财务有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0010-TCL科技集团财务有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0011-TCL科技集团财务有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0012-TCL科技集团财务有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：通过 Excel-Core 复制 S1 模板公式和外部数据: AllBackendsRejectedBeforeWrite: all qualified backends rejected the file before writing: umya_spreadsheet: unverified range import source structure: refusing unverified workbook parts: xl/externalLinks/externalLink1.xml, xl/externalLinks/_rels/externalLink1.xml.rels",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0013-TCL科技集团财务有限公司_金融基础数据采集_单位存款__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（单位存款余额!C122, C83, C92, F12, F14, F82, F91）",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_金融基础数据采集（单位存款）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0014-TCL科技集团财务有限公司_金融基础数据采集_单位贷款置换旧债发生额__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_金融基础数据采集（单位贷款置换旧债发生额）_2026-08-31_数据核对表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0015-TCL科技集团财务有限公司_金融基础数据采集_同业业务__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量同业借贷!F45）",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_金融基础数据采集（同业业务）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0016-TCL科技集团财务有限公司_金融基础数据采集_委托贷款__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量委托贷款!C11, C113, C157, C158, C159, C160, C161, C162）",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_金融基础数据采集（委托贷款）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0017-TCL科技集团财务有限公司_金融基础数据采集_股权和特定目的载体投资__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量股权投资!C72, C73, C74, C75, C76, C77, C78, C79）",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_金融基础数据采集（股权和特定目的载体投资）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0018-广东博罗农村商业银行股份有限公司_五篇大文章-互联网金融业务信息_月度__B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0019-广东博罗农村商业银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0020-广东博罗农村商业银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0021-广东博罗农村商业银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0022-广东博罗农村商业银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0023-广东博罗农村商业银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0024-广东博罗农村商业银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0025-广东博罗农村商业银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0026-广东博罗农村商业银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0027-广东博罗农村商业银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0028-广东博罗农村商业银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0029-广东博罗农村商业银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0030-广东博罗农村商业银行股份有限公司_金融基础数据采集_代发工资__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_金融基础数据采集（代发工资）_2026-08-31_数据核对表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0031-广东博罗农村商业银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：通过 Excel-Core 复制 S1 模板公式和外部数据: AllBackendsRejectedBeforeWrite: all qualified backends rejected the file before writing: umya_spreadsheet: unverified range import source structure: refusing unverified workbook parts: xl/externalLinks/externalLink1.xml, xl/externalLinks/_rels/externalLink1.xml.rels",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0032-广东博罗农村商业银行股份有限公司_金融基础数据采集_单位存款__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（单位存款余额!C122, C83, C92, F12, F14, F82, F91）",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_金融基础数据采集（单位存款）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0033-广东博罗农村商业银行股份有限公司_金融基础数据采集_单位贷款置换旧债发生额__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_金融基础数据采集（单位贷款置换旧债发生额）_2026-08-31_数据核对表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0034-广东博罗农村商业银行股份有限公司_金融基础数据采集_同业业务__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量同业借贷!F45）",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_金融基础数据采集（同业业务）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0035-广东博罗农村商业银行股份有限公司_金融基础数据采集_委托贷款__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量委托贷款!C11, C113, C157, C158, C159, C160, C161, C162）",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_金融基础数据采集（委托贷款）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0036-广东博罗农村商业银行股份有限公司_金融基础数据采集_股权和特定目的载体投资__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量股权投资!C72, C73, C74, C75, C76, C77, C78, C79）",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_金融基础数据采集（股权和特定目的载体投资）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0037-广东惠东农村商业银行股份有限公司_五篇大文章-互联网金融业务信息_月度__B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0038-广东惠东农村商业银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0039-广东惠东农村商业银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0040-广东惠东农村商业银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0041-广东惠东农村商业银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0042-广东惠东农村商业银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0043-广东惠东农村商业银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0044-广东惠东农村商业银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0045-广东惠东农村商业银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0046-广东惠东农村商业银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0047-广东惠东农村商业银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0048-广东惠东农村商业银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0049-广东惠东农村商业银行股份有限公司_金融基础数据采集_代发工资__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_金融基础数据采集（代发工资）_2026-08-31_数据核对表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0050-广东惠东农村商业银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：通过 Excel-Core 复制 S1 模板公式和外部数据: AllBackendsRejectedBeforeWrite: all qualified backends rejected the file before writing: umya_spreadsheet: unverified range import source structure: refusing unverified workbook parts: xl/externalLinks/externalLink1.xml, xl/externalLinks/_rels/externalLink1.xml.rels",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0051-广东惠东农村商业银行股份有限公司_金融基础数据采集_单位存款__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（单位存款余额!C122, C83, C92, F12, F14, F82, F91）",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_金融基础数据采集（单位存款）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0052-广东惠东农村商业银行股份有限公司_金融基础数据采集_单位贷款置换旧债发生额__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_金融基础数据采集（单位贷款置换旧债发生额）_2026-08-31_数据核对表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0053-广东惠东农村商业银行股份有限公司_金融基础数据采集_同业业务__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量同业借贷!F45）",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_金融基础数据采集（同业业务）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0054-广东惠东农村商业银行股份有限公司_金融基础数据采集_委托贷款__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量委托贷款!C11, C113, C157, C158, C159, C160, C161, C162）",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_金融基础数据采集（委托贷款）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0055-广东惠东农村商业银行股份有限公司_金融基础数据采集_股权和特定目的载体投资__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量股权投资!C72, C73, C74, C75, C76, C77, C78, C79）",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_金融基础数据采集（股权和特定目的载体投资）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0056-广东龙门农村商业银行股份有限公司_五篇大文章-互联网金融业务信息_月度__B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0057-广东龙门农村商业银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0058-广东龙门农村商业银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0059-广东龙门农村商业银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0060-广东龙门农村商业银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0061-广东龙门农村商业银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0062-广东龙门农村商业银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0063-广东龙门农村商业银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0064-广东龙门农村商业银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0065-广东龙门农村商业银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0066-广东龙门农村商业银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0067-广东龙门农村商业银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0068-广东龙门农村商业银行股份有限公司_金融基础数据采集_代发工资__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_金融基础数据采集（代发工资）_2026-08-31_数据核对表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0069-广东龙门农村商业银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：通过 Excel-Core 复制 S1 模板公式和外部数据: AllBackendsRejectedBeforeWrite: all qualified backends rejected the file before writing: umya_spreadsheet: unverified range import source structure: refusing unverified workbook parts: xl/externalLinks/externalLink1.xml, xl/externalLinks/_rels/externalLink1.xml.rels",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0070-广东龙门农村商业银行股份有限公司_金融基础数据采集_单位存款__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（单位存款余额!C122, C83, C92, F12, F14, F82, F91）",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_金融基础数据采集（单位存款）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0071-广东龙门农村商业银行股份有限公司_金融基础数据采集_单位贷款置换旧债发生额__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_金融基础数据采集（单位贷款置换旧债发生额）_2026-08-31_数据核对表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0072-广东龙门农村商业银行股份有限公司_金融基础数据采集_同业业务__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量同业借贷!F45）",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_金融基础数据采集（同业业务）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0073-广东龙门农村商业银行股份有限公司_金融基础数据采集_委托贷款__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量委托贷款!C11, C113, C157, C158, C159, C160, C161, C162）",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_金融基础数据采集（委托贷款）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0074-广东龙门农村商业银行股份有限公司_金融基础数据采集_股权和特定目的载体投资__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量股权投资!C72, C73, C74, C75, C76, C77, C78, C79）",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_金融基础数据采集（股权和特定目的载体投资）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0075-惠东惠民村镇银行股份有限公司_五篇大文章-互联网金融业务信息_月度__B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0076-惠东惠民村镇银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0077-惠东惠民村镇银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0078-惠东惠民村镇银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0079-惠东惠民村镇银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0080-惠东惠民村镇银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0081-惠东惠民村镇银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0082-惠东惠民村镇银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0083-惠东惠民村镇银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0084-惠东惠民村镇银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0085-惠东惠民村镇银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0086-惠东惠民村镇银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0087-惠东惠民村镇银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：通过 Excel-Core 复制 S1 模板公式和外部数据: AllBackendsRejectedBeforeWrite: all qualified backends rejected the file before writing: umya_spreadsheet: unverified range import source structure: refusing unverified workbook parts: xl/externalLinks/externalLink1.xml, xl/externalLinks/_rels/externalLink1.xml.rels",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0088-惠东惠民村镇银行股份有限公司_金融基础数据采集_单位存款__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（单位存款余额!C122, C83, C92, F12, F14, F82, F91）",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_金融基础数据采集（单位存款）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0089-惠东惠民村镇银行股份有限公司_金融基础数据采集_单位贷款置换旧债发生额__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_金融基础数据采集（单位贷款置换旧债发生额）_2026-08-31_数据核对表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0090-惠东惠民村镇银行股份有限公司_金融基础数据采集_同业业务__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量同业借贷!F45）",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_金融基础数据采集（同业业务）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0091-惠东惠民村镇银行股份有限公司_金融基础数据采集_委托贷款__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量委托贷款!C11, C113, C157, C158, C159, C160, C161, C162）",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_金融基础数据采集（委托贷款）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0092-惠东惠民村镇银行股份有限公司_金融基础数据采集_股权和特定目的载体投资__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量股权投资!C72, C73, C74, C75, C76, C77, C78, C79）",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_金融基础数据采集（股权和特定目的载体投资）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0093-惠州农村商业银行股份有限公司_五篇大文章-互联网金融业务信息_月度__B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0094-惠州农村商业银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0095-惠州农村商业银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0096-惠州农村商业银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0097-惠州农村商业银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0098-惠州农村商业银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0099-惠州农村商业银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0100-惠州农村商业银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0101-惠州农村商业银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0102-惠州农村商业银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0103-惠州农村商业银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0104-惠州农村商业银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0105-惠州农村商业银行股份有限公司_金融基础数据采集_代发工资__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_金融基础数据采集（代发工资）_2026-08-31_数据核对表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0106-惠州农村商业银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：通过 Excel-Core 复制 S1 模板公式和外部数据: AllBackendsRejectedBeforeWrite: all qualified backends rejected the file before writing: umya_spreadsheet: unverified range import source structure: refusing unverified workbook parts: xl/externalLinks/externalLink1.xml, xl/externalLinks/_rels/externalLink1.xml.rels",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0107-惠州农村商业银行股份有限公司_金融基础数据采集_单位存款__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（单位存款余额!C122, C83, C92, F12, F14, F82, F91）",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_金融基础数据采集（单位存款）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0108-惠州农村商业银行股份有限公司_金融基础数据采集_单位贷款置换旧债发生额__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_金融基础数据采集（单位贷款置换旧债发生额）_2026-08-31_数据核对表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0109-惠州农村商业银行股份有限公司_金融基础数据采集_同业业务__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量同业借贷!F45）",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_金融基础数据采集（同业业务）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0110-惠州农村商业银行股份有限公司_金融基础数据采集_委托贷款__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量委托贷款!C11, C113, C157, C158, C159, C160, C161, C162）",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_金融基础数据采集（委托贷款）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0111-惠州农村商业银行股份有限公司_金融基础数据采集_股权和特定目的载体投资__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量股权投资!C72, C73, C74, C75, C76, C77, C78, C79）",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_金融基础数据采集（股权和特定目的载体投资）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0112-惠州博罗长江村镇银行股份有限公司_五篇大文章-互联网金融业务信息_月度__B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0113-惠州博罗长江村镇银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0114-惠州博罗长江村镇银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0115-惠州博罗长江村镇银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0116-惠州博罗长江村镇银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0117-惠州博罗长江村镇银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0118-惠州博罗长江村镇银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0119-惠州博罗长江村镇银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0120-惠州博罗长江村镇银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0121-惠州博罗长江村镇银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0122-惠州博罗长江村镇银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0123-惠州博罗长江村镇银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0124-惠州博罗长江村镇银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：通过 Excel-Core 复制 S1 模板公式和外部数据: AllBackendsRejectedBeforeWrite: all qualified backends rejected the file before writing: umya_spreadsheet: unverified range import source structure: refusing unverified workbook parts: xl/externalLinks/externalLink1.xml, xl/externalLinks/_rels/externalLink1.xml.rels",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0125-惠州博罗长江村镇银行股份有限公司_金融基础数据采集_单位存款__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（单位存款余额!C122, C83, C92, F12, F14, F82, F91）",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_金融基础数据采集（单位存款）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0126-惠州博罗长江村镇银行股份有限公司_金融基础数据采集_单位贷款置换旧债发生额__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": true,
+      "partial": false,
+      "reason": null,
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_金融基础数据采集（单位贷款置换旧债发生额）_2026-08-31_数据核对表.xlsx",
+      "status": "COMPLETED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0127-惠州博罗长江村镇银行股份有限公司_金融基础数据采集_同业业务__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量同业借贷!F45）",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_金融基础数据采集（同业业务）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0128-惠州博罗长江村镇银行股份有限公司_金融基础数据采集_委托贷款__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量委托贷款!C11, C113, C157, C158, C159, C160, C161, C162）",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_金融基础数据采集（委托贷款）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    },
+    {
+      "auditWorkbook": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\rust-with-external\\steps\\S1-F01\\S1-F1_审核结果_20261105_233824_589\\0129-惠州博罗长江村镇银行股份有限公司_金融基础数据采集_股权和特定目的载体投资__2026-08-31_数据核对表-recalculated.xlsx",
+      "issuesExtracted": false,
+      "partial": false,
+      "reason": "公式复制或重算准备失败：验证 S1 模板和外部数据复制结果: S1 复制后的公式位置或公式文本与来源不一致（存量股权投资!C72, C73, C74, C75, C76, C77, C78, C79）",
+      "sourceFile": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_金融基础数据采集（股权和特定目的载体投资）_2026-08-31_数据核对表.xlsx",
+      "status": "FAILED"
+    }
+  ]
+}

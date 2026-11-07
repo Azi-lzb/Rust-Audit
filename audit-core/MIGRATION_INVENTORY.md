@@ -1,7 +1,34 @@
 # Open-Data-Audit 功能迁移清单
 
+> 当前产品仅保留 S1/S2/S3。S5 UI、CLI、API、业务模块和专属测试代码已按用户决定移除；下文 S5 条目均为带日期的历史开发/验收记录，不代表当前产品仍包含 S5。
+
 > **历史证据档案（截至 2026-10-28）**：以下条目和状态是原工作区不同时间的记录，不作为当前进度或操作指令。当前功能状态和验收口径以 [独立项目开发目标](../DEVELOPMENT_GOAL.md) 及 [V2 需求](AUDIT_RUST_V2_BUSINESS_REQUIREMENTS.md) 为准；本文件保留旧证据，不自动要求全面对拍或编译。
 
+### 2026-11-06 增量：S1-F02 全量样本与旧 Python Audit 对齐
+
+对 `测试数据/S1F2全量` 的 129 本嵌套源工作簿，调用旧 GUI 的默认 `dag:汇总校验结果说明` 工作流与当前 Rust S1-F02 核心，以同一旧版汇总模板和历史配置运行。初次发现 Rust 与 Python 的工作表/字段顺序差异；现在 Rust 按 Python 的全局/工作表级定义名称迭代顺序和模板字段顺序处理。最终四张表、表头、全部单元格及 505 行数据完全一致；旧 Python 结构日志与 Rust 预检均为缺表继续，整本跳过 0。定向 Rust 单测和 CLI 集成测试各 6/6，Release 构建成功，132 个输入/参考文件哈希未变。完整证据、输出行数和遗留模板名称问题见 [S1-F02 全量对照报告](probe/reports/s1f2_full_sample_parity_20261106.md)。
+
+未解决的业务问题：28 本源文件有“在线抽验结果”表，但旧版模板定义“在线校验结果”；旧 Python 与 Rust 都输出空“在线校验结果”。测试目录既有 `汇总信息.xlsx` 则含“在线抽验结果”表，结构与两端现跑结果不同。本轮保持旧 Python 的实际行为，没有擅自新增表名别名；需要业务方确认模板版本或名称映射。未运行全项目测试或 GUI 手动验收。
+
+### 2026-11-06 增量：S1-F1 当前模板 Python 全量复跑与复制范围纠正
+
+旧 Python 使用当前 19 份模板，对相同 129 个源工作簿、正式逐笔配置和大集中外部数据按 19 个业务批次复跑，19/19 批次完成、129/129 文件成功。19 个批次配置副本的 SHA-256 均与旧/新正式配置一致；源、模板、配置和外部数据共 168 个输入哈希前后不变。对照当前 Rust Release：Python 3,616 行、Rust 3,722 行；Python-only 0，Rust-only 106；3,611 个共有结果所有业务字段一致，另 5 个条件格式 `check_field`/规则编号只有 Python 追加 `#DIV/0!` 的元数据差异。60 个字符串形式数值显示差异经 Decimal 对比相等。106 个 Rust-only 键集合与先前完整对拍相同：95 条在模板校验区域且旧 Python 提取函数可重现 `IndexError`；11 条票据公式按用户确认的精确 `<>0` 触发，Python 副本相应缓存为空，Rust 副本缓存约为 `±3.63797880709171E-12`。完整对照和哈希见 `F:/RustBuild/audit/tmp/s1f1-python-current-template-129-20261106-run2/`。
+
+用户澄清：模板“校验区域”外的数值、文字和公式可为规则验证时临时修改的测试数据，不应复制或提取；表结构/表头检查独立执行，条件格式审核来自源核查表。旧失败的 `存量同业借贷!F45` 是旧整簿公式保护比较报出的区域外位置；旧候选未保留实际前后公式文本，不能断言具体序列化差异。当前源、模板和 Rust 副本 F45 公式文本一致。S1 复制阶段已调整为只将导入命名区域公式差异作为阻断条件，区域外既有公式不再拦截；定向测试 1/1 通过。本轮 Rust 全批 Release 运行早于此源码调整，尚未以新代码构建后全批复验。
+
+### 2026-11-06 增量：S1-F1 真实 129 本业务运行、Python 对照和后端选择（当前状态）
+
+按用户澄清，S1-F1 的用户自定义校验内容以配置映射的“校验区域”命名区域为准，复制单元格值/文字、公式文本、批注（位置/作者/内容）并覆盖目标区域空白；模板校验区域外的人工规则试验值不复制、不扫描。条件格式审核来自源核查表；表结构/表头检查独立执行。当前真实 129 本使用命名区域模板，未覆盖结构化“审核规则”模板分支。
+
+当前源码构建后的完整 Rust 运行：129/129 匹配与结构通过、129 本重算成功、0 跳过、0 待人工重算、0 失败；公式异常 3,373、条件格式异常 349、合计 3,722；生成 129 个审核副本与汇总工作簿，耗时 1,819,953 ms。157 个输入文件未改变。输出目录和机器报告见 DEVELOPMENT_GOAL.md 最新增量。129 个副本的配置校验区域与模板逐格对照无差异，覆盖 16,898 个公式与 896 个文字/常量及空格。旧 Python 输出在 21 本中少 42 个命名区域末尾公式。
+
+旧 Python 同输入结果为 3,616 条。Python-only 0、Rust-only 106（均为公式异常），共有 3,616 条中 3,611 条完整字段一致；另外 5 条条件格式 check_field 仅有旧 Python 多出的 #DIV/0! 后缀。349 条条件格式触发及说明一致。106 条中 95 条涉及 13 份 Python 审核副本/提取失败样本，复跑旧 Python 提取函数可复现 IndexError；其余 11 条是票据模板以 <>0 精确比较时 Excel 计算的约 ±3.63797880709171E-12 浮点残值，Python 缓存为空。未添加容差或删除 Rust 发现；业务人员需确认票据模板逻辑，并抽查旧提取器失败样本。旧副本清除公式引用的静态标签/明细数据也会导致结果变化，需以源数据及校验区域规则判断业务正确性。
+
+外部表依赖仍有需按模板核对的语义差异：Python 按模板全簿公式选择外部表，Rust 从校验区域公式递归追踪并读取选中表 UsedRange。若仅区域外公式引用辅助表，两端可能导入范围不同；本轮成功执行不等于已证明该边界完全等价。
+
+S1-F01 默认修改路由为 OOXML Patch 优先、Umya 按能力兜底；高级设置可由用户显式选择 openpyxl 复制后端，失败不自动静默切换，写后结构/公式校验保留。Windows Release 已打入 worker 脚本，但不包含 Python/openpyxl runtime；需 PATH Python 可导入 openpyxl。Linux 仍要求随包提供隔离 runtime。129 本完整批次走默认 OOXML，不代表 openpyxl 全批验收；openpyxl 与 OOXML 的真实单本候选均有通过写后校验的样本，合并区域非锚点数据等能力边界会拒绝而不发布。
+
+验证：excel-editor 64/64、excel-reader 24/24、audit-core 229 passed / 0 failed / 12 ignored；audit-core CLI cargo check 通过；Windows Release 构建通过。未运行全 workspace 测试、GUI 人工点击、Linux/Kylin/UOS 实机验收。分类清单保存在本机临时目录（19 类、129 本），原始核查表/模板未移动或修改；聚合对照报告见 audit-core/probe/reports/s1f1_real_sample_parity_20261106.md。
 ### S1/S2/S3 性能地图索引（2026-10-30）
 
 当前可用于优化决策的功能级基线、数据规模、正确性证据和缺项汇总见 [PERFORMANCE_BASELINE.md](PERFORMANCE_BASELINE.md)；逐次记录及历史口径见 [PERFORMANCE_HISTORY.md](PERFORMANCE_HISTORY.md)，可复跑入口索引见 [benchmarks/README.md](benchmarks/README.md)。该台账按 S1-F1/F2、S2-F1、S3-F1 至 F5 建立；S5 排除。S1-F1 原生 COM 批次与 S3-F1 性能项目按当前用户目标暂结；S1-F1 条件格式异常指标定位、结构预检/条件审核共享源读取及模板结构投影读取均已定点优化。4k 结构预检+条件审核 CLI 中位数为 390 ms；20k 结构模板读取为 528→224 ms。完整业务链仍待计时。
@@ -919,7 +946,7 @@ GUI 文件/目录选择改为“系统原生优先，页面内目录浏览器固
 
 验证方式：`node --check` 通过；`usesBrowserPathPicker` 零残留；12 处入口改接逐一断言；后端多选路径校验链静态核对（S3-F03 反馈导入逐文件 .xlsx 校验保留）。未运行 cargo build/check/test（未获授权）；rfd/ashpd 尚未进入 Cargo.lock，首次构建需可解析新依赖；ashpd 0.13 与 rfd 0.17 的少量 API 签名（FileFilter::glob 所有权风格、FileDialog 消费式构建器、Request::response）以 docs.rs 0.17.2/0.13.13 文档为准，需编译确认。未提交、未 push。待人工验收：Windows 单/多文件、目录、取消、扩展名过滤；Linux Portal 可用/不可用/取消/回退；起始路径不存在、含空格或中文路径；确认离线 DEB 无新增系统依赖。
 
-### 2026-10-31 增量：S1-F01 Linux LibreOffice 批次会话复用（WSL Ubuntu 24.04 实测）
+### 2026-10-31 增量：S1-F01 Linux LibreOffice 批次会话复用（WSL Ubuntu 24.04 实测；GUI 状态为当时快照）
 
 Linux S1-F01 公式重算按 rules/13 §4.5 实现批次会话复用，替代“每本各启动一次 soffice --convert-to”。两条已实测路径：CLI/验收流（open-data-audit，重算清单在循环前已知）走 `recalculate_s1_formula_copy_batch` → sidecar 新命令 `recalculate-batch --pairs <tsv>`，单次 LibreOffice 启动顺序转换整批（`lo_batch::run_batch_convert`），逐本完成清缓存、重算标记、规范化、验证与不覆盖发布，父级对本批成功项复核 `validate_recalculated_copy` 后发布报告；批次级失败或单本缺结果时该本回退旧逐本路径，保持既有失败语义。GUI 流（web_bridge）的审核副本逐本创建并与人工恢复语义耦合，本轮保持逐本重算，但走新增的 `recalculate-session --engine lo` Linux 持久会话（`LoWarmProfileSession`）：profile 只初始化一次并排空残留进程，每本用暖 profile 转换，省去每本首启成本。Windows 原生 COM 路径与单发 sidecar 命令未改动。
 
@@ -931,6 +958,7 @@ Linux S1-F01 公式重算按 rules/13 §4.5 实现批次会话复用，替代“
 
 验证与边界：Windows host 与 WSL Linux 双侧 `cargo check`/`cargo build --release` 通过；`cargo test -p lo-convert` 21/21、`audit-core --lib` 定向 s1_recalculation 5/5、s1_f1 4/4（2 ignored 为 Windows COM 前置）、served_page 1/1。未运行全 workspace 回归、真实机构输入与麒麟/UOS 目标机验证；WSL 实测不等同 Kylin/UOS 验收。未提交、未 push。
 
+
 ### 2026-10-31 增量：doc→docx 转换现状记录与将来接入的复用方案（未实施）
 
 应用户要求核查 doc→docx 与 xls→xlsx 重算的调用模式差异，结论记录如下，供 D01 接入生产时使用。当前 **doc→docx 没有任何生产调用方**：audit-core 仅定义 `WordComSession`（供 lo-convert sidecar 的 Windows COM 分支引用），无 `lo-convert convert --to docx` 调用点；D01 在 rules/13 为“仅已登记方向”（unverified）；Windows 标准构建/打包不要求或包含 lo-convert。因此本次不修改代码，仅登记现状。
@@ -939,6 +967,64 @@ Linux S1-F01 公式重算按 rules/13 §4.5 实现批次会话复用，替代“
 
 将来把 doc→docx 接入生产功能时的既定方案（工作量小，依赖已就位）：复用 `sidecar/lo-convert/src/lo_batch.rs` 的 `LoWarmProfileSession`——需小幅参数化（当前 filter/输出文件名写死 xlsx，需按目标类型选择 `docx:Office Open XML Text` 与 .docx 命名），转换与两次文本提取共用同一暖 profile，单次转换成本从 3 次冷启动降为约 1 次启动 + 3 次同进程内转换；Windows 侧 Word COM 改为批次会话（§4.5 同样要求 Word 会话按批复用）；多输入单实例批次（`run_batch_convert` 模式）同样适用于纯批量转换场景。接入时按 §4.5 与 rules/13 第 6 节对 D01 单独登记验收（当前 unverified），未验收前不得成为任何功能的默认路径。
 
+### 2026-11-04 增量：S1-F1 Linux GUI 接入单次 LibreOffice 批次重算
+
+纠正 2026-10-31 的 GUI 状态快照：Linux S1-F1 GUI 先为本轮所有已通过结构预检的源工作簿准备各自的公式审核副本，再通过 `recalculate_s1_formula_copy_batch` 调用 sidecar `recalculate-batch --pairs ... --engine lo`。`lo_batch::run_batch_convert` 为本批创建唯一隔离 profile，通过一次 `soffice --convert-to` 调用按序处理多本副本；不是每本工作簿单独冷启动，也不宣称存在跨文件持久 UNO 文档会话。每本输出继续独立清缓存、设置重算标记、规范化、检查公式缓存与结构，再按原有不覆盖语义发布。
+
+LO CLI 只提供批次计时，现有 `S1RecalculationReport.elapsed_ms` 为分摊后的批次平均值，不是逐本实测耗时；单文件阶段计时不可得。
+
+失败处理保留 S1-F1/S1-F3 语义：单本副本准备失败单独返回，其他可准备的副本仍参加本批；批次或单本重算/验证失败时，保留该本已准备的无缓存公式副本并明确标记等待人工重算，不再逐本冷启动 LO 重试。Windows 原生 COM 批次路径未改。
+
+WSL Ubuntu + LibreOffice 24.2.7.2 实测：定向集成测试 2/2 通过；另运行一次忽略的 2/10/33 本性能探针（每本 400 行公式数据、401 个公式）。逐本 `recalculate --engine lo` 与单次批次 `recalculate-batch` 端到端耗时分别为：2 本 5,933/4,987 ms（1.19×），10 本 32,813/10,575 ms（3.10×），33 本 80,381/21,837 ms（3.68×）。三档批次报告均为一次 `soffice` 转换调用、profile 残留进程数为 0；两种路径输出的公式文本与 401 个缓存值均通过 Calamine 读取校验；原始输入字节逐本一致。一次测量仅用于验证批量复用收益，不是 Python/Rust 对照或正式三轮基线。
+
+报告与机器数据：`probe/reports/s1f1_lo_batch_convert_20261104.md/.json`；可复跑入口为 `sidecar/lo-convert/tests/recalculate_libreoffice.rs` 中被忽略的 `manual_s1_formula_recalculation_batch_performance_2_10_33`。本轮 Linux `audit-core --lib s1_f1` 定向测试 4/4、LibreOffice sidecar 集成测试 2/2 通过；Windows S1 公式复制定向测试 17/17 通过，Windows sidecar 集成测试目标编译通过。未重复全工作区回归。未在真实机构工作簿、Linux 桌面 GUI、Kylin V10 或 UOS V20 上验收；GUI 与目标发行版人工验收仍待进行。未提交、未 push。
+
 ### 2026-10-31 增量：doc→docx 批次转换接入双引擎会话复用（移植 Rust-Tools e2973e6）
 
 sidecar 新增 `convert-batch --pairs <tsv> --to <xlsx|docx> --engine <auto|com|lo>`，整个批次只创建一个引擎实例并顺序处理（rules/13 §4.5）。移植来源：Rust-Tools 提交 `e2973e6`（ConvertWord/ExtractWordText 请求语义、批次自有实例、进程证据），适配 Rust-Audit 的 `WordComSession`（`&self` 可复用会话 + Drop 退出）。实测（Windows 11 + Word COM 与 WSL Ubuntu 24.04 + LibreOffice 24.2.7.2 双侧）：Windows 3 本 doc→docx 同一 Word 进程 PID 贯穿整批（35772），每本 DOCX 包合法性 + 文本一致校验通过；LO 3 本单次启动 2.0s 完成转换 + 按批文本提取（源/候选各一次，取代每本两次冷启动），校验 level `docx_package_and_batched_text_content`。实现要点：`lo_batch::run_batch_convert` 参数化目标类型（xlsx/docx filter 与 staging 命名）；`run_batch_text_extract` 按批文本提取；`WordComSession` 暴露 `process_id()` 作为复用证据；`create_isolated_application` 在 Word/WPS Writer 缺少 Hwnd 属性（HRESULT 0x80020006）时退化为启动前后进程快照差集 + 可执行名匹配（winword.exe/wps.exe）确认归属，多于一个候选保守报错，不影响既有 Excel Hwnd 路径。注意：doc→docx 目前仍无 audit-core 生产调用方（D01 unverified），本能力仅以 sidecar 命令与登记提供，未成为任何功能默认路径。测试：lo-convert 21/21、audit-core --lib 284/284 三轮稳定。未提交状态随本条一并提交；未 push。
+
+### 2026-11-06 增量：S1-F1 校验区域复制批注与 openpyxl 候选验证
+
+S1-F1 常规模板按配置映射的“校验区域”命名范围复制值、文本、公式与批注，并覆盖目标区域中的空白位置；模板区域外内容不复制或扫描。复制阶段公式校验只比较计划导入区域，不再以源工作簿区域外公式文本差异阻断。OOXML 导入计划启用批注复制；OOXML Patch 补齐 Excel/Umya VML 命名空间识别，并在审核副本中复制批注文本、作者/位置和 Note VML 锚点。Openpyxl 输出校验按工作表身份规范化 openpyxl 重新分配的包关系 ID/批注路径，并解析条件格式的 `dxfId` 到实际 differential style、排序 `sqref` 范围后再比较：只忽略已验证语义相同的序列化变动，仍拒绝条件格式样式/规则实质变化；外部链接及其他关系继续严格比较。另针对 openpyxl 在 workbook relationships 中把目标写成 `/xl/...`、并重排未被 `workbook.xml` 引用的 styles/theme rId 的真实差异，增加按解析后的包内目标路径归一化；工作表 rId/目标仍按表身份校验，外部链接不做归一化。
+
+单位存款真实 S1-F1 样本本轮分别通过 OOXML 与显式 openpyxl 写后验证；每份候选输出工作簿有 1,332 条公式、1,091 个批注，4 个 ImportRange 操作，源表与模板输入字节未改变。旧 Python Direct OOXML 同输入输出共 1,332 条公式、1,133 个写入单元格，保留源表现有的 1,053 个批注；比 Rust 少的 38 个模板批注属于用户明确要求复制的新增行为。旧 Python 副本在配置映射的 3,656 个校验区域单元格上与模板逐格一致（0 内容/公式差异）；Rust 候选通过相同计划范围的写后校验。另对股权投资四区域样本，默认 OOXML 候选通过（输出 574 条公式、68 个批注）；显式 openpyxl 因目标表含合并区域非锚点内容在写入前拒绝，输入未变且未发布副本。Openpyxl 验收由本机 Python 3.12.10 + openpyxl 3.1.5 测试 worker 执行；这不构成生产依赖。当前高级设置支持 openpyxl 显式试跑及 Auto 的中间回退；当前 `dist` 已包含 worker 脚本，但不含 Python/openpyxl runtime。Windows 需要 PATH Python 能导入 openpyxl；Linux 仍需提供隔离 runtime 才可启用。
+
+与旧 Python 的核对：Python 默认 Direct OOXML 命名区域写入器不复制批注对象，但 COM Range.Copy/openpyxl 路径会复制。当前遵循用户最新要求复制批注，因此相对旧 Python 默认 Direct OOXML 是明确业务扩展，不是旧版同输出的证明。Python 外部工作表计划基于模板整簿公式选表；Rust 基于命名校验区公式并递归追踪依赖。若校验区外普通模板公式单独引用某外部表，Rust 可能少导入 Python 会复制的辅助表；这不把区域外公式变成审核规则，但仍需按实际依赖确认输出结构。
+
+验证：`excel-editor --lib` 65/65，`audit-core --lib` 227 passed/0 failed/12 ignored，S1 公式复制定向单测 18 passed/0 failed/2 ignored；真实单位存款样本 OOXML 候选 1/1、显式 openpyxl 候选 1/1，`cargo check -p audit-core --bin open-data-audit` 通过。Openpyxl 条件格式语义归一化单测覆盖同一 dxf 内容不同索引、`sqref` 顺序变化通过，实际样式变化拒绝；关系路径单测覆盖等价 package-relative/package-absolute 路径和 styles/theme rId 变化通过，工作表目标或 rId 变化拒绝。候选测试止于重算前；当前源码的完整 129 本 COM 审核、全 workspace 回归、GUI 人工验收和 Linux/Kylin/UOS 实机均未执行。未提交、未 push。
+
+### 2026-11-06 增量：S1-F01 修改引擎选项与票据精确比较决定
+
+按用户确认，票据校验继续保留模板公式的精确 `<>0` 比较；程序不增加浮点容差，今后如需容差由业务人员修改公式。高级设置新增 Auto、OOXML、openpyxl、Umya 四项，适用范围仅 S1-F01。Auto 顺序为 OOXML Patch → 可用 openpyxl worker → Umya；可用性检测包括 Python、worker 文件及 `import openpyxl`。只有后端在写入前明确拒绝，才从干净的原始副本尝试下一后端；写入后失败或输出验证失败时停止，不静默回退。旧设置保存值 `umya` 表示过去的默认 OOXML→Umya 路径，读取时迁移为 Auto；显式 Umya 新值单独序列化，避免升级后改变旧设置语义。S2/S3 路由不受此设置影响。
+
+为 13 份旧 Python 提取器 `IndexError` 样本（95 条 Rust-only 公式异常）生成了只读路径清单和逐条异常清单，源文件及重算副本均核实存在：`F:/RustBuild/audit/tmp/s1f1-corrected-inputs-129-20261106/s1f1_python_extractor_indexerror_13_paths.csv` 与同目录 `s1f1_python_extractor_indexerror_95_items.csv`。既有 129 本完整批次使用 OOXML，不作为 Auto→openpyxl→Umya 自动回退整批验证证据；人工抽查及自动回退实样验收仍待完成。本轮设置迁移测试 7/7、路由测试 5/5、高级设置桥接测试 2/2；CLI `cargo check` 通过，`build-release.bat` 通过并更新 `dist/open-data-audit.exe`。未运行全量回归或 GUI 点击验收。
+
+### 2026-11-06 增量：S1-F01 复制验证范围及条件格式源路径纠正
+
+公式复制写后校验仅验证从模板导入的命名“校验区域”，不再因区域外公式文本变化拒绝副本；区域外数字/文字/公式也不作为模板复制或公式异常提取范围。条件格式求值从原始源工作簿读取，以匹配旧 Python；公式异常继续从重算后的审核副本读取。定向条件格式来源路径测试 1/1 通过，Release 构建通过。新 Release 对 129 本真实 S1-F01 完整运行：129 完成，失败/跳过/待人工重算为 0，3,373 公式异常 + 349 条件格式异常，所有输入 SHA-256 未变；端到端 292,626 ms。和同口径 Python 结果比较为 3,616 对 3,722，Rust-only 106 个位置与先前完全一致，无条件格式项目增减。5 个共有条件格式字段差异、95 个 Python `IndexError` 漏项和 11 个按模板精确 `<>0` 检查的票据缓存残值继续待业务验收。报告与逐项对照位于 `F:/RustBuild/audit/tmp/s1f1-source-cf-current-129-20261106/`。未跑全 workspace 回归，未做 GUI 人工验收，未提交、未 push。
+
+
+### 2026-11-06 增量：S1-F01 条件格式取值来源偏好
+
+高级设置新增条件格式取值来源：`source`（默认，原始源工作簿）或 `audit_copy`（模板校验区域复制并重算后的审核副本）。两种模式使用同一批配置定义的条件格式扫描范围；选择只改变规则和值所在工作簿。偏好通过现有用户 JSON 白名单保存，启动 S1-F1 时记入恢复清单，S1-F3 续跑时使用原选择；旧清单缺少字段时按 `source` 处理。来源选择、设置保存/重载、S1-F1→S1-F3 恢复清单持久化测试各 1/1 通过；`build-release.bat` 成功并更新 `dist/open-data-audit.exe`。尚未实际点击 GUI；`audit_copy` 模式尚无真实工作簿对照证据。未跑全 workspace 回归，未提交、未 push。
+
+### 2026-11-06 增量：S1-F01 条件格式字段文本与129本复验
+
+为逐字段复现旧 Python 的条件格式指标标签，`s1_conditional_audit::display_value` 现在把 Calamine 类型化 Excel 错误转换成 Excel 显示文本；旧 Python 使用 openpyxl `data_only=True` 后会把这类缓存错误转成字符串参与 `check_field`。改动不影响触发求值、触发值或说明，但会改变五条既有 Rust 条件格式记录的 `check_field` 和依赖它生成的 `issue_id`，可能影响这五条历史记录的连续归并。新增针对 `Div0` 的单测通过 1/1；独立 Agent 只读复核确认实现边界与旧 Python 的标签提取一致。构建当前 Release 成功，`dist/open-data-audit.exe` 已更新。
+
+使用同一组 129 本核查表、19 个实际命中模板、S1 配置与外部数据重跑：129/129 完成，跳过/失败/待人工重算均为 0；公式异常 3,373、条件格式异常 349；端到端 283,415 ms；157 个受保护输入的哈希运行前后未变，并与上一验收的输入哈希一致。编辑器为 OOXML Patch 129 本；重算引擎为 Excel 122 本、WPS 7 本。与 Python 基线相比，共有 3,616 条现在全部字段一致，Python-only 0，Rust-only 106；旧 106 个 Rust-only 位置均仍存在。95 条是旧 Python 可复现 `IndexError` 漏提取、但属于用户确认的命名校验区域规则；11 条是用户决定保留精确 `<>0` 的票据浮点残值。因此不能宣称字面全量同步，未为对齐计数而删除这些业务检查。
+
+重新复核 7 本债券副本：无 `xl/externalLinks` 部件，`参照表!D2:D211` 每本 210 个公式均引用本地 `机构参照表`。与实际外部数据中的 `集中系统数据`、`参照表`、`机构参照表` 逐格比对，7 本公式/常量和缓存均为 0 差异；当前模板的 externalLinks 已按业务方说明修正，没有静默剥除仍然需要的依赖。
+
+验收、逐项差异及债券引用表证据位于 `F:/RustBuild/audit/tmp/s1f1-error-label-parity-129-20261106_172554/`；此前 106 与 5 条详细列表位于 `F:/RustBuild/audit/tmp/s1f1-source-cf-current-129-20261106/S1F1_Python_Rust_106与5条差异明细_20261106.md`。定向单测 1/1，Release 构建通过；未运行全 workspace 回归，未做 GUI 人工点击或 Linux/Kylin/UOS 验收。Goal 仍未完成，等待业务方决定 106 个有效业务差异是否可作为明确例外；未提交、未 push。
+### 2026-11-06：S1-F1 条件格式标签按结构文本取值
+
+业务方确认五条共有条件格式异常仍需保留，目标单元格数值仍按规则正常判定；错误缓存 `#DIV/0!` 不参与指标标签，标签只从表结构范围文本解析。撤回把错误缓存显示文本附加到 `check_field` 的实现，定向测试 `error_valued_header_is_not_used_as_indicator_text` 通过 1/1。当前 129 本 Release 验收早于该口径修正，尚未以当前代码构建和复跑。
+
+业务方后续模板公式统一输出 `错|校验类型|校验指标|详细描述|本期值|对比值|差值`；现有七段解析器已按位置写入这些字段。抽查旧公式 `个人贷款发生额信息!K69` 实际只返回四段，第三段为空且没有数值段，因此旧结果中的校验指标和数值字段留空是源公式内容所致。11 条票据 `±3.64E-12` 残值建议在具体模板公式设置 `1E-10` 容差；Rust 暂继续按当前模板 `<>0` 精确计算，未修改模板和通用结果筛选逻辑。
+
+### 2026-11-06：S1-F1 票据残值与条件格式标签复核
+
+对照 Python/Rust 汇总和对应审核副本后，11 个票据 W 单元格公式文本一致；Python 副本中对应缓存为空，Rust Excel 重算缓存为 10 个 `-3.63797880709171E-12`、1 个 `+3.63797880709171E-12`。11 个绝对残差均小于 `1E-10`。因此不能说旧 Python 将这些公式计算为零；其汇总没有列出记录与公式缓存为空相符，但 Python 链路具体未得到缓存的步骤仍未定位。容差建议只在业务模板公式中设置，Rust 不进行通用结果过滤。
+
+五条条件格式记录的规则判断基于目标 F 单元格数值；邻近表头单元格的 `#DIV/0!` 不应影响触发判定或指标文本。`check_field` 应取结构区域标签。当前 129 本 Release 结果晚于/早于不同源码口径的构建，未用当前源码重建复验。Markdown 公式样例中的 `\\|` 是表格转义，Excel 公式文本为普通 `|`。本条为只读文件核验，未运行 Cargo、未改测试工作簿。

@@ -1199,9 +1199,7 @@ fn verifies_the_openpyxl_edit_engine_capability() -> Result<()> {
 
 
     // S1-F01 批次：与 Umya 证据同一套特性样本与读回断言。
-    // 逐批次尝试并如实记录拒绝原因。结论（当前源码与 worker 行为）：
-    // openpyxl 修改引擎没有满足生产保留契约的可用批次，GUI 保持置灰，
-    // 证据文件记录 available=false 与每个批次的具体原因。
+    // 该候选仅覆盖 S1-F01 的 ImportRange 编辑，仍须通过独立写后校验。
     let mut attempts = Vec::new();
 
     // 1) S1-F01 批次：CreateSheet + ImportRange + SetComment + 重算标记。
@@ -1291,7 +1289,16 @@ fn verifies_the_openpyxl_edit_engine_capability() -> Result<()> {
                 .execute(&plan)
                 .map_err(|error| anyhow::anyhow!("{error:?}"))
             {
-                Ok(_report) => "unexpectedly_succeeded".to_owned(),
+                Ok(report) => {
+                    anyhow::ensure!(
+                        report.engine == excel_editor::EngineId::OpenpyxlWorker,
+                        "S1-F01 trial selected unexpected editor {:?}",
+                        report.engine
+                    );
+                    let dump = read_workbook(&output)?;
+                    assert_s1_audit_copy_dump(&dump)?;
+                    "completed: OpenpyxlWorker; external values, formula text, comment, and preservation validator passed".to_owned()
+                }
                 Err(error) => format!("execution_refused: {error:#}"),
             }
         } else {
@@ -1305,14 +1312,14 @@ fn verifies_the_openpyxl_edit_engine_capability() -> Result<()> {
             )
         };
         anyhow::ensure!(
-            outcome != "unexpectedly_succeeded",
-            "openpyxl unexpectedly passed the S1-F01 batch; re-run with the batch marked available"
+            outcome.starts_with("completed:"),
+            "openpyxl S1-F01 candidate did not pass post-write validation: {outcome}"
         );
         anyhow::ensure!(
             sha256_file(&target)? == target_hash
                 && sha256_file(&template)? == template_hash
                 && sha256_file(&external)? == external_hash,
-            "a refused batch must not modify inputs"
+            "S1-F01 trial must not modify any input"
         );
         attempts.push(json!({
             "batch": "S1-F01 公式复制（外部表导入 + 模板区域复制 + 注释 + 重算标记）",
@@ -1404,7 +1411,7 @@ fn verifies_the_openpyxl_edit_engine_capability() -> Result<()> {
         "verified_at": chrono::Local::now().format("%Y-%m-%d %H:%M:%S %Z").to_string(),
         "harness": "audit-core/tests/production_capability_verification.rs (openpyxl section)",
         "available": false,
-        "conclusion": "openpyxl 重写无法满足 S1-F01/S3-F03/S3-F05 任一批次的生产保留契约（OOXML 关系列表、列尺寸、包部件、DeleteColumn）；高级选项保持置灰，全部批次失败关闭且输入不受影响",
+        "conclusion": "S1-F01 synthetic candidate passed formula/value/comment and output-preservation validation; S3-F03/S3-F05 remain unsupported by the openpyxl worker and fail closed",
         "attempts": attempts,
     });
     if let Some(parent) = report_path.parent() {

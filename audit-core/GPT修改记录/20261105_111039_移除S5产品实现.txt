@@ -1,0 +1,30 @@
+【时间】2026-11-05（本机执行时间见文件名）
+【执行者】Codex
+【修改前 commit】5c74fbb（main）
+【修改后 commit】未提交，HEAD 仍为 5c74fbb
+【WIP】工作区已有多个并发改动；此前 index.html 与 web_bridge.rs 有已暂存内容。本次不重置、不覆盖、不暂存、不提交，保留所有并发 WIP。
+
+【目的】按用户最新决定，仅保留 S1、S2、S3 的当前产品 UI 与代码；移除 S5 的产品入口和实现，同时保留历史验收/性能证据供追溯。
+
+【修改范围】
+- 删除 S5 前端页面、配置维护页、配置检查对话框、渲染/执行逻辑及对应 Web API 状态、路由和处理器；发行配置与更新/FAQ 展示只允许 S1/S2/S3。
+- 删除 S5 CLI 参数、子命令和执行处理器；验收运行器只保留 S1/S2/S3。
+- 删除 audit-core/src/s5_*.rs 业务模块、audit-core/tests/s5_*.rs 测试、tests/compare/compare_s5_*.py 辅助对比代码；清理合成验收样本工具及历史性能驱动中的可运行 S5 场景。
+- 更新根与 audit-core 范围说明、README、迁移/需求文档说明和测试索引。带日期的历史报告、JSON 运行结果、人工验收文件和迁移记录保留，不再视作当前产品功能。
+
+【本次涉及文件】
+AGENTS.md、DEVELOPMENT_GOAL.md、audit-core/AGENTS.md、audit-core/AUDIT_RUST_V2_BUSINESS_REQUIREMENTS.md、audit-core/MIGRATION_INVENTORY.md、audit-core/README.md、audit-core/examples/manual_acceptance_samples.rs、audit-core/frontend/web/index.html、audit-core/src/acceptance_runner.rs、audit-core/src/bin/open-data-audit.rs、audit-core/src/lib.rs、audit-core/src/web_bridge.rs、audit-core/tests/TEST_GROUPS.md、audit-core/tests/compare/perf_compare_20261029.py、audit-core/tests/compare/perf_compare_20261030.py；删除 audit-core/src/s5_*.rs、audit-core/tests/s5_*.rs 与 audit-core/tests/compare/compare_s5_*.py。
+
+【验证】静态搜索确认 S5 的 Rust/API/CLI/页面入口、业务模块及专属测试/对比执行逻辑已移除；前端仅保留过滤旧更新/FAQ 中 S5 内容的排除规则。构建与测试结果见下方“追加验证”。
+
+【组件版本】不升级 Cargo/package 版本；本次是按用户决定移除产品范围，不建立新 S5 组件版本。
+
+【未完成/风险】全包测试仍有一项 S3-F05 批注引用校验失败，详见追加验证；GUI 与真实文件人工验收未执行。历史 S5 报告和旧业务需求仍包含 S5 文字，均有归档说明并保留用于追溯。
+
+【删除清单与回滚提示】删除 S5 专属模块、测试和辅助代码，清单见上。回滚时应在新提交上按明确文件清单恢复；不得对当前工作区执行 reset/checkout，因为其中包含并发 WIP。
+
+【追加验证｜2026-11-05】
+- `.\build-release.bat`：成功；使用项目规定的 `F:\RustBuild\audit` 构建目录，并更新 `dist\open-data-audit.exe`。存在既有弃用/未使用代码警告，无构建错误。
+- `cargo test --offline --locked -p audit-core`：退出码 101。共 219 passed、1 failed、10 ignored。唯一失败为 `production_capability_verification::verifies_the_production_route_on_the_declared_capability`，其 S3-F05 表单编辑批次报 `restore legacy comment drawing: editor output comment references changed on worksheet "表单"`；单项复跑同样失败。错误位于 Excel 编辑器的批注保留路径，与本次删除 S5 的模块/API/CLI/UI 无直接关联；本轮未修改该业务路径。
+- 已构建 EXE 冒烟：`dist\open-data-audit.exe --version` 输出 `open-data-audit 0.1.0`，退出码 0。
+- `git diff --check`：通过。没有执行 GUI 人工验收、真实文件验收或 Git 提交/push。

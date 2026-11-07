@@ -3,13 +3,14 @@
 //! This module plans and executes the S1 formula-copy stage through Excel-Core,
 //! then requires a real calculation sidecar before publishing formula results.
 
-use crate::s1_template_rules::{load_s1_template_rule_plan, S1TemplateRuleSummary};
-use anyhow::{ensure, Context, Result};
+use crate::models::CopyRange;
+use crate::s1_template_rules::{S1TemplateRuleSummary, load_s1_template_rule_plan};
+use anyhow::{Context, Result, ensure};
 use excel_editor::{
-    inspect_xlsx_profile, EditExecutionReport, EditOperation, ExcelEditPlan, ExcelModifier,
-    PreservationRequirement, RangeStyleMode, WorkbookProfile,
+    EditExecutionReport, EditOperation, ExcelEditPlan, ExcelModifier, PreservationRequirement,
+    RangeStyleMode, WorkbookProfile, inspect_xlsx_profile,
 };
-use excel_reader::{read_workbook, SheetDump, WorkbookDump};
+use excel_reader::{SheetDump, WorkbookDump, read_workbook};
 use regex::Regex;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -58,6 +59,9 @@ pub struct S1FormulaCopyExecutionReport {
     pub formula_cells_prepared: usize,
     pub cached_values_cleared: usize,
     pub external_sheets_imported: usize,
+    /// Excel COM 打开修复：仅当本次重算路由到 Excel COM 且副本确实被修复时
+    /// 才有值；原始报送文件永远不被修改。
+    pub excel_open_repair: Option<crate::excel_open_repair::ExcelOpenRepairReport>,
 }
 
 #[derive(Debug)]
@@ -68,12 +72,40 @@ pub struct S1FormulaCopyManualRecalcReport {
     pub formula_cells_prepared: usize,
     pub cached_values_cleared: usize,
     pub external_sheets_imported: usize,
+    pub excel_open_repair: Option<crate::excel_open_repair::ExcelOpenRepairReport>,
 }
 
 #[derive(Debug)]
 pub enum S1FormulaCopyOutcome {
     Recalculated(S1FormulaCopyExecutionReport),
     WaitingManualRecalc(S1FormulaCopyManualRecalcReport),
+}
+
+/// Formula-copy candidate held until a whole S1-F1 batch is ready for one
+/// LibreOffice launch. The staging guard keeps the prepared workbook alive
+/// until batch recalculation and validation finish.
+#[derive(Debug)]
+struct PreparedS1FormulaCopy {
+    _staging: S1FormulaCopyStagingDirectory,
+    template_workbook: PathBuf,
+    output_workbook: PathBuf,
+    cacheless_formula_copy: PathBuf,
+    recalculated_candidate: PathBuf,
+    template_rule_comments_imported: bool,
+    edit: EditExecutionReport,
+    formula_cells_prepared: usize,
+    cached_values_cleared: usize,
+    external_sheets_imported: usize,
+    excel_open_repair: Option<crate::excel_open_repair::ExcelOpenRepairReport>,
+}
+
+impl PreparedS1FormulaCopy {
+    fn batch_pair(&self) -> (PathBuf, PathBuf) {
+        (
+            self.cacheless_formula_copy.clone(),
+            self.recalculated_candidate.clone(),
+        )
+    }
 }
 
 /// Prepare a separate formula-source copy for an editor that cannot retain
@@ -160,6 +192,7 @@ pub fn execute_s1_formula_copy_with_manual_recovery(
         external_workbook,
         sidecar_path.is_some(),
         modifier,
+        crate::excel_open_repair::excel_com_engine_requested(calc_engine),
         |input, output| {
             crate::s1_recalculation::recalculate_s1_formula_copy(
                 sidecar_path.context("公式重算 sidecar 不可用")?,
@@ -191,6 +224,7 @@ pub(crate) fn execute_s1_formula_copy_with_manual_recovery_session(
         external_workbook,
         sidecar_available,
         modifier,
+        crate::excel_open_repair::excel_com_engine_requested(session.engine_request()),
         |input, output| session.recalculate(input, output),
     )
 }
@@ -203,11 +237,60 @@ fn execute_s1_formula_copy_with_recalculator<F>(
     external_workbook: Option<&Path>,
     sidecar_available: bool,
     modifier: &ExcelModifier,
+    excel_open_repair_requested: bool,
     mut recalculate: F,
 ) -> Result<S1FormulaCopyOutcome>
 where
     F: FnMut(&Path, &Path) -> Result<crate::s1_recalculation::S1RecalculationReport>,
 {
+    let mut prepared = prepare_s1_formula_copy(
+        target_workbook,
+        template_workbook,
+        output_workbook,
+        mapping_config,
+        external_workbook,
+        modifier,
+    )?;
+    // Excel COM 对报送文件中两类非规范内容拒绝打开：含强制引号字符的表名
+    // 裸引用、冻结窗格 topLeftCell 落在冻结区内。重算前在审核副本上做无害
+    // 规范化（公式语义不变），让 Excel 优先的 auto/excel 引擎不再被迫回退；
+    // 修复失败或无需修复时保持副本原样，绝不打断审核流程。
+    if excel_open_repair_requested {
+        let repair =
+            crate::excel_open_repair::repair_audit_copy_for_excel(&prepared.cacheless_formula_copy);
+        if repair.changed {
+            prepared.excel_open_repair = Some(repair);
+        }
+    }
+
+    if !sidecar_available {
+        return preserve_prepared_s1_formula_copy(
+            prepared,
+            "未找到公式重算 sidecar；审核副本已保留，尚未计算公式".to_owned(),
+        );
+    }
+
+    let recalculated_candidate = prepared.recalculated_candidate.clone();
+    match recalculate(&prepared.cacheless_formula_copy, &recalculated_candidate) {
+        Ok(recalculation) => complete_prepared_s1_formula_copy(prepared, recalculation),
+        Err(error) => preserve_prepared_s1_formula_copy(
+            prepared,
+            format!("自动公式重算失败；审核副本已保留：{error:#}"),
+        ),
+    }
+}
+
+/// Prepare one formula-copy candidate without starting a calculation engine.
+/// This lets the Linux S1-F1 GUI prepare every independent workbook before it
+/// sends the whole batch to LibreOffice in a single engine launch.
+fn prepare_s1_formula_copy(
+    target_workbook: impl AsRef<Path>,
+    template_workbook: impl AsRef<Path>,
+    output_workbook: impl AsRef<Path>,
+    mapping_config: Option<&Path>,
+    external_workbook: Option<&Path>,
+    modifier: &ExcelModifier,
+) -> Result<PreparedS1FormulaCopy> {
     let target_workbook = target_workbook.as_ref();
     let template_workbook = template_workbook.as_ref();
     let output_workbook = output_workbook.as_ref();
@@ -258,30 +341,33 @@ where
         mapping_config,
         external_workbook,
     )?;
-    let template_rule_comments_imported = prepared.edit_plan.operations.iter().any(|operation| {
-        match operation {
-            EditOperation::ImportRange {
-                source_workbook,
-                source_sheet,
-                target_sheet,
-                copy_comments: true,
-                ..
-            }
-            | EditOperation::ImportRangeWithFormulaTranslation {
-                source_workbook,
-                source_sheet,
-                target_sheet,
-                copy_comments: true,
-                ..
-            } => {
-                source_sheet.eq_ignore_ascii_case("审核规则")
-                    && target_sheet.eq_ignore_ascii_case("审核规则")
-                    && fs::canonicalize(source_workbook)
-                        .is_ok_and(|source| same_path(&source, &template_canonical))
-            }
-            _ => false,
-        }
-    });
+    let template_rule_comments_imported =
+        prepared
+            .edit_plan
+            .operations
+            .iter()
+            .any(|operation| match operation {
+                EditOperation::ImportRange {
+                    source_workbook,
+                    source_sheet,
+                    target_sheet,
+                    copy_comments: true,
+                    ..
+                }
+                | EditOperation::ImportRangeWithFormulaTranslation {
+                    source_workbook,
+                    source_sheet,
+                    target_sheet,
+                    copy_comments: true,
+                    ..
+                } => {
+                    source_sheet.eq_ignore_ascii_case("审核规则")
+                        && target_sheet.eq_ignore_ascii_case("审核规则")
+                        && fs::canonicalize(source_workbook)
+                            .is_ok_and(|source| same_path(&source, &template_canonical))
+                }
+                _ => false,
+            });
     let external_sheets_imported = prepared
         .external_plan
         .as_ref()
@@ -306,65 +392,154 @@ where
     let cached_values_cleared =
         cached_values_cleared.saturating_add(final_cache_report.cache_values_removed);
 
-    if !sidecar_available {
-        return preserve_s1_manual_copy(
-            &cacheless_formula_copy,
-            output_workbook,
-            edit,
-            "未找到公式重算 sidecar；审核副本已保留，尚未计算公式".to_owned(),
-            formula_cells_prepared,
-            cached_values_cleared,
-            external_sheets_imported,
-        );
-    }
     let recalculated_candidate = staging.path().join("formula-copy-recalculated.xlsx");
-    match recalculate(&cacheless_formula_copy, &recalculated_candidate) {
-        Ok(mut recalculation) => {
-            let final_candidate = if template_rule_comments_imported {
-                let comments_restored_candidate =
-                    staging.path().join("formula-copy-comments-restored.xlsx");
-                let report = ooxml_patch::restore_legacy_comments_for_sheet(
-                    template_workbook,
-                    &recalculated_candidate,
-                    &comments_restored_candidate,
-                    "审核规则",
-                )
-                .context("在真实公式重算后恢复模板审核规则表批注")?;
-                if report.restored_sheets.is_empty() {
-                    recalculated_candidate.clone()
-                } else {
-                    comments_restored_candidate
-                }
-            } else {
-                recalculated_candidate.clone()
-            };
-            fs::hard_link(&final_candidate, output_workbook).with_context(|| {
-                format!(
-                    "安全发布 S1 重算审核副本失败（输出不得覆盖）：{}",
-                    output_workbook.display()
-                )
-            })?;
-            recalculation.output = output_workbook.to_path_buf();
-            Ok(S1FormulaCopyOutcome::Recalculated(
-                S1FormulaCopyExecutionReport {
-                    edit,
-                    recalculation,
-                    formula_cells_prepared,
-                    cached_values_cleared,
-                    external_sheets_imported,
-                },
-            ))
+    Ok(PreparedS1FormulaCopy {
+        _staging: staging,
+        template_workbook: template_workbook.to_path_buf(),
+        output_workbook: output_workbook.to_path_buf(),
+        cacheless_formula_copy,
+        recalculated_candidate,
+        template_rule_comments_imported,
+        edit,
+        formula_cells_prepared,
+        cached_values_cleared,
+        external_sheets_imported,
+        excel_open_repair: None,
+    })
+}
+
+fn complete_prepared_s1_formula_copy(
+    prepared: PreparedS1FormulaCopy,
+    mut recalculation: crate::s1_recalculation::S1RecalculationReport,
+) -> Result<S1FormulaCopyOutcome> {
+    let final_candidate = if prepared.template_rule_comments_imported {
+        let comments_restored_candidate = prepared
+            ._staging
+            .path()
+            .join("formula-copy-comments-restored.xlsx");
+        let report = ooxml_patch::restore_legacy_comments_for_sheet(
+            &prepared.template_workbook,
+            &recalculation.output,
+            &comments_restored_candidate,
+            "审核规则",
+        )
+        .context("在真实公式重算后恢复模板审核规则表批注")?;
+        if report.restored_sheets.is_empty() {
+            recalculation.output.clone()
+        } else {
+            comments_restored_candidate
         }
-        Err(error) => preserve_s1_manual_copy(
-            &cacheless_formula_copy,
-            output_workbook,
-            edit,
-            format!("自动公式重算失败；审核副本已保留：{error:#}"),
-            formula_cells_prepared,
-            cached_values_cleared,
-            external_sheets_imported,
-        ),
+    } else {
+        recalculation.output.clone()
+    };
+    fs::hard_link(&final_candidate, &prepared.output_workbook).with_context(|| {
+        format!(
+            "安全发布 S1 重算审核副本失败（输出不得覆盖）：{}",
+            prepared.output_workbook.display()
+        )
+    })?;
+    recalculation.output = prepared.output_workbook.clone();
+    Ok(S1FormulaCopyOutcome::Recalculated(
+        S1FormulaCopyExecutionReport {
+            edit: prepared.edit,
+            recalculation,
+            formula_cells_prepared: prepared.formula_cells_prepared,
+            cached_values_cleared: prepared.cached_values_cleared,
+            external_sheets_imported: prepared.external_sheets_imported,
+            excel_open_repair: prepared.excel_open_repair,
+        },
+    ))
+}
+
+fn preserve_prepared_s1_formula_copy(
+    prepared: PreparedS1FormulaCopy,
+    reason: String,
+) -> Result<S1FormulaCopyOutcome> {
+    let excel_open_repair = prepared.excel_open_repair;
+    preserve_s1_manual_copy(
+        &prepared.cacheless_formula_copy,
+        &prepared.output_workbook,
+        prepared.edit,
+        reason,
+        prepared.formula_cells_prepared,
+        prepared.cached_values_cleared,
+        prepared.external_sheets_imported,
+        excel_open_repair,
+    )
+}
+
+/// Prepare independent formula copies, recalculate the eligible set through
+/// one LibreOffice batch invocation, then restore each workbook's normal
+/// audit-copy and manual-recovery semantics. A failed batch keeps the prepared
+/// formula copies for S1-F3 recovery instead of retrying one cold LO process
+/// per workbook.
+pub(crate) fn execute_s1_formula_copy_batch_with_manual_recovery(
+    items: &[(PathBuf, PathBuf, PathBuf)],
+    mapping_config: Option<&Path>,
+    external_workbook: Option<&Path>,
+    sidecar_path: &Path,
+    modifier: &ExcelModifier,
+) -> Vec<Result<S1FormulaCopyOutcome>> {
+    let mut outcomes: Vec<Option<Result<S1FormulaCopyOutcome>>> =
+        (0..items.len()).map(|_| None).collect();
+    let mut prepared = Vec::new();
+    for (index, (target, template, output)) in items.iter().enumerate() {
+        match prepare_s1_formula_copy(
+            target,
+            template,
+            output,
+            mapping_config,
+            external_workbook,
+            modifier,
+        ) {
+            Ok(candidate) => prepared.push((index, candidate)),
+            Err(error) => outcomes[index] = Some(Err(error)),
+        }
     }
+    if !prepared.is_empty() {
+        let pairs = prepared
+            .iter()
+            .map(|(_, candidate): &(usize, PreparedS1FormulaCopy)| candidate.batch_pair())
+            .collect::<Vec<_>>();
+        match crate::s1_recalculation::recalculate_s1_formula_copy_batch(sidecar_path, &pairs, "lo")
+        {
+            Ok(reports) if reports.len() == prepared.len() => {
+                for ((index, candidate), report) in prepared.into_iter().zip(reports) {
+                    let outcome = match report {
+                        Some(report) => complete_prepared_s1_formula_copy(candidate, report),
+                        None => preserve_prepared_s1_formula_copy(
+                            candidate,
+                            "LibreOffice 批次未通过该工作簿的重算验证；审核副本已保留，等待人工重算".to_owned(),
+                        ),
+                    };
+                    outcomes[index] = Some(outcome);
+                }
+            }
+            Ok(reports) => {
+                let reason = format!(
+                    "LibreOffice 批次返回工作簿数量不一致（{} / {}）；审核副本已保留，等待人工重算",
+                    reports.len(),
+                    prepared.len()
+                );
+                for (index, candidate) in prepared {
+                    outcomes[index] =
+                        Some(preserve_prepared_s1_formula_copy(candidate, reason.clone()));
+                }
+            }
+            Err(error) => {
+                let reason =
+                    format!("LibreOffice 批次重算失败；审核副本已保留，等待人工重算：{error:#}");
+                for (index, candidate) in prepared {
+                    outcomes[index] =
+                        Some(preserve_prepared_s1_formula_copy(candidate, reason.clone()));
+                }
+            }
+        }
+    }
+    outcomes
+        .into_iter()
+        .map(|outcome| outcome.unwrap_or_else(|| Err(anyhow::anyhow!("S1-F1 批次副本状态缺失"))))
+        .collect()
 }
 
 fn preserve_s1_manual_copy(
@@ -375,6 +550,7 @@ fn preserve_s1_manual_copy(
     formula_cells_prepared: usize,
     cached_values_cleared: usize,
     external_sheets_imported: usize,
+    excel_open_repair: Option<crate::excel_open_repair::ExcelOpenRepairReport>,
 ) -> Result<S1FormulaCopyOutcome> {
     fs::hard_link(cacheless_formula_copy, output_workbook).with_context(|| {
         format!(
@@ -390,10 +566,12 @@ fn preserve_s1_manual_copy(
             formula_cells_prepared,
             cached_values_cleared,
             external_sheets_imported,
+            excel_open_repair,
         },
     ))
 }
 
+#[derive(Debug)]
 struct S1FormulaCopyStagingDirectory(PathBuf);
 
 impl S1FormulaCopyStagingDirectory {
@@ -516,12 +694,17 @@ pub fn build_s1_formula_copy_edit_plan(
 
         let template_dump = read_workbook(template_workbook).context("读取模板公式引用")?;
         let external_dump = read_workbook(&external_canonical).context("读取 S1 外部数据工作簿")?;
-        let formulas = template_dump
-            .sheets
-            .iter()
-            .flat_map(|sheet| sheet.formulas.values().map(String::as_str));
-        let (selected_names, selection_reason) =
-            select_external_sheets(formulas, &external_dump.sheets)?;
+        // Only formulas in configured `校验区域` ranges are audit rules. Other
+        // formulas already present in the template must not cause unrelated
+        // external sheets to be copied into every source workbook. The
+        // dependency selector still follows references transitively inside
+        // the selected external lookup sheets.
+        let validation_formulas =
+            formulas_in_ranges(&template_dump, &template.definition.copy_ranges)?;
+        let (selected_names, selection_reason) = select_external_sheets(
+            validation_formulas.iter().map(String::as_str),
+            &external_dump.sheets,
+        )?;
         let target_names = target_sheet_names
             .iter()
             .map(|name| name.to_lowercase())
@@ -631,12 +814,10 @@ pub fn build_s1_formula_copy_edit_plan(
             target_start,
             copy_values: true,
             copy_formulas: true,
-            // S1's audit consumes copied values and formula text. The template
-            // parser already incorporates comments into rule metadata.
-            // Rewriting template comments made Excel reject the real output;
-            // the original source comments remain preserved by the editor.
+            // The validation-region copy contract includes legacy cell comment
+            // objects as well as formulas and literal contents.
             style_mode: RangeStyleMode::None,
-            copy_comments: false,
+            copy_comments: true,
             copy_merges: false,
             copy_row_heights: false,
             copy_column_widths: false,
@@ -771,6 +952,10 @@ fn validate_s1_formula_copy_candidate(
     let mut expected_sheet_order = Vec::with_capacity(source.sheets.len());
     let mut expected_formulas = BTreeMap::<String, BTreeMap<String, String>>::new();
     let mut expected_values = BTreeMap::<String, BTreeMap<String, serde_json::Value>>::new();
+    let mut expected_comments = excel_reader::read_ooxml_comments(&prepared.edit_plan.input)
+        .context("读取 S1 源工作簿批注以验证复制结果")?;
+    let mut source_comments = BTreeMap::new();
+    let mut imported_ranges = BTreeMap::<String, Vec<(u32, u32, u32, u32)>>::new();
     for sheet in &source.sheets {
         expected_sheet_order.push(sheet.name.clone());
         expected_formulas.insert(sheet.name.clone(), normalized_formula_map(sheet)?);
@@ -788,6 +973,7 @@ fn validate_s1_formula_copy_candidate(
                 let removed_name = expected_sheet_order.remove(index);
                 expected_formulas.remove(&removed_name);
                 expected_values.remove(&removed_name);
+                expected_comments.remove(&removed_name);
             }
             EditOperation::CreateSheet { name } => {
                 ensure!(
@@ -799,6 +985,7 @@ fn validate_s1_formula_copy_candidate(
                 expected_sheet_order.push(name.clone());
                 expected_formulas.insert(name.clone(), BTreeMap::new());
                 expected_values.insert(name.clone(), BTreeMap::new());
+                expected_comments.insert(name.clone(), BTreeMap::new());
             }
             EditOperation::ImportRange {
                 source_workbook,
@@ -808,6 +995,7 @@ fn validate_s1_formula_copy_candidate(
                 target_start,
                 copy_values,
                 copy_formulas,
+                copy_comments,
                 materialize_blank_cells,
                 ..
             } => {
@@ -840,6 +1028,15 @@ fn validate_s1_formula_copy_candidate(
                 let target_max_col = target_min_col
                     .checked_add(source_max_col - source_min_col)
                     .context("S1 公式复制目标列超出坐标范围")?;
+                imported_ranges
+                    .entry(target_sheet.clone())
+                    .or_default()
+                    .push((
+                        target_min_row,
+                        target_min_col,
+                        target_max_row,
+                        target_max_col,
+                    ));
 
                 let formulas = expected_formulas
                     .get_mut(target_sheet)
@@ -847,6 +1044,7 @@ fn validate_s1_formula_copy_candidate(
                 let values = expected_values
                     .get_mut(target_sheet)
                     .with_context(|| format!("S1 复制目标工作表不存在：{target_sheet:?}"))?;
+                let comments = expected_comments.entry(target_sheet.clone()).or_default();
                 remove_cells_in_range(
                     formulas,
                     target_min_row,
@@ -861,6 +1059,49 @@ fn validate_s1_formula_copy_candidate(
                     target_max_row,
                     target_max_col,
                 )?;
+
+                if *copy_comments {
+                    remove_comments_in_range(
+                        comments,
+                        target_min_row,
+                        target_min_col,
+                        target_max_row,
+                        target_max_col,
+                    )?;
+                    if !source_comments.contains_key(source_workbook) {
+                        source_comments.insert(
+                            source_workbook.clone(),
+                            excel_reader::read_ooxml_comments(source_workbook).with_context(
+                                || {
+                                    format!(
+                                        "读取 S1 批注复制来源工作簿 {}",
+                                        source_workbook.display()
+                                    )
+                                },
+                            )?,
+                        );
+                    }
+                    let import_comments = source_comments
+                        .get(source_workbook)
+                        .context("S1 批注复制来源缓存丢失")?;
+                    for (address, comment) in import_comments
+                        .get(source_sheet)
+                        .into_iter()
+                        .flat_map(|comments| comments.iter())
+                    {
+                        let (row, col) = parse_a1_cell(address)?;
+                        if row < source_min_row
+                            || row > source_max_row
+                            || col < source_min_col
+                            || col > source_max_col
+                        {
+                            continue;
+                        }
+                        let target_row = target_min_row + row - source_min_row;
+                        let target_col = target_min_col + col - source_min_col;
+                        comments.insert(a1_cell(target_row, target_col), comment.clone());
+                    }
+                }
 
                 let source_formulas = normalized_formula_map(import_sheet)?;
                 for (address, formula) in &source_formulas {
@@ -919,16 +1160,33 @@ fn validate_s1_formula_copy_candidate(
             .get(expected_name)
             .with_context(|| format!("S1 公式校验缺少预期工作表 {expected_name:?}"))?;
         let differences = differing_cell_addresses(expected, &actual_formulas);
+        let ranges = imported_ranges
+            .get(expected_name)
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        let mut imported_formula_differences = Vec::new();
+        for address in differences {
+            if address_in_imported_ranges(&address, ranges)? {
+                imported_formula_differences.push(address);
+            }
+        }
+        let mut formula_mismatch_details = Vec::new();
+        if !imported_formula_differences.is_empty() {
+            formula_mismatch_details.push(format!(
+                "编辑计划导入区域公式与预期不一致（{}!{}）",
+                expected_name,
+                imported_formula_differences
+                    .iter()
+                    .take(8)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
         ensure!(
-            differences.is_empty(),
-            "S1 复制后的公式位置或公式文本与来源不一致（{}!{}）",
-            expected_name,
-            differences
-                .iter()
-                .take(8)
-                .cloned()
-                .collect::<Vec<_>>()
-                .join(", ")
+            formula_mismatch_details.is_empty(),
+            "S1 审核副本完整性校验失败：{}；该检查是复制保护校验，不是业务审核异常",
+            formula_mismatch_details.join("；")
         );
 
         let actual_values = normalized_literal_value_map(actual_sheet)?;
@@ -936,17 +1194,91 @@ fn validate_s1_formula_copy_candidate(
             .get(expected_name)
             .with_context(|| format!("S1 值校验缺少预期工作表 {expected_name:?}"))?;
         let differences = differing_import_value_addresses(expected, &actual_values);
+        let mut imported_value_differences = Vec::new();
+        let mut untouched_value_differences = Vec::new();
+        for address in differences {
+            if address_in_imported_ranges(&address, ranges)? {
+                imported_value_differences.push(address);
+            } else {
+                untouched_value_differences.push(address);
+            }
+        }
+        let mut value_mismatch_details = Vec::new();
+        if !imported_value_differences.is_empty() {
+            value_mismatch_details.push(format!(
+                "编辑计划导入区域文本或数值与预期不一致（{}!{}）",
+                expected_name,
+                imported_value_differences
+                    .iter()
+                    .take(8)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+        if !untouched_value_differences.is_empty() {
+            value_mismatch_details.push(format!(
+                "源工作簿未导入区域文本或数值被后端改写（{}!{}）",
+                expected_name,
+                untouched_value_differences
+                    .iter()
+                    .take(8)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+        ensure!(
+            value_mismatch_details.is_empty(),
+            "S1 审核副本完整性校验失败：{}；该检查是复制保护校验，不是业务审核异常",
+            value_mismatch_details.join("；")
+        );
+    }
+
+    let actual_comments = excel_reader::read_ooxml_comments(candidate_path)
+        .context("读取 S1 审核副本批注以验证复制结果")?;
+    for sheet_name in &expected_sheet_order {
+        let expected = expected_comments
+            .get(sheet_name)
+            .cloned()
+            .unwrap_or_default();
+        let actual = actual_comments.get(sheet_name).cloned().unwrap_or_default();
+        let addresses = expected
+            .keys()
+            .chain(actual.keys())
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        let differences = addresses
+            .into_iter()
+            .filter(|address| expected.get(address) != actual.get(address))
+            .collect::<Vec<_>>();
         ensure!(
             differences.is_empty(),
-            "S1 复制后的非公式输入值与来源不一致（{}!{}）",
-            expected_name,
+            "S1 审核副本完整性校验失败：批注作者、正文或位置与复制计划不一致（{}!{}）；该检查是复制保护校验，不是业务审核异常",
+            sheet_name,
             differences
-                .iter()
+                .into_iter()
                 .take(8)
-                .cloned()
                 .collect::<Vec<_>>()
                 .join(", ")
         );
+    }
+    Ok(())
+}
+
+fn remove_comments_in_range(
+    comments: &mut BTreeMap<String, excel_reader::WorkbookComment>,
+    min_row: u32,
+    min_col: u32,
+    max_row: u32,
+    max_col: u32,
+) -> Result<()> {
+    let addresses = comments.keys().cloned().collect::<Vec<_>>();
+    for address in addresses {
+        let (row, col) = parse_a1_cell(&address)?;
+        if row >= min_row && row <= max_row && col >= min_col && col <= max_col {
+            comments.remove(&address);
+        }
     }
     Ok(())
 }
@@ -1044,6 +1376,15 @@ fn differing_import_value_addresses(
         .collect()
 }
 
+fn address_in_imported_ranges(address: &str, ranges: &[(u32, u32, u32, u32)]) -> Result<bool> {
+    let (row, column) = parse_a1_cell(address)?;
+    Ok(ranges
+        .iter()
+        .any(|(min_row, min_column, max_row, max_column)| {
+            (*min_row..=*max_row).contains(&row) && (*min_column..=*max_column).contains(&column)
+        }))
+}
+
 fn equivalent_import_value(
     expected: Option<&serde_json::Value>,
     actual: Option<&serde_json::Value>,
@@ -1054,8 +1395,30 @@ fn equivalent_import_value(
     match (expected, actual) {
         (Some(expected), None) => is_empty_text_value(expected),
         (None, Some(actual)) => is_empty_text_value(actual),
+        (Some(expected), Some(actual)) => {
+            if is_empty_text_value(expected) || is_empty_text_value(actual) {
+                return false;
+            }
+            match (excel_numeric_value(expected), excel_numeric_value(actual)) {
+                (Some(expected), Some(actual)) => expected == actual,
+                _ => false,
+            }
+        }
         _ => false,
     }
+}
+
+/// Calamine may classify an unchanged Excel serial as a date when the source
+/// cell has a date number format and as a plain number when an imported range
+/// intentionally omits styles. Excel stores both as the same numeric value;
+/// compare that underlying value without requiring presentation formatting.
+fn excel_numeric_value(value: &serde_json::Value) -> Option<f64> {
+    matches!(
+        value.get("type").and_then(serde_json::Value::as_str),
+        Some("number" | "integer" | "datetime_serial")
+    )
+    .then(|| value.get("value").and_then(serde_json::Value::as_f64))
+    .flatten()
 }
 
 fn is_empty_text_value(value: &serde_json::Value) -> bool {
@@ -1137,6 +1500,41 @@ fn select_external_sheets<'a>(
         return Ok((selected, reason.to_owned()));
     }
     Ok((all_sheets(), "all_sheets_fallback".to_owned()))
+}
+
+fn formulas_in_ranges(workbook: &WorkbookDump, ranges: &[CopyRange]) -> Result<Vec<String>> {
+    let sheets = workbook
+        .sheets
+        .iter()
+        .map(|sheet| (sheet.name.as_str(), sheet))
+        .collect::<BTreeMap<_, _>>();
+    let mut formulas = Vec::new();
+    for range in ranges {
+        let sheet = sheets
+            .get(range.sheet_name.as_str())
+            .with_context(|| format!("S1 校验区域对应的模板工作表不存在：{}", range.sheet_name))?;
+        let (min_row, min_col, max_row, max_col) =
+            parse_a1_range(&range.address).with_context(|| {
+                format!(
+                    "S1 校验区域地址无效：{}!{}",
+                    range.sheet_name, range.address
+                )
+            })?;
+        for (address, formula) in &sheet.formulas {
+            let (row, column) = parse_a1_cell(address).with_context(|| {
+                format!("S1 模板公式单元格地址无效：{}!{address}", range.sheet_name)
+            })?;
+            if row >= min_row
+                && row <= max_row
+                && column >= min_col
+                && column <= max_col
+                && !formula.trim().is_empty()
+            {
+                formulas.push(formula.clone());
+            }
+        }
+    }
+    Ok(formulas)
 }
 
 fn used_range(sheet: &SheetDump) -> Result<String> {
@@ -1241,15 +1639,16 @@ mod tests {
     use super::*;
     use excel_editor::{
         BackendCapability, CapabilityEvidence, CapabilityStatus, EditBackend, EditOperationKind,
-        EngineId, OutputValidator, UmyaXlsxBackend, UmyaXlsxValidator, WorkbookFormat,
+        EngineId, OoxmlImportBackend, OpenpyxlWorkerConfig, OpenpyxlXlsxBackend,
+        OpenpyxlXlsxValidator, OutputValidator, UmyaXlsxBackend, UmyaXlsxValidator, WorkbookFormat,
     };
     use excel_writer::Workbook;
     use std::{
         fs,
         path::PathBuf,
         sync::{
-            atomic::{AtomicU64, Ordering},
             Arc,
+            atomic::{AtomicU64, Ordering},
         },
         time::{SystemTime, UNIX_EPOCH},
     };
@@ -1409,6 +1808,21 @@ mod tests {
         write_target_with_sheet(path, "检查表");
     }
 
+    fn add_comment(path: &Path, sheet_name: &str, cell: &str, author: &str, text: &str) {
+        let mut workbook = umya_spreadsheet::reader::xlsx::read(path)
+            .expect("reopen workbook to add a legacy cell comment");
+        let sheet = workbook
+            .get_sheet_by_name_mut(sheet_name)
+            .expect("find comment worksheet");
+        let mut comment = umya_spreadsheet::Comment::default();
+        comment.new_comment(cell);
+        comment.set_author(author);
+        comment.set_text_string(text);
+        sheet.add_comments(comment);
+        umya_spreadsheet::writer::xlsx::write(&workbook, path)
+            .expect("save workbook with legacy cell comment");
+    }
+
     fn write_target_with_rule_sheet(path: &Path) {
         let mut workbook = Workbook::new();
         let data = workbook.add_worksheet();
@@ -1435,6 +1849,19 @@ mod tests {
             .write_formula(0, 0, "=1+1")
             .expect("write target formula");
         workbook.save(path).expect("save target formula workbook");
+    }
+
+    fn write_target_with_formula_outside_copy_range(path: &Path) {
+        let mut workbook = Workbook::new();
+        let sheet = workbook.add_worksheet();
+        sheet.set_name("检查表").expect("name target sheet");
+        sheet
+            .write_string(0, 0, "target value")
+            .expect("write target value");
+        sheet
+            .write_formula(0, 2, "=SUM(A1:B1)")
+            .expect("write ordinary source formula outside validation range");
+        workbook.save(path).expect("save target workbook");
     }
 
     fn write_target_with_sheet(path: &Path, sheet_name: &str) {
@@ -1482,7 +1909,7 @@ mod tests {
                 target_start,
                 copy_values: true,
                 copy_formulas: true,
-                copy_comments: false,
+                copy_comments: true,
                 materialize_blank_cells: true,
                 style_mode: RangeStyleMode::None,
                 ..
@@ -1708,6 +2135,302 @@ mod tests {
     }
 
     #[test]
+    fn ooxml_s1_copy_replaces_comments_inside_validation_range_and_preserves_outside_comments() {
+        let directory = temporary_directory();
+        let target = directory.join("target.xlsx");
+        let template = directory.join("template.xlsx");
+        let output = directory.join("candidate.xlsx");
+        write_target(&target);
+        write_template(&template);
+        add_comment(&target, "检查表", "A1", "Source User", "old source note");
+        add_comment(
+            &target,
+            "检查表",
+            "C1",
+            "Source User",
+            "outside source note",
+        );
+        add_comment(
+            &template,
+            "检查表",
+            "A1",
+            "Template Author",
+            "validation note",
+        );
+        add_comment(
+            &template,
+            "检查表",
+            "C1",
+            "Template Author",
+            "outside template note must not copy",
+        );
+        let target_before = fs::read(&target).expect("read source workbook before copy");
+        let prepared = build_s1_formula_copy_edit_plan(&target, &template, &output, None, None)
+            .expect("build S1 copy plan with comments");
+        let capability = BackendCapability {
+            engine: EngineId::OoxmlPatch,
+            status: CapabilityStatus::Unverified,
+            format: prepared.edit_plan.format,
+            operations: [
+                EditOperationKind::CreateSheet,
+                EditOperationKind::DeleteSheet,
+                EditOperationKind::ImportRange,
+                EditOperationKind::ImportRangeWithFormulaTranslation,
+                EditOperationKind::SetWorkbookCalculationProperties,
+            ]
+            .into_iter()
+            .collect(),
+            supported_features: prepared.edit_plan.workbook.features_present.clone(),
+            preserved: prepared.edit_plan.preserve.clone(),
+            platform: std::env::consts::OS.to_owned(),
+            evidence: None,
+        };
+        OoxmlImportBackend::new(capability)
+            .expect("construct OOXML candidate backend")
+            .apply(&prepared.edit_plan)
+            .unwrap_or_else(|error| panic!("S1 OOXML copy failed: {}", error.message));
+        validate_s1_formula_copy_candidate(&prepared, &output)
+            .expect("validate formula, values, comments, authors and positions");
+
+        let copied = excel_reader::read_ooxml_comments(&output).expect("read output comments");
+        let comments = &copied["检查表"];
+        assert_eq!(
+            comments["A1"],
+            excel_reader::WorkbookComment {
+                text: "validation note".to_owned(),
+                author: Some("Template Author".to_owned()),
+            }
+        );
+        assert_eq!(
+            comments["C1"],
+            excel_reader::WorkbookComment {
+                text: "outside source note".to_owned(),
+                author: Some("Source User".to_owned()),
+            }
+        );
+        assert!(!comments.contains_key("B1"));
+        assert_eq!(
+            fs::read(&target).expect("reread original source workbook"),
+            target_before
+        );
+        fs::remove_dir_all(directory).expect("remove S1 comment-copy test directory");
+    }
+
+    #[test]
+    #[ignore = "requires RUST_WORKSPACE_OPENPYXL_PYTHON pointing to an openpyxl test runtime"]
+    fn openpyxl_s1_candidate_copies_validation_comments_and_passes_output_validation() {
+        let python = std::env::var_os("RUST_WORKSPACE_OPENPYXL_PYTHON")
+            .map(PathBuf::from)
+            .expect("set RUST_WORKSPACE_OPENPYXL_PYTHON to an openpyxl test runtime");
+        let directory = temporary_directory();
+        let target = directory.join("target.xlsx");
+        let template = directory.join("template.xlsx");
+        let output = directory.join("candidate.xlsx");
+        write_target(&target);
+        write_template(&template);
+        add_comment(&target, "检查表", "A1", "Source User", "old source note");
+        add_comment(
+            &target,
+            "检查表",
+            "C1",
+            "Source User",
+            "outside source note",
+        );
+        add_comment(
+            &template,
+            "检查表",
+            "A1",
+            "Template Author",
+            "validation note",
+        );
+        let target_before = fs::read(&target).expect("read source workbook before copy");
+        let prepared = build_s1_formula_copy_edit_plan(&target, &template, &output, None, None)
+            .expect("build S1 openpyxl candidate plan");
+        let capability = BackendCapability {
+            engine: EngineId::OpenpyxlWorker,
+            status: CapabilityStatus::Unverified,
+            format: prepared.edit_plan.format,
+            operations: prepared
+                .edit_plan
+                .operations
+                .iter()
+                .map(EditOperation::kind)
+                .collect(),
+            supported_features: crate::excel_route::production_supported_features(),
+            preserved: prepared.edit_plan.preserve.clone(),
+            platform: std::env::consts::OS.to_owned(),
+            evidence: None,
+        };
+        let worker = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("audit-core workspace parent")
+            .join("crates/excel-editor/python/openpyxl_worker.py");
+        let backend = OpenpyxlXlsxBackend::new(
+            capability,
+            OpenpyxlWorkerConfig::new(python, worker).expect("construct openpyxl worker config"),
+        )
+        .expect("construct openpyxl candidate backend");
+        backend
+            .apply(&prepared.edit_plan)
+            .unwrap_or_else(|error| panic!("openpyxl S1 candidate failed: {}", error.message));
+        OpenpyxlXlsxValidator
+            .validate(&prepared.edit_plan, &output)
+            .expect("validate openpyxl candidate preservation");
+        validate_s1_formula_copy_candidate(&prepared, &output)
+            .expect("validate S1 formulas, values and copied comments");
+
+        let comments = excel_reader::read_ooxml_comments(&output).expect("read candidate comments");
+        assert_eq!(comments["检查表"]["A1"].text, "validation note");
+        assert_eq!(
+            comments["检查表"]["A1"].author.as_deref(),
+            Some("Template Author")
+        );
+        assert_eq!(comments["检查表"]["C1"].text, "outside source note");
+        assert_eq!(
+            fs::read(&target).expect("reread source workbook"),
+            target_before
+        );
+        fs::remove_dir_all(directory).expect("remove openpyxl candidate test directory");
+    }
+
+    #[test]
+    #[ignore = "requires local S1 source/template paths; optional openpyxl test runtime"]
+    fn real_s1_formula_copy_candidate_is_validated_before_recalculation() {
+        let source = std::env::var_os("AUDIT_S1_COPY_REAL_SOURCE")
+            .map(PathBuf::from)
+            .expect("set AUDIT_S1_COPY_REAL_SOURCE");
+        let template = std::env::var_os("AUDIT_S1_COPY_REAL_TEMPLATE")
+            .map(PathBuf::from)
+            .expect("set AUDIT_S1_COPY_REAL_TEMPLATE");
+        let external = std::env::var_os("AUDIT_S1_COPY_REAL_EXTERNAL").map(PathBuf::from);
+        let engine = std::env::var("AUDIT_S1_COPY_REAL_ENGINE").unwrap_or_else(|_| "ooxml".into());
+        assert!(
+            source.is_file(),
+            "missing real S1 source: {}",
+            source.display()
+        );
+        assert!(
+            template.is_file(),
+            "missing real S1 template: {}",
+            template.display()
+        );
+        if let Some(external) = &external {
+            assert!(
+                external.is_file(),
+                "missing external workbook: {}",
+                external.display()
+            );
+        }
+
+        let source_before = fs::read(&source).expect("read source before candidate copy");
+        let template_before = fs::read(&template).expect("read template before candidate copy");
+        let external_before = external
+            .as_ref()
+            .map(|path| fs::read(path).expect("read external workbook before candidate copy"));
+        let directory = temporary_directory();
+        let output = directory.join(format!("{engine}-candidate.xlsx"));
+        let editor_input = if engine == "openpyxl" {
+            let cacheless_source = directory.join("formula-source.xlsx");
+            prepare_s1_recalculation_source_copy(&source, &cacheless_source)
+                .expect("prepare isolated cacheless editor input");
+            cacheless_source
+        } else {
+            source.clone()
+        };
+        let prepared = build_s1_formula_copy_edit_plan(
+            &editor_input,
+            &template,
+            &output,
+            None,
+            external.as_deref(),
+        )
+        .expect("build real S1 formula-copy plan");
+
+        match engine.as_str() {
+            "ooxml" => {
+                OoxmlImportBackend::new(crate::excel_route::ooxml_import_capability(
+                    &std::env::consts::OS,
+                ))
+                .expect("construct OOXML candidate backend")
+                .apply(&prepared.edit_plan)
+                .unwrap_or_else(|error| panic!("real OOXML candidate failed: {}", error.message));
+            }
+            "openpyxl" => {
+                let python = std::env::var_os("RUST_WORKSPACE_OPENPYXL_PYTHON")
+                    .map(PathBuf::from)
+                    .expect("set RUST_WORKSPACE_OPENPYXL_PYTHON for openpyxl candidate");
+                let worker = Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .parent()
+                    .expect("audit-core workspace parent")
+                    .join("crates/excel-editor/python/openpyxl_worker.py");
+                let capability = BackendCapability {
+                    engine: EngineId::OpenpyxlWorker,
+                    status: CapabilityStatus::Unverified,
+                    format: prepared.edit_plan.format,
+                    operations: prepared
+                        .edit_plan
+                        .operations
+                        .iter()
+                        .map(EditOperation::kind)
+                        .collect(),
+                    supported_features: crate::excel_route::production_supported_features(),
+                    preserved: prepared.edit_plan.preserve.clone(),
+                    platform: std::env::consts::OS.to_owned(),
+                    evidence: None,
+                };
+                OpenpyxlXlsxBackend::new(
+                    capability,
+                    OpenpyxlWorkerConfig::new(python, worker)
+                        .expect("construct openpyxl candidate runtime"),
+                )
+                .expect("construct openpyxl candidate backend")
+                .apply(&prepared.edit_plan)
+                .unwrap_or_else(|error| {
+                    panic!("real openpyxl candidate failed: {}", error.message)
+                });
+            }
+            other => panic!("unsupported test candidate engine {other:?}"),
+        }
+
+        OpenpyxlXlsxValidator
+            .validate(&prepared.edit_plan, &output)
+            .expect("validate real formula-copy candidate preservation");
+        validate_s1_formula_copy_candidate(&prepared, &output)
+            .expect("validate real template formulas, values and copied comments");
+        let dump = read_workbook(&output).expect("read real candidate output");
+        let copied_comments = excel_reader::read_ooxml_comments(&output)
+            .expect("read comments from real candidate output")
+            .values()
+            .map(BTreeMap::len)
+            .sum::<usize>();
+        println!(
+            "real_s1_candidate engine={engine} operations={} formulas={} copied_comments={} output={}",
+            prepared.edit_plan.operations.len(),
+            dump.sheets
+                .iter()
+                .map(|sheet| sheet.formulas.len())
+                .sum::<usize>(),
+            copied_comments,
+            output.display()
+        );
+        assert_eq!(
+            fs::read(&source).expect("reread real source"),
+            source_before
+        );
+        assert_eq!(
+            fs::read(&template).expect("reread real template"),
+            template_before
+        );
+        if let (Some(external), Some(external_before)) = (&external, external_before) {
+            assert_eq!(
+                fs::read(external).expect("reread external workbook"),
+                external_before
+            );
+        }
+        fs::remove_dir_all(directory).expect("remove real candidate output directory");
+    }
+
+    #[test]
     fn external_formula_sheets_and_their_dependencies_are_copied_without_rejecting_formulas() {
         let directory = temporary_directory();
         let target = directory.join("target.xlsx");
@@ -1872,7 +2595,10 @@ mod tests {
             .expect("save controlled reference-value change");
         let error = validate_s1_formula_copy_candidate(&prepared, &corrupted_values)
             .expect_err("changed lookup values must stop the S1 copy path");
-        assert!(error.to_string().contains("非公式输入值与来源不一致"));
+        assert!(
+            error.to_string().contains("导入区域文本或数值与预期不一致"),
+            "unexpected imported-value validation error: {error:#}"
+        );
 
         let reopened = read_workbook(&output).expect("reopen Umya output through Calamine");
         let references = reopened
@@ -1913,12 +2639,12 @@ mod tests {
     }
 
     #[test]
-    fn s1_copy_validation_rejects_formula_loss_and_unexpected_sheet_structure() {
+    fn s1_copy_validation_checks_imported_formulas_but_ignores_other_formula_text() {
         let directory = temporary_directory();
         let target = directory.join("target.xlsx");
         let template = directory.join("template.xlsx");
         let output = directory.join("candidate.xlsx");
-        write_target_with_sheet(&target, "检查表");
+        write_target_with_formula_outside_copy_range(&target);
         write_template(&template);
         let prepared = build_s1_formula_copy_edit_plan(&target, &template, &output, None, None)
             .expect("build S1 formula-copy plan");
@@ -1957,7 +2683,24 @@ mod tests {
             .expect("save controlled formula corruption");
         let error = validate_s1_formula_copy_candidate(&prepared, &corrupted_formula)
             .expect_err("formula loss must stop the S1 copy path");
-        assert!(error.to_string().contains("公式位置或公式文本与来源不一致"));
+        assert!(error
+            .to_string()
+            .contains("编辑计划导入区域公式与预期不一致"));
+
+        let other_formula_changed = directory.join("other-formula-changed.xlsx");
+        fs::copy(&output, &other_formula_changed)
+            .expect("copy candidate for formula-outside-validation-area probe");
+        let mut workbook = excel_editor::open_xlsx(&other_formula_changed)
+            .expect("open candidate for formula change outside validation area");
+        workbook
+            .sheet_by_name_mut("检查表")
+            .expect("find target data sheet")
+            .cell_mut("C1")
+            .set_formula("SUM(A1:B1)+1");
+        excel_editor::save_xlsx(&workbook, &other_formula_changed)
+            .expect("save formula change outside validation area");
+        validate_s1_formula_copy_candidate(&prepared, &other_formula_changed)
+            .expect("formula text outside the named validation range is outside this copy check");
 
         let corrupted_structure = directory.join("corrupted-structure.xlsx");
         fs::copy(&output, &corrupted_structure)
@@ -1977,13 +2720,23 @@ mod tests {
     }
 
     #[test]
-    fn s1_import_value_comparison_only_tolerates_empty_string_normalization() {
+    fn s1_import_value_comparison_compares_excel_numeric_serials_across_formatting() {
         let empty = serde_json::json!({"type":"string", "value":""});
         let nonempty = serde_json::json!({"type":"string", "value":"x"});
+        let date_serial = serde_json::json!({"type":"datetime_serial", "value":46295.0});
+        let number = serde_json::json!({"type":"number", "value":46295.0});
+        let integer = serde_json::json!({"type":"integer", "value":46295});
+        let different_number = serde_json::json!({"type":"number", "value":46296.0});
         assert!(equivalent_import_value(Some(&empty), None));
         assert!(equivalent_import_value(None, Some(&empty)));
+        assert!(equivalent_import_value(Some(&date_serial), Some(&number)));
+        assert!(equivalent_import_value(Some(&date_serial), Some(&integer)));
         assert!(!equivalent_import_value(Some(&empty), Some(&nonempty)));
         assert!(!equivalent_import_value(Some(&nonempty), None));
+        assert!(!equivalent_import_value(
+            Some(&date_serial),
+            Some(&different_number)
+        ));
     }
 
     #[test]
@@ -2173,10 +2926,23 @@ mod tests {
         let external = directory.join("external.xlsx");
         let output = directory.join("output.xlsx");
         write_target(&target);
-        write_template_with_formula(
-            &template,
-            "=IFERROR(VLOOKUP(A1,'外部维表'!$A:$B,2,FALSE),\"\")",
-        );
+        let mut template_workbook = Workbook::new();
+        let template_sheet = template_workbook.add_worksheet();
+        template_sheet
+            .set_name("检查表")
+            .expect("name formula sheet");
+        template_sheet
+            .write_formula(0, 0, "=IFERROR(VLOOKUP(A1,'外部维表'!$A:$B,2,FALSE),\"\")")
+            .expect("write in-range audit formula");
+        template_sheet
+            .write_formula(0, 2, "='未引用表'!A1")
+            .expect("write unrelated formula outside audit range");
+        template_workbook
+            .define_name("校验区域", "='检查表'!$A$1:$B$2")
+            .expect("define audit validation range");
+        template_workbook
+            .save(&template)
+            .expect("save formula template");
         write_external_workbook(&external);
 
         let prepared =

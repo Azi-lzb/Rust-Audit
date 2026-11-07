@@ -1,0 +1,46 @@
+执行时间：2026-11-05（Asia/Shanghai）
+执行者：Codex
+修改前 commit：5efcecc
+修改后 commit：5efcecc（未提交）
+工作区情况：存在大量并发/历史未提交修改；本次只保留 S1-F01 定点变更，不暂存、覆盖、回滚、提交或推送其他文件。
+
+修改目的
+修复 2026-07-31 票据业务 S1-F01 实际验收中模板误判和公式工作表经 Office 重算后公式丢失的问题，并验证七家机构整条流程。
+
+修复点
+1. 模板结构匹配忽略 veryHidden 辅助工作表，与原 Python 的可见/隐藏工作表匹配口径保持一致。
+2. S1-F01 复制结果校验将 Calamine 的 datetime_serial 与 Office/Umya 返回的 number/integer Excel 数值序列按数值比较，避免仅因日期格式类型标注差异拒绝复制结果。
+3. COM 重算临时副本前，对引用含空格、括号等字符的内部工作表名称加必要的 Excel 单引号，并在同一次 OOXML 包处理中清理旧公式缓存。源文件不改动；LibreOffice 原准备路径保持不变。
+4. 重算后公式文本验证容忍 Excel/WPS 对内部工作表引用可选引号及 TRUE/FALSE 字面量的规范化，但仍要求公式位置、表名、单元格引用和其余公式文本一致。
+
+涉及文件
+- audit-core/src/s1_template.rs
+- audit-core/src/s1_formula_copy.rs
+- audit-core/src/native_recalculation.rs
+- crates/ooxml-patch/src/lib.rs
+- crates/excel-reader/src/lib.rs
+
+配置/VBA 影响：无。未修改旧 Python 项目；未引入 Python/openpyxl 生产依赖；公式仍由外部 Office COM 引擎真实计算。
+
+验证结果
+- 定向单测：ooxml-patch 的 office_recalculation_quotes_only_unsafe_internal_sheet_references 通过；excel-reader 的 formula_comparison_allows_only_libreoffice_boolean_literal_normalization 通过；S1 numeric serial 校验单测通过。
+- crate 单测：ooxml-patch 22 passed / 0 failed；excel-reader 23 passed / 0 failed；audit-core 223 passed / 0 failed / 10 ignored。
+- Release 构建：build-release.bat 通过（退出码 0；目标目录 F:\RustBuild\audit；产物复制到项目 dist）。
+- 真实 acceptance-run：七本票据工作簿全部完成，状态 completed，总耗时 27.676 秒；模板匹配成功，结构检查 7/7；成功 7、失败 0、跳过 0、待人工重算 0；公式异常 67、条件格式异常 0。输出包含七本审核副本和汇总核查表。
+- 对七本重算副本逐个检查 OOXML：每本保留 1,185 个公式节点和 1,185 个缓存节点；有值缓存为 940–969 个，空结果缓存与返回空白的公式相符；错误缓存 0。运行报告 `input_files_unchanged=true`，changed_inputs 为空。
+- `git diff --check` 通过；Git 仅报告工作区原有 LF/CRLF 提示。
+
+验收证据位置
+- 临时输出目录：C:\Users\AZI\AppData\Local\Temp\audit_s1f1_ticket_20261105_164701_574\output-rerun4
+- 运行报告：该目录下 acceptance-report.json
+- 真实输入/配置仍位于本机 2026-07-31 票据测试目录及原 Python 项目，只读使用。
+
+未完成/限制
+- 真实样本在当前 Windows 机器、当前 Excel COM 环境通过；尚未证明其他 Office/WPS 版本或 Linux/LibreOffice 的等价表现。
+- 未进行 GUI 截图级验收；本轮验证通过现有 acceptance-run 入口执行 S1-F01。
+- 公式异常 67 条是本次业务审核结果，不代表运行失败；需由业务人员核验异常内容是否符合预期。
+- 完整 workspace 回归未运行；已运行相关三个 crate 的全部 lib 单测。
+
+删除清单：无。
+【组件版本】：不升级（不改变配置格式和审核结果格式）。
+回滚提示：只反向移除上述五个文件中本记录对应的定点改动；不要对这些含有其他并发 WIP 的文件执行整文件 checkout/reset。

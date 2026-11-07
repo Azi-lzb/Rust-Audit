@@ -6,13 +6,14 @@
 //! real business templates and target Linux packaging still need acceptance.
 
 use crate::{
+    discovery::ScanDepth,
     s2_analysis::{build_analysis_result, first_records_by_logical_key, S2AnalysisResult},
     s2_config::S2AuditConfig,
     s2_config_check::{check_s2_config, check_s2_config_and_load},
     s2_exporter::export_s2_report,
     s2_external::compare_external,
     s2_external_import::import_external_workbook,
-    s2_import::{import_period_directory_with_progress, S2ImportResult},
+    s2_import::{import_period_directory_with_scan_depth, S2ImportResult},
     s2_period::compare_periods,
     s2_rule_engine::evaluate_rules,
     s2_validation::{
@@ -79,6 +80,16 @@ pub fn run_s2_audit(
     request: &S2RunRequest,
     on_progress: Option<&mut dyn FnMut(S2ProgressEvent)>,
 ) -> Result<S2RunResult> {
+    run_s2_audit_with_scan_depth(request, ScanDepth::RootOnly, on_progress)
+}
+
+/// Execute S2 with the frontend's configured source-directory recursion depth.
+/// The original `run_s2_audit` entry point remains root-only for CLI callers.
+pub fn run_s2_audit_with_scan_depth(
+    request: &S2RunRequest,
+    depth: ScanDepth,
+    on_progress: Option<&mut dyn FnMut(S2ProgressEvent)>,
+) -> Result<S2RunResult> {
     let mut on_progress = on_progress;
     emit_progress(
         &mut on_progress,
@@ -125,10 +136,11 @@ pub fn run_s2_audit(
                 message.to_owned(),
             );
         };
-        import_period_directory_with_progress(
+        import_period_directory_with_scan_depth(
             &request.current_directory,
             &import_config,
             "本期",
+            depth,
             Some(&mut report_progress),
         )?
     };
@@ -154,10 +166,11 @@ pub fn run_s2_audit(
                 message.to_owned(),
             );
         };
-        import_period_directory_with_progress(
+        import_period_directory_with_scan_depth(
             &request.previous_directory,
             &import_config,
             "上期",
+            depth,
             Some(&mut report_progress),
         )?
     };

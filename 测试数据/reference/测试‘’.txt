@@ -1,0 +1,24 @@
+环境验证完毕，发现层完全就绪，一个字节都不用改：find_calc_engine() 自动选中了 /opt/libreoffice26.8/program/soffice（优先直装 DEB，玲珑 25.8 兜底），available() 返回 True。下面是给主要开发那边的完整改动说明。
+
+现状结论（已在本机验证）
+环节	状态
+引擎发现/适配层（engines/libreoffice.py + libreoffice_adapter.py）	✅ 就绪，自动找到 26.8
+直装版 26.8 无界面公式重算	✅ 已实测通过（=A1*A2+1 → 13）
+执行管线接入 LibreOffice	❌ 唯一缺口，即 libreoffice_adapter.py 文档里自己声明的“二期工作”
+需要改的地方（全在 core/src/base_audit/service.py）
+执行链路目前写死了 Windows COM 会话，共 4 处：
+
+第 12 行：from .excel_com import ExcelSession —— 顶层直接导入
+第 129 行：函数签名里的 excel: ExcelSession 类型注解
+第 608 行：with ExcelSession(self.engine_preference) as excel: —— 审核前检查流程
+第 831 行：with ExcelSession(self.engine_preference) as excel: —— 执行审核主流程
+ExcelSession.__enter__ 里第 180 行 if sys.platform != "win32": raise ExcelUnavailableError(...) 就是你看到的那句报错。
+
+改法建议（供开发那边参考）
+两处 with ExcelSession(...) 换成工厂函数（如 engines/ 下新增 create_session(engine_preference)）：Windows 返回现有 ExcelSession；非 Windows 返回一个 LibreOffice 版会话——读模板/历史/命名区域用 openpyxl 实现，计算点调 LibreOfficeAdapter.recalculate()（协议接口已定义好，engines/protocol.py 的 Calculator）。
+前置工作：盘点 ExcelSession 在 service 里被实际调用的方法面（open_workbook、read_history、read_template、survey_named_ranges、公式复制、外部文件计划等），逐个决定 openpyxl/LO 实现方式。engine_preference 参数链路已通（web_app.py 498/667 行已传入，"自动”和"LibreOffice Calc" 在 Linux 上已是合法值）。
+验收清单（改完可在这台机器上直接验）
+LibreOfficeAdapter().available() → True（我已测：26.8.0.3）✅
+用真实模板跑一遍 run_flow，结果和 Windows COM 版比对公式值差异
+如果保留玲珑版作兜底：玲珑版 headless 暂存文件计算我上次那条验证被取消了还没跑完，建议真机补测一次
+打包侧零改动：core/ 是发行包里的外置目录，开发那边改完代码，直接替换发行包里的 core/ 就能生效（或重跑一次 build_uos.py），exe 不用重打。

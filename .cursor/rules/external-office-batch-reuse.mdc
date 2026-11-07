@@ -1,0 +1,14 @@
+---
+description: Reuse owned Office and LibreOffice processes within each workbook batch
+alwaysApply: true
+---
+
+# External Office Session Reuse
+
+- Treat one user-triggered workbook operation as one batch. Process its workbooks sequentially through one task-owned application process/session; close it after the batch.
+- On Windows, prefer a validated Rust-native COM/IDispatch worker. Do not launch PowerShell or Python once per workbook.
+- LibreOffice has no COM. Prefer one isolated process/profile for a batch. Use a persistent UNO session only when the requested operation has a verified UNO implementation. A single multi-input `soffice --convert-to` invocation is valid batch-level reuse when that operation supports it; do not call it a persistent UNO session.
+- Do not start one cold Excel/WPS/LibreOffice process per workbook by default. If safe batch reuse is not supported, record the limitation, comparable timings, and process cleanup evidence.
+- Never connect to or terminate a user's Office process. Use a unique task-owned profile/session and clean up only processes proven to belong to it.
+- Verify every output and the final process/profile cleanup. Keep per-workbook failure isolation; retry only from an untouched input or clean copy.
+- If the batch engine reports only total time, label per-workbook timing unavailable; do not divide the batch total and present it as measured individual timings.

@@ -7,8 +7,9 @@
 use audit_core::s1_formula_copy::build_s1_formula_copy_edit_plan;
 use excel_editor::{
     BackendCapability, BackendErrorKind, CapabilityStatus, EditBackend, EditOperation,
-    EditOperationKind, EngineId, OpenpyxlWorkerConfig, OpenpyxlXlsxBackend, OpenpyxlXlsxValidator,
-    OutputValidator, UmyaXlsxBackend, WorkbookFeature, WorkbookFormat,
+    EditOperationKind, EngineId, OoxmlImportBackend, OpenpyxlWorkerConfig, OpenpyxlXlsxBackend,
+    OpenpyxlXlsxValidator, OutputValidator, UmyaXlsxBackend, UmyaXlsxValidator, WorkbookFeature,
+    WorkbookFormat, OOXML_IMPORT_OPERATIONS,
 };
 use std::{
     collections::BTreeSet,
@@ -403,12 +404,27 @@ fn probes_s1_formula_copy_import_ranges_without_claiming_capability() {
     )
     .expect("build S1 formula-copy business plan from template rules");
     let template_profile = prepared.template_profile;
+    let external_profile = prepared.external_profile;
     let mut plan = prepared.edit_plan;
     let range_import_count = plan
         .operations
         .iter()
         .filter(|operation| operation.kind() == EditOperationKind::ImportRange)
         .count();
+    for operation in &plan.operations {
+        if let EditOperation::ImportRange {
+            source_sheet,
+            source_range,
+            target_sheet,
+            target_start,
+            ..
+        } = operation
+        {
+            eprintln!(
+                "S1_IMPORT_RANGE={source_sheet}!{source_range}->{target_sheet}!{target_start}"
+            );
+        }
+    }
     let set_comment_count = plan
         .operations
         .iter()
@@ -427,9 +443,9 @@ fn probes_s1_formula_copy_import_ranges_without_claiming_capability() {
             )
         })
         .count();
-    assert_eq!(
-        range_import_count, 4,
-        "candidate scope requires four ranges"
+    assert!(
+        range_import_count >= 4,
+        "candidate scope requires the four configured template ranges; external reference sheets may add imports (observed {range_import_count})"
     );
     let include_calculation_properties = std::env::var("AUDIT_S1_COPY_CANDIDATE_CALC_PROPERTIES")
         .map(|value| value != "0")
@@ -445,29 +461,65 @@ fn probes_s1_formula_copy_import_ranges_without_claiming_capability() {
     let workbook_profile = plan.workbook.clone();
     let candidate_engine =
         std::env::var("AUDIT_S1_COPY_CANDIDATE_ENGINE").unwrap_or_else(|_| "umya".to_owned());
-    let (engine, supported_features) = match candidate_engine.as_str() {
-        "umya" => (EngineId::UmyaSpreadsheet, BTreeSet::new()),
-        "openpyxl-worker" => {
-            let supported_features = workbook_profile
+    let (engine, supported_features, capability_operations) = match candidate_engine.as_str() {
+        "umya" => (
+            EngineId::UmyaSpreadsheet,
+            BTreeSet::new(),
+            [
+                EditOperationKind::CreateSheet,
+                EditOperationKind::DeleteSheet,
+                EditOperationKind::ImportRange,
+                EditOperationKind::SetComment,
+                EditOperationKind::SetWorkbookCalculationProperties,
+            ]
+            .into_iter()
+            .collect(),
+        ),
+        "ooxml-patch" => {
+            let mut supported_features = workbook_profile
                 .features_present
                 .union(&template_profile.features_present)
                 .copied()
                 .collect::<BTreeSet<WorkbookFeature>>();
-            (EngineId::OpenpyxlWorker, supported_features)
+            if let Some(external_profile) = &external_profile {
+                supported_features.extend(external_profile.features_present.iter().copied());
+            }
+            (
+                EngineId::OoxmlPatch,
+                supported_features,
+                OOXML_IMPORT_OPERATIONS.iter().copied().collect(),
+            )
         }
-        _ => panic!("candidate engine must be umya or openpyxl-worker"),
+        "openpyxl-worker" => {
+            let mut supported_features = workbook_profile
+                .features_present
+                .union(&template_profile.features_present)
+                .copied()
+                .collect::<BTreeSet<WorkbookFeature>>();
+            if let Some(external_profile) = &external_profile {
+                supported_features.extend(external_profile.features_present.iter().copied());
+            }
+            (
+                EngineId::OpenpyxlWorker,
+                supported_features,
+                [
+                    EditOperationKind::CreateSheet,
+                    EditOperationKind::DeleteSheet,
+                    EditOperationKind::ImportRange,
+                    EditOperationKind::SetComment,
+                    EditOperationKind::SetWorkbookCalculationProperties,
+                ]
+                .into_iter()
+                .collect(),
+            )
+        }
+        _ => panic!("candidate engine must be umya, ooxml-patch, or openpyxl-worker"),
     };
     let capability = BackendCapability {
         engine,
         status: CapabilityStatus::Unverified,
         format: WorkbookFormat::Xlsx,
-        operations: [
-            EditOperationKind::ImportRange,
-            EditOperationKind::SetComment,
-            EditOperationKind::SetWorkbookCalculationProperties,
-        ]
-        .into_iter()
-        .collect(),
+        operations: capability_operations,
         supported_features,
         preserved: BTreeSet::new(),
         platform: "audit-s1-manual-candidate".to_owned(),
@@ -485,6 +537,46 @@ fn probes_s1_formula_copy_import_ranges_without_claiming_capability() {
                 let backend =
                     UmyaXlsxBackend::new(capability).expect("construct unverified Umya candidate");
                 (backend.apply(&plan), None, None)
+            }
+            "ooxml-patch" => {
+                let backend = OoxmlImportBackend::new(capability)
+                    .expect("construct unverified OOXML import candidate");
+                let result = backend.apply(&plan);
+                let readback_failure = if result.is_ok() && output.is_file() {
+                    let metadata_validation = OpenpyxlXlsxValidator.validate(&plan, &output);
+                    let business_validation = UmyaXlsxValidator.validate(&plan, &output);
+                    for (validator, validation) in [
+                        ("METADATA", &metadata_validation),
+                        ("UMYA", &business_validation),
+                    ] {
+                        if let Err(error) = validation {
+                            let message = format!("{error:#}")
+                                .replace(&target.display().to_string(), "<source-workbook>")
+                                .replace(&template.display().to_string(), "<template-workbook>")
+                                .replace(&output.display().to_string(), "<candidate-workbook>");
+                            eprintln!("OOXML_IMPORT_{validator}_VALIDATION={message}");
+                        }
+                    }
+                    metadata_validation
+                        .err()
+                        .or_else(|| business_validation.err())
+                        .map(|error| {
+                            let message = format!("{error:#}");
+                            let category = readback_failure_category(&message);
+                            let diagnostic = include_safe_diagnostics
+                                .then(|| {
+                                    safe_readback_diagnostic(&message, &target, &template, &output)
+                                })
+                                .flatten();
+                            (category, diagnostic)
+                        })
+                } else {
+                    None
+                };
+                match readback_failure {
+                    Some((category, diagnostic)) => (result, Some(category), diagnostic),
+                    None => (result, None, None),
+                }
             }
             "openpyxl-worker" => {
                 let python = required_path("RUST_WORKSPACE_OPENPYXL_PYTHON");

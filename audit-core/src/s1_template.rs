@@ -5,7 +5,9 @@
 
 use crate::discovery::{source_workbooks, ScanDepth};
 use anyhow::Result;
-use excel_reader::read_xlsx_sheet_names_ooxml;
+use excel_reader::{
+    read_xlsx_sheet_names_ooxml, read_xlsx_sheet_names_ooxml_excluding_very_hidden,
+};
 use serde::Serialize;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -86,7 +88,7 @@ pub fn recommend_template_with_profiles(
 
     let source_sheets = source_files
         .iter()
-        .map(|path| read_xlsx_sheet_names_ooxml(path).unwrap_or_default())
+        .map(|path| read_xlsx_sheet_names_ooxml_excluding_very_hidden(path).unwrap_or_default())
         .collect::<Vec<_>>();
     recommend_from_sheet_sets(templates, &source_sheets)
 }

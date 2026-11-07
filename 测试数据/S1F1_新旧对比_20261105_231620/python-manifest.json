@@ -1,0 +1,361 @@
+{
+  "batches": [
+    {
+      "output_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python\\batch_01",
+      "history_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-history\\batch_01.xlsx",
+      "name": "五篇大文章-互联网金融业务信息（月度）",
+      "period": "2026-08",
+      "selected_files": [
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx"
+      ],
+      "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！130.互联网金融业务信息（月度）202608.xlsx",
+      "workflow_id": "dag:汇总核查表校验",
+      "input_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表",
+      "batch_id": "batch_01"
+    },
+    {
+      "output_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python\\batch_02",
+      "history_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-history\\batch_02.xlsx",
+      "name": "五篇大文章-养老产业贷款信息",
+      "period": "2026-08",
+      "selected_files": [
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_五篇大文章-养老产业贷款信息_B00_2026-08-31_在线核查表.xlsx"
+      ],
+      "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！140.养老产业贷款信息202608.xlsx",
+      "workflow_id": "dag:汇总核查表校验",
+      "input_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表",
+      "batch_id": "batch_02"
+    },
+    {
+      "output_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python\\batch_03",
+      "history_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-history\\batch_03.xlsx",
+      "name": "五篇大文章-数字经济产业贷款信息",
+      "period": "2026-08",
+      "selected_files": [
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_五篇大文章-数字经济产业贷款信息_B00_2026-08-31_在线核查表.xlsx"
+      ],
+      "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！140.数字经济产业贷款信息202608.xlsx",
+      "workflow_id": "dag:汇总核查表校验",
+      "input_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表",
+      "batch_id": "batch_03"
+    },
+    {
+      "output_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python\\batch_04",
+      "history_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-history\\batch_04.xlsx",
+      "name": "五篇大文章-普惠贷款信息",
+      "period": "2026-08",
+      "selected_files": [
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_五篇大文章-普惠贷款信息_B00_2026-08-31_在线核查表.xlsx"
+      ],
+      "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！140.普惠贷款信息202608.xlsx",
+      "workflow_id": "dag:汇总核查表校验",
+      "input_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表",
+      "batch_id": "batch_04"
+    },
+    {
+      "output_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python\\batch_05",
+      "history_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-history\\batch_05.xlsx",
+      "name": "五篇大文章-科技贷款信息",
+      "period": "2026-08",
+      "selected_files": [
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_五篇大文章-科技贷款信息_B00_2026-08-31_在线核查表.xlsx"
+      ],
+      "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！140.科技贷款信息202608.xlsx",
+      "workflow_id": "dag:汇总核查表校验",
+      "input_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表",
+      "batch_id": "batch_05"
+    },
+    {
+      "output_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python\\batch_06",
+      "history_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-history\\batch_06.xlsx",
+      "name": "五篇大文章-绿色贷款信息",
+      "period": "2026-08",
+      "selected_files": [
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_五篇大文章-绿色贷款信息_B00_2026-08-31_在线核查表.xlsx"
+      ],
+      "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！140.绿色贷款信息202608.xlsx",
+      "workflow_id": "dag:汇总核查表校验",
+      "input_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表",
+      "batch_id": "batch_06"
+    },
+    {
+      "output_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python\\batch_07",
+      "history_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-history\\batch_07.xlsx",
+      "name": "金融基础数据-个人贷款",
+      "period": "2026-08",
+      "selected_files": [
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_金融基础数据-个人贷款_B00_2026-08-31_在线核查表.xlsx"
+      ],
+      "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！20.融基础数据-个人贷款202609.xlsx",
+      "workflow_id": "dag:汇总核查表校验",
+      "input_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表",
+      "batch_id": "batch_07"
+    },
+    {
+      "output_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python\\batch_08",
+      "history_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-history\\batch_08.xlsx",
+      "name": "金融基础数据-单位贷款",
+      "period": "2026-08",
+      "selected_files": [
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表.xlsx"
+      ],
+      "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！10.基础数据-单位贷款202609.xlsx",
+      "workflow_id": "dag:汇总核查表校验",
+      "input_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表",
+      "batch_id": "batch_08"
+    },
+    {
+      "output_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python\\batch_09",
+      "history_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-history\\batch_09.xlsx",
+      "name": "金融基础数据-存量专项贷款一批报文",
+      "period": "2026-08",
+      "selected_files": [
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_金融基础数据-存量专项贷款一批报文_B00_2026-08-31_在线核查表.xlsx"
+      ],
+      "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！30.存量专项贷款一批报文202608.xlsx",
+      "workflow_id": "dag:汇总核查表校验",
+      "input_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表",
+      "batch_id": "batch_09"
+    },
+    {
+      "output_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python\\batch_10",
+      "history_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-history\\batch_10.xlsx",
+      "name": "金融基础数据-存量专项贷款二批报文",
+      "period": "2026-08",
+      "selected_files": [
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_金融基础数据-存量专项贷款二批报文_B00_2026-08-31_在线核查表.xlsx"
+      ],
+      "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！61.存量专项贷款二批报文202608.xlsx",
+      "workflow_id": "dag:汇总核查表校验",
+      "input_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表",
+      "batch_id": "batch_10"
+    },
+    {
+      "output_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python\\batch_11",
+      "history_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-history\\batch_11.xlsx",
+      "name": "金融基础数据-存量个人存款",
+      "period": "2026-08",
+      "selected_files": [
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_金融基础数据-存量个人存款_B00_2026-08-31_在线核查表.xlsx"
+      ],
+      "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！110.金融基础数据-存量个人存款202608.xlsx",
+      "workflow_id": "dag:汇总核查表校验",
+      "input_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表",
+      "batch_id": "batch_11"
+    },
+    {
+      "output_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python\\batch_12",
+      "history_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-history\\batch_12.xlsx",
+      "name": "金融基础数据-票据业务",
+      "period": "2026-08",
+      "selected_files": [
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_金融基础数据-票据业务_B00_2026-08-31_在线核查表.xlsx"
+      ],
+      "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！50.金融基础数据-票据业务202608.xlsx",
+      "workflow_id": "dag:汇总核查表校验",
+      "input_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表",
+      "batch_id": "batch_12"
+    },
+    {
+      "output_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python\\batch_13",
+      "history_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-history\\batch_13.xlsx",
+      "name": "金融基础数据采集（代发工资）",
+      "period": "2026-08",
+      "selected_files": [
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_金融基础数据采集（代发工资）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_金融基础数据采集（代发工资）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_金融基础数据采集（代发工资）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_金融基础数据采集（代发工资）_2026-08-31_数据核对表.xlsx"
+      ],
+      "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！120.金融基础数据采集（代发工资）202608.xlsx",
+      "workflow_id": "dag:汇总核查表校验",
+      "input_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表",
+      "batch_id": "batch_13"
+    },
+    {
+      "output_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python\\batch_14",
+      "history_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-history\\batch_14.xlsx",
+      "name": "金融基础数据采集（债券业务）",
+      "period": "2026-08",
+      "selected_files": [
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx"
+      ],
+      "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！70.金融基础数据采集（债券业务）202608.xlsx",
+      "workflow_id": "dag:汇总核查表校验",
+      "input_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表",
+      "batch_id": "batch_14"
+    },
+    {
+      "output_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python\\batch_15",
+      "history_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-history\\batch_15.xlsx",
+      "name": "金融基础数据采集（单位存款）",
+      "period": "2026-08",
+      "selected_files": [
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_金融基础数据采集（单位存款）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_金融基础数据采集（单位存款）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_金融基础数据采集（单位存款）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_金融基础数据采集（单位存款）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_金融基础数据采集（单位存款）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_金融基础数据采集（单位存款）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_金融基础数据采集（单位存款）_2026-08-31_数据核对表.xlsx"
+      ],
+      "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！100.金融基础数据采集（单位存款）202608.xlsx",
+      "workflow_id": "dag:汇总核查表校验",
+      "input_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表",
+      "batch_id": "batch_15"
+    },
+    {
+      "output_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python\\batch_16",
+      "history_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-history\\batch_16.xlsx",
+      "name": "金融基础数据采集（单位贷款置换旧债发生额）",
+      "period": "2026-08",
+      "selected_files": [
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_金融基础数据采集（单位贷款置换旧债发生额）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_金融基础数据采集（单位贷款置换旧债发生额）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_金融基础数据采集（单位贷款置换旧债发生额）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_金融基础数据采集（单位贷款置换旧债发生额）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_金融基础数据采集（单位贷款置换旧债发生额）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_金融基础数据采集（单位贷款置换旧债发生额）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_金融基础数据采集（单位贷款置换旧债发生额）_2026-08-31_数据核对表.xlsx"
+      ],
+      "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！60.金融基础数据采集（单位贷款置换旧债发生额）202608.xlsx",
+      "workflow_id": "dag:汇总核查表校验",
+      "input_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表",
+      "batch_id": "batch_16"
+    },
+    {
+      "output_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python\\batch_17",
+      "history_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-history\\batch_17.xlsx",
+      "name": "金融基础数据采集（同业业务）",
+      "period": "2026-08",
+      "selected_files": [
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_金融基础数据采集（同业业务）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_金融基础数据采集（同业业务）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_金融基础数据采集（同业业务）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_金融基础数据采集（同业业务）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_金融基础数据采集（同业业务）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_金融基础数据采集（同业业务）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_金融基础数据采集（同业业务）_2026-08-31_数据核对表.xlsx"
+      ],
+      "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！90.金融基础数据采集（同业业务）202608.xlsx",
+      "workflow_id": "dag:汇总核查表校验",
+      "input_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表",
+      "batch_id": "batch_17"
+    },
+    {
+      "output_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python\\batch_18",
+      "history_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-history\\batch_18.xlsx",
+      "name": "金融基础数据采集（委托贷款）",
+      "period": "2026-08",
+      "selected_files": [
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_金融基础数据采集（委托贷款）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_金融基础数据采集（委托贷款）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_金融基础数据采集（委托贷款）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_金融基础数据采集（委托贷款）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_金融基础数据采集（委托贷款）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_金融基础数据采集（委托贷款）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_金融基础数据采集（委托贷款）_2026-08-31_数据核对表.xlsx"
+      ],
+      "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！40.金融基础数据采集（委托贷款）202608.xlsx",
+      "workflow_id": "dag:汇总核查表校验",
+      "input_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表",
+      "batch_id": "batch_18"
+    },
+    {
+      "output_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python\\batch_19",
+      "history_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\python-history\\batch_19.xlsx",
+      "name": "金融基础数据采集（股权和特定目的载体投资）",
+      "period": "2026-08",
+      "selected_files": [
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东博罗农村商业银行股份有限公司_金融基础数据采集（股权和特定目的载体投资）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东惠东农村商业银行股份有限公司_金融基础数据采集（股权和特定目的载体投资）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\广东龙门农村商业银行股份有限公司_金融基础数据采集（股权和特定目的载体投资）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠东惠民村镇银行股份有限公司_金融基础数据采集（股权和特定目的载体投资）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州博罗长江村镇银行股份有限公司_金融基础数据采集（股权和特定目的载体投资）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\惠州农村商业银行股份有限公司_金融基础数据采集（股权和特定目的载体投资）_2026-08-31_数据核对表.xlsx",
+        "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表\\TCL科技集团财务有限公司_金融基础数据采集（股权和特定目的载体投资）_2026-08-31_数据核对表.xlsx"
+      ],
+      "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！80.金融基础数据采集（股权和特定目的载体投资）202608.xlsx",
+      "workflow_id": "dag:汇总核查表校验",
+      "input_dir": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\逐笔统计系统\\核查表",
+      "batch_id": "batch_19"
+    }
+  ]
+}

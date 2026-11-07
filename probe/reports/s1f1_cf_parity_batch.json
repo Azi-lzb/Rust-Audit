@@ -4,24 +4,21 @@
   "filesWithCf": 46,
   "filesWithoutCf": 83,
   "totals": {
-    "rust": 349,
+    "rust": 257,
     "excel": 257,
     "wps": 0,
-    "match": 19,
-    "mismatch": 27
+    "match": 46,
+    "mismatch": 0
   },
   "details": [
     {
       "file": "0012-TCL科技集团财务有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalcula",
-      "rustTriggered": 3,
+      "rustTriggered": 0,
       "excelTriggered": 0,
       "wpsTriggered": 0,
-      "rustVsExcel": "MISMATCH",
-      "rustOnly": [
-        "债券投资发生额|D111",
-        "债券投资发生额|E111",
-        "存量债券投资|D112"
-      ],
+      "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
+      "rustOnly": [],
       "excelOnly": []
     },
     {
@@ -30,51 +27,38 @@
       "excelTriggered": 36,
       "wpsTriggered": 0,
       "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
       "rustOnly": [],
       "excelOnly": []
     },
     {
       "file": "0014-TCL科技集团财务有限公司_金融基础数据采集_单位贷款置换旧债发生额__2026-08-31_数据核对表-re",
-      "rustTriggered": 6,
+      "rustTriggered": 0,
       "excelTriggered": 0,
       "wpsTriggered": 0,
-      "rustVsExcel": "MISMATCH",
-      "rustOnly": [
-        "单位贷款置换旧债发生额统计表|C32",
-        "单位贷款置换旧债发生额统计表|C36",
-        "单位贷款置换旧债发生额统计表|C8",
-        "单位贷款置换旧债发生额统计表|D32",
-        "单位贷款置换旧债发生额统计表|D36",
-        "单位贷款置换旧债发生额统计表|D8"
-      ],
+      "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
+      "rustOnly": [],
       "excelOnly": []
     },
     {
       "file": "0015-TCL科技集团财务有限公司_金融基础数据采集_同业业务__2026-08-31_数据核对表-recalcula",
-      "rustTriggered": 11,
+      "rustTriggered": 9,
       "excelTriggered": 9,
       "wpsTriggered": 0,
-      "rustVsExcel": "MISMATCH",
-      "rustOnly": [
-        "同业客户基础信息|C103",
-        "同业客户基础信息|C105"
-      ],
+      "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
+      "rustOnly": [],
       "excelOnly": []
     },
     {
       "file": "0016-TCL科技集团财务有限公司_金融基础数据采集_委托贷款__2026-08-31_数据核对表-recalcula",
-      "rustTriggered": 6,
+      "rustTriggered": 0,
       "excelTriggered": 0,
       "wpsTriggered": 0,
-      "rustVsExcel": "MISMATCH",
-      "rustOnly": [
-        "委托贷款发生额|D193",
-        "委托贷款发生额|D93",
-        "委托贷款发生额|E193",
-        "委托贷款发生额|E93",
-        "存量委托贷款|D204",
-        "存量委托贷款|D93"
-      ],
+      "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
+      "rustOnly": [],
       "excelOnly": []
     },
     {
@@ -83,6 +67,7 @@
       "excelTriggered": 0,
       "wpsTriggered": 0,
       "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
       "rustOnly": [],
       "excelOnly": []
     },
@@ -92,18 +77,18 @@
       "excelTriggered": 7,
       "wpsTriggered": 0,
       "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
       "rustOnly": [],
       "excelOnly": []
     },
     {
       "file": "0031-广东博罗农村商业银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalc",
-      "rustTriggered": 3,
+      "rustTriggered": 2,
       "excelTriggered": 2,
       "wpsTriggered": 0,
-      "rustVsExcel": "MISMATCH",
-      "rustOnly": [
-        "债券投资发生额|E111"
-      ],
+      "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
+      "rustOnly": [],
       "excelOnly": []
     },
     {
@@ -112,46 +97,38 @@
       "excelTriggered": 25,
       "wpsTriggered": 0,
       "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
       "rustOnly": [],
       "excelOnly": []
     },
     {
       "file": "0033-广东博罗农村商业银行股份有限公司_金融基础数据采集_单位贷款置换旧债发生额__2026-08-31_数据核对表",
-      "rustTriggered": 2,
+      "rustTriggered": 0,
       "excelTriggered": 0,
       "wpsTriggered": 0,
-      "rustVsExcel": "MISMATCH",
-      "rustOnly": [
-        "单位贷款置换旧债发生额统计表|C36",
-        "单位贷款置换旧债发生额统计表|D36"
-      ],
+      "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
+      "rustOnly": [],
       "excelOnly": []
     },
     {
       "file": "0034-广东博罗农村商业银行股份有限公司_金融基础数据采集_同业业务__2026-08-31_数据核对表-recalc",
-      "rustTriggered": 6,
+      "rustTriggered": 5,
       "excelTriggered": 5,
       "wpsTriggered": 0,
-      "rustVsExcel": "MISMATCH",
-      "rustOnly": [
-        "同业客户基础信息|C105"
-      ],
+      "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
+      "rustOnly": [],
       "excelOnly": []
     },
     {
       "file": "0035-广东博罗农村商业银行股份有限公司_金融基础数据采集_委托贷款__2026-08-31_数据核对表-recalc",
-      "rustTriggered": 6,
+      "rustTriggered": 0,
       "excelTriggered": 0,
       "wpsTriggered": 0,
-      "rustVsExcel": "MISMATCH",
-      "rustOnly": [
-        "委托贷款发生额|D193",
-        "委托贷款发生额|D93",
-        "委托贷款发生额|E193",
-        "委托贷款发生额|E93",
-        "存量委托贷款|D204",
-        "存量委托贷款|D93"
-      ],
+      "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
+      "rustOnly": [],
       "excelOnly": []
     },
     {
@@ -160,6 +137,7 @@
       "excelTriggered": 0,
       "wpsTriggered": 0,
       "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
       "rustOnly": [],
       "excelOnly": []
     },
@@ -169,18 +147,18 @@
       "excelTriggered": 8,
       "wpsTriggered": 0,
       "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
       "rustOnly": [],
       "excelOnly": []
     },
     {
       "file": "0050-广东惠东农村商业银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalc",
-      "rustTriggered": 3,
+      "rustTriggered": 2,
       "excelTriggered": 2,
       "wpsTriggered": 0,
-      "rustVsExcel": "MISMATCH",
-      "rustOnly": [
-        "债券投资发生额|E111"
-      ],
+      "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
+      "rustOnly": [],
       "excelOnly": []
     },
     {
@@ -189,46 +167,38 @@
       "excelTriggered": 47,
       "wpsTriggered": 0,
       "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
       "rustOnly": [],
       "excelOnly": []
     },
     {
       "file": "0052-广东惠东农村商业银行股份有限公司_金融基础数据采集_单位贷款置换旧债发生额__2026-08-31_数据核对表",
-      "rustTriggered": 2,
+      "rustTriggered": 0,
       "excelTriggered": 0,
       "wpsTriggered": 0,
-      "rustVsExcel": "MISMATCH",
-      "rustOnly": [
-        "单位贷款置换旧债发生额统计表|C36",
-        "单位贷款置换旧债发生额统计表|D36"
-      ],
+      "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
+      "rustOnly": [],
       "excelOnly": []
     },
     {
       "file": "0053-广东惠东农村商业银行股份有限公司_金融基础数据采集_同业业务__2026-08-31_数据核对表-recalc",
-      "rustTriggered": 4,
+      "rustTriggered": 3,
       "excelTriggered": 3,
       "wpsTriggered": 0,
-      "rustVsExcel": "MISMATCH",
-      "rustOnly": [
-        "同业客户基础信息|C105"
-      ],
+      "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
+      "rustOnly": [],
       "excelOnly": []
     },
     {
       "file": "0054-广东惠东农村商业银行股份有限公司_金融基础数据采集_委托贷款__2026-08-31_数据核对表-recalc",
-      "rustTriggered": 6,
+      "rustTriggered": 0,
       "excelTriggered": 0,
       "wpsTriggered": 0,
-      "rustVsExcel": "MISMATCH",
-      "rustOnly": [
-        "委托贷款发生额|D193",
-        "委托贷款发生额|D93",
-        "委托贷款发生额|E193",
-        "委托贷款发生额|E93",
-        "存量委托贷款|D204",
-        "存量委托贷款|D93"
-      ],
+      "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
+      "rustOnly": [],
       "excelOnly": []
     },
     {
@@ -237,6 +207,7 @@
       "excelTriggered": 0,
       "wpsTriggered": 0,
       "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
       "rustOnly": [],
       "excelOnly": []
     },
@@ -246,19 +217,18 @@
       "excelTriggered": 2,
       "wpsTriggered": 0,
       "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
       "rustOnly": [],
       "excelOnly": []
     },
     {
       "file": "0069-广东龙门农村商业银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalc",
-      "rustTriggered": 2,
+      "rustTriggered": 0,
       "excelTriggered": 0,
       "wpsTriggered": 0,
-      "rustVsExcel": "MISMATCH",
-      "rustOnly": [
-        "债券投资发生额|D111",
-        "债券投资发生额|E111"
-      ],
+      "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
+      "rustOnly": [],
       "excelOnly": []
     },
     {
@@ -267,48 +237,38 @@
       "excelTriggered": 17,
       "wpsTriggered": 0,
       "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
       "rustOnly": [],
       "excelOnly": []
     },
     {
       "file": "0071-广东龙门农村商业银行股份有限公司_金融基础数据采集_单位贷款置换旧债发生额__2026-08-31_数据核对表",
-      "rustTriggered": 2,
+      "rustTriggered": 0,
       "excelTriggered": 0,
       "wpsTriggered": 0,
-      "rustVsExcel": "MISMATCH",
-      "rustOnly": [
-        "单位贷款置换旧债发生额统计表|C36",
-        "单位贷款置换旧债发生额统计表|D36"
-      ],
+      "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
+      "rustOnly": [],
       "excelOnly": []
     },
     {
       "file": "0072-广东龙门农村商业银行股份有限公司_金融基础数据采集_同业业务__2026-08-31_数据核对表-recalc",
-      "rustTriggered": 5,
+      "rustTriggered": 2,
       "excelTriggered": 2,
       "wpsTriggered": 0,
-      "rustVsExcel": "MISMATCH",
-      "rustOnly": [
-        "同业客户基础信息|C103",
-        "同业客户基础信息|C104",
-        "同业客户基础信息|C105"
-      ],
+      "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
+      "rustOnly": [],
       "excelOnly": []
     },
     {
       "file": "0073-广东龙门农村商业银行股份有限公司_金融基础数据采集_委托贷款__2026-08-31_数据核对表-recalc",
-      "rustTriggered": 6,
+      "rustTriggered": 0,
       "excelTriggered": 0,
       "wpsTriggered": 0,
-      "rustVsExcel": "MISMATCH",
-      "rustOnly": [
-        "委托贷款发生额|D193",
-        "委托贷款发生额|D93",
-        "委托贷款发生额|E193",
-        "委托贷款发生额|E93",
-        "存量委托贷款|D204",
-        "存量委托贷款|D93"
-      ],
+      "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
+      "rustOnly": [],
       "excelOnly": []
     },
     {
@@ -317,19 +277,18 @@
       "excelTriggered": 0,
       "wpsTriggered": 0,
       "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
       "rustOnly": [],
       "excelOnly": []
     },
     {
       "file": "0087-惠东惠民村镇银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalcul",
-      "rustTriggered": 2,
+      "rustTriggered": 0,
       "excelTriggered": 0,
       "wpsTriggered": 0,
-      "rustVsExcel": "MISMATCH",
-      "rustOnly": [
-        "债券投资发生额|D111",
-        "债券投资发生额|E111"
-      ],
+      "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
+      "rustOnly": [],
       "excelOnly": []
     },
     {
@@ -338,52 +297,38 @@
       "excelTriggered": 6,
       "wpsTriggered": 0,
       "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
       "rustOnly": [],
       "excelOnly": []
     },
     {
       "file": "0089-惠东惠民村镇银行股份有限公司_金融基础数据采集_单位贷款置换旧债发生额__2026-08-31_数据核对表-r",
-      "rustTriggered": 6,
+      "rustTriggered": 0,
       "excelTriggered": 0,
       "wpsTriggered": 0,
-      "rustVsExcel": "MISMATCH",
-      "rustOnly": [
-        "单位贷款置换旧债发生额统计表|C32",
-        "单位贷款置换旧债发生额统计表|C36",
-        "单位贷款置换旧债发生额统计表|C8",
-        "单位贷款置换旧债发生额统计表|D32",
-        "单位贷款置换旧债发生额统计表|D36",
-        "单位贷款置换旧债发生额统计表|D8"
-      ],
+      "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
+      "rustOnly": [],
       "excelOnly": []
     },
     {
       "file": "0090-惠东惠民村镇银行股份有限公司_金融基础数据采集_同业业务__2026-08-31_数据核对表-recalcul",
-      "rustTriggered": 3,
+      "rustTriggered": 0,
       "excelTriggered": 0,
       "wpsTriggered": 0,
-      "rustVsExcel": "MISMATCH",
-      "rustOnly": [
-        "同业客户基础信息|C103",
-        "同业客户基础信息|C104",
-        "同业客户基础信息|C105"
-      ],
+      "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
+      "rustOnly": [],
       "excelOnly": []
     },
     {
       "file": "0091-惠东惠民村镇银行股份有限公司_金融基础数据采集_委托贷款__2026-08-31_数据核对表-recalcul",
-      "rustTriggered": 6,
+      "rustTriggered": 0,
       "excelTriggered": 0,
       "wpsTriggered": 0,
-      "rustVsExcel": "MISMATCH",
-      "rustOnly": [
-        "委托贷款发生额|D193",
-        "委托贷款发生额|D93",
-        "委托贷款发生额|E193",
-        "委托贷款发生额|E93",
-        "存量委托贷款|D204",
-        "存量委托贷款|D93"
-      ],
+      "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
+      "rustOnly": [],
       "excelOnly": []
     },
     {
@@ -392,6 +337,7 @@
       "excelTriggered": 0,
       "wpsTriggered": 0,
       "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
       "rustOnly": [],
       "excelOnly": []
     },
@@ -401,6 +347,7 @@
       "excelTriggered": 16,
       "wpsTriggered": 0,
       "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
       "rustOnly": [],
       "excelOnly": []
     },
@@ -410,6 +357,7 @@
       "excelTriggered": 9,
       "wpsTriggered": 0,
       "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
       "rustOnly": [],
       "excelOnly": []
     },
@@ -419,44 +367,38 @@
       "excelTriggered": 48,
       "wpsTriggered": 0,
       "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
       "rustOnly": [],
       "excelOnly": []
     },
     {
       "file": "0108-惠州农村商业银行股份有限公司_金融基础数据采集_单位贷款置换旧债发生额__2026-08-31_数据核对表-r",
-      "rustTriggered": 2,
+      "rustTriggered": 0,
       "excelTriggered": 0,
       "wpsTriggered": 0,
-      "rustVsExcel": "MISMATCH",
-      "rustOnly": [
-        "单位贷款置换旧债发生额统计表|C36",
-        "单位贷款置换旧债发生额统计表|D36"
-      ],
+      "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
+      "rustOnly": [],
       "excelOnly": []
     },
     {
       "file": "0109-惠州农村商业银行股份有限公司_金融基础数据采集_同业业务__2026-08-31_数据核对表-recalcul",
-      "rustTriggered": 6,
+      "rustTriggered": 5,
       "excelTriggered": 5,
       "wpsTriggered": 0,
-      "rustVsExcel": "MISMATCH",
-      "rustOnly": [
-        "同业客户基础信息|C103"
-      ],
+      "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
+      "rustOnly": [],
       "excelOnly": []
     },
     {
       "file": "0110-惠州农村商业银行股份有限公司_金融基础数据采集_委托贷款__2026-08-31_数据核对表-recalcul",
-      "rustTriggered": 6,
+      "rustTriggered": 2,
       "excelTriggered": 2,
       "wpsTriggered": 0,
-      "rustVsExcel": "MISMATCH",
-      "rustOnly": [
-        "委托贷款发生额|D193",
-        "委托贷款发生额|E193",
-        "委托贷款发生额|E93",
-        "存量委托贷款|D204"
-      ],
+      "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
+      "rustOnly": [],
       "excelOnly": []
     },
     {
@@ -465,20 +407,18 @@
       "excelTriggered": 0,
       "wpsTriggered": 0,
       "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
       "rustOnly": [],
       "excelOnly": []
     },
     {
       "file": "0124-惠州博罗长江村镇银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalc",
-      "rustTriggered": 3,
+      "rustTriggered": 0,
       "excelTriggered": 0,
       "wpsTriggered": 0,
-      "rustVsExcel": "MISMATCH",
-      "rustOnly": [
-        "债券投资发生额|D111",
-        "债券投资发生额|E111",
-        "存量债券投资|D112"
-      ],
+      "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
+      "rustOnly": [],
       "excelOnly": []
     },
     {
@@ -487,52 +427,38 @@
       "excelTriggered": 6,
       "wpsTriggered": 0,
       "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
       "rustOnly": [],
       "excelOnly": []
     },
     {
       "file": "0126-惠州博罗长江村镇银行股份有限公司_金融基础数据采集_单位贷款置换旧债发生额__2026-08-31_数据核对表",
-      "rustTriggered": 6,
+      "rustTriggered": 0,
       "excelTriggered": 0,
       "wpsTriggered": 0,
-      "rustVsExcel": "MISMATCH",
-      "rustOnly": [
-        "单位贷款置换旧债发生额统计表|C32",
-        "单位贷款置换旧债发生额统计表|C36",
-        "单位贷款置换旧债发生额统计表|C8",
-        "单位贷款置换旧债发生额统计表|D32",
-        "单位贷款置换旧债发生额统计表|D36",
-        "单位贷款置换旧债发生额统计表|D8"
-      ],
+      "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
+      "rustOnly": [],
       "excelOnly": []
     },
     {
       "file": "0127-惠州博罗长江村镇银行股份有限公司_金融基础数据采集_同业业务__2026-08-31_数据核对表-recalc",
-      "rustTriggered": 3,
+      "rustTriggered": 0,
       "excelTriggered": 0,
       "wpsTriggered": 0,
-      "rustVsExcel": "MISMATCH",
-      "rustOnly": [
-        "同业客户基础信息|C103",
-        "同业客户基础信息|C104",
-        "同业客户基础信息|C105"
-      ],
+      "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
+      "rustOnly": [],
       "excelOnly": []
     },
     {
       "file": "0128-惠州博罗长江村镇银行股份有限公司_金融基础数据采集_委托贷款__2026-08-31_数据核对表-recalc",
-      "rustTriggered": 6,
+      "rustTriggered": 0,
       "excelTriggered": 0,
       "wpsTriggered": 0,
-      "rustVsExcel": "MISMATCH",
-      "rustOnly": [
-        "委托贷款发生额|D193",
-        "委托贷款发生额|D93",
-        "委托贷款发生额|E193",
-        "委托贷款发生额|E93",
-        "存量委托贷款|D204",
-        "存量委托贷款|D93"
-      ],
+      "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
+      "rustOnly": [],
       "excelOnly": []
     },
     {
@@ -541,6 +467,7 @@
       "excelTriggered": 0,
       "wpsTriggered": 0,
       "rustVsExcel": "MATCH",
+      "wpsAvailable": true,
       "rustOnly": [],
       "excelOnly": []
     }

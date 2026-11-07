@@ -1,0 +1,4 @@
+business=五篇大文章-互联网金融业务信息（月度）
+template=！130.互联网金融业务信息（月度）202608.xlsx
+source=广东博罗农村商业银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx
+manifest=C:\Users\AZI\Desktop\VibeCode\Rust-Audit\测试数据\S1F1_新旧对比_20261105_231620\pilot\rust-manifest.json

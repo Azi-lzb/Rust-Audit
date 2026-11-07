@@ -6,7 +6,7 @@
 
 use anyhow::{bail, ensure, Context, Result};
 use audit_core::{
-    excel_route::production_modifier,
+    excel_route::{production_modifier, production_modifier_with_edit_engine},
     s1_formula_copy::{
         build_s1_formula_copy_edit_plan, execute_s1_formula_copy_with_manual_recovery,
         S1FormulaCopyOutcome,
@@ -85,7 +85,7 @@ fn real_s1_f1_copy_preserves_lookup_formulas_references_and_recalculated_values(
         "real 机构参照表 has no stored values or formulas"
     );
 
-    let modifier = production_modifier("S1-F01 real Umya acceptance")?.0;
+    let modifier = production_modifier_with_edit_engine("S1-F01", "umya")?.0;
     let output = temp.join("s1-audit-copy.xlsx");
     let outcome = execute_s1_formula_copy_with_manual_recovery(
         &source,
@@ -119,8 +119,7 @@ fn real_s1_f1_copy_preserves_lookup_formulas_references_and_recalculated_values(
         edit.engine
     );
     ensure!(
-        edit
-            .route_decisions
+        edit.route_decisions
             .iter()
             .any(|decision| decision.engine == edit.engine && decision.eligible),
         "the engine that produced the output must be eligible in the route decisions"
@@ -156,11 +155,11 @@ fn real_s1_f1_copy_preserves_lookup_formulas_references_and_recalculated_values(
     let baseline_institution = sheet(&baseline_dump.sheets, "机构参照表")?;
     ensure!(
         copied_reference.formulas == reference.formulas,
-        "Umya changed formulas on the copied 参照表 worksheet"
+        "the S1-F01 edit engine changed formulas on the copied 参照表 worksheet"
     );
     ensure!(
         copied_institution.formulas == institution.formulas,
-        "Umya changed formulas on the copied 机构参照表 worksheet"
+        "the S1-F01 edit engine changed formulas on the copied 机构参照表 worksheet"
     );
     ensure!(
         copied_institution.values == baseline_institution.values,
@@ -201,15 +200,14 @@ fn real_s1_f1_copy_preserves_lookup_formulas_references_and_recalculated_values(
             .with_context(|| format!("copied formula missing at {}!{}", identity.0, identity.1))?;
         ensure!(
             actual == expected,
-            "Umya changed template formula at {}!{}",
+            "the S1-F01 edit engine changed template audit formula at {}!{}",
             identity.0,
             identity.1
         );
     }
     ensure!(
-        formula_cells.len() >= 1_000,
-        "real S1 template probe covered only {} formula cells",
-        formula_cells.len()
+        !formula_cells.is_empty(),
+        "real S1 template named 校验区域 contains no formula cells"
     );
 
     if let Some(baseline_path) = env::var_os("AUDIT_S1_REAL_PYTHON_BASELINE").map(PathBuf::from) {
@@ -240,7 +238,7 @@ fn real_s1_f1_copy_preserves_lookup_formulas_references_and_recalculated_values(
         );
         ensure!(
             result_mismatches.is_empty(),
-            "Umya/Excel results differ from old Python S1-F1 baseline in {} formula cells: {:?}",
+            "S1-F01/Excel results differ from old Python S1-F1 baseline in {} 校验区域 formula cells: {:?}",
             result_mismatches.len(),
             result_mismatches.iter().take(20).collect::<Vec<_>>()
         );

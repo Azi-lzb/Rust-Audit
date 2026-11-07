@@ -1,0 +1,39 @@
+执行时间：2026-11-05（Asia/Shanghai）
+执行者：Codex
+修改前 commit：5efcecc
+修改后 commit：5efcecc（未提交）
+工作区情况：原工作区已有多个并发/历史修改；本次只修改 Openpyxl 显式试跑相关代码和规则，不暂存、覆盖、回滚、提交或推送其他文件。
+
+修改目的
+按用户选择取消 Openpyxl 的“必须先有 Passed 能力证据”预检，允许用户显式试跑；不把未通过的历史报告伪造成通过，继续保留候选输出校验和安全发布。
+
+修改内容
+- 高级设置不再因历史 openpyxl capability 记录 available=false 而禁用/拒绝选择；选项名称和提示明确为“显式试跑，输出仍校验”。
+- ExcelModifier 增加显式允许指定 Unverified 后端的 opt-in。只有显式选择 Openpyxl 的路由使用该 opt-in；默认和其他路由仍按原 Passed 证据、操作及保留契约门控。
+- Openpyxl 未验证候选可生成临时输出；仍需满足格式、工作簿特征、平台、worker运行时、具体操作实现检查，并通过 OpenpyxlXlsxValidator。验证失败不会发布结果；原始输入经快照保护，不自动切回 Umya。
+- 更新相应 AGENTS 与选型/验收规则，说明显式试跑与发布校验边界。
+- 更新原有设置 API 单测期望为接受显式试跑选择；本次未运行测试。
+- 历史能力报告 JSON 保持原样，available=false 仍如实记录原有验证失败。
+
+修改文件
+- AGENTS.md
+- audit-core/AGENTS.md
+- audit-core/rules/07_测试与发布.md
+- audit-core/rules/13_表格读写技术选型与主动优化.md
+- audit-core/src/app_settings.rs
+- audit-core/src/excel_route.rs
+- audit-core/src/web_bridge.rs
+- audit-core/frontend/web/index.html
+- crates/excel-editor/src/plan.rs
+- 本记录
+
+验证/限制
+- git diff --check：通过；仅有工作区原有 LF/CRLF 提示。
+- 未运行 Cargo build/check/test/run、打包或 GUI 操作；本轮请求未授权构建/测试。当前 dist EXE 未包含本次改动。
+- 当前项目与 dist 下未找到 Openpyxl 隔离 runtime。产品运行路径要求二进制旁存在 libexec/open-data-audit/openpyxl/runtime/bin/python3 及 worker/openpyxl_worker.py；当前若选择 Openpyxl，运行时预检会报不可用。仓库未提交可直接打包的 Python runtime；这项不在本次改动范围。
+- 历史验证仍显示：S1-F01 写后 OOXML 关系校验会失败；S3-F03 结果须由验证器确认保留项；S3-F05 的 DeleteColumn 仍为 worker 不支持。试跑只让候选进入后续流程，不保证这些业务成功；失败候选不会发布。
+- 尚需在内置隔离 runtime 的构建包上人工试跑，并核实写后校验对真实文件的拒绝/通过情况。不得依赖系统 Python 代替隔离 runtime。
+
+删除清单：无。
+【组件版本】：不升级（未改变配置或审核结果格式）。
+回滚提示：只反向移除本记录所述 Openpyxl 试跑相关代码和规则 hunk；不要整文件 checkout/reset 含有其他并发 WIP 的文件。

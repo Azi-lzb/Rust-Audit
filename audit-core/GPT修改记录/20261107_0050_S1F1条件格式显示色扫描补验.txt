@@ -1,0 +1,58 @@
+时间：2026-11-07 00:50（Asia/Shanghai）
+执行者：Codex
+修改前 commit：5efcecc020755a763fc2f723a22430792c56408
+修改后 commit：5efcecc020755a763fc2f723a22430792c56408（未提交）
+工作区：有大量并发未提交变更和删除项。本次在既有工作区继续工作，没有暂存、提交或丢弃其他修改。
+
+目的：修复 S1-F1 条件格式 COM 扫描把混合颜色矩形整体误判为触发的问题；确保扫描所选工作簿的业务条件格式区域，并按用户确认的实际显示颜色变化决定触发。
+
+本次修改：
+- audit-core/src/native_office_com.rs：读取多单元格范围时先检查 ColorIndex。Excel 对混合色矩形可能仍返回标量 Color，现将 ColorIndex 为 VT_NULL/EMPTY 视为混合，递归拆分后判断；单格范围仍可直接读取 Color 作为兼容回退。
+- audit-core/src/web_bridge.rs：条件格式扫描从当前设置选择的源文件/审核副本读取命名区域；使用已加载的“条件格式区域”映射解析所选工作簿的名称，若没有匹配名称则只扫描 OOXML 条件格式规则 sqref，实际没有规则时返回空扫描。新增/更新 3 个范围路由测试。
+- DEVELOPMENT_GOAL.md、audit-core/probe/reports/s1f1_real_sample_parity_20261106.md：记录代表样本、129 本复跑、Python 对照及剩余 COM 打开失败。
+
+业务口径：用户确认空白值如 AX10 虽无值，但 Excel 实际显示填充色变化时，仍计为条件格式异常。Rust 以 Excel COM DisplayFormat 为颜色判定基准；OOXML 只限定候选规则作用区域及辅助字段。无匹配命名区域时用所选工作簿中的 OOXML sqref，不扫描全工作表。旧 Python 空白值预过滤造成的 AX10 差异是有意业务口径差异，未来需同步旧项目。
+
+验证：
+- `cargo test -p audit-core --lib conditional_scan_areas_ --quiet`：3 passed。
+- `cargo check -p audit-core --bin open-data-audit --quiet`：通过。
+- `cargo build --release --offline --locked -p audit-core --bin open-data-audit --quiet`：通过。构建使用 `CARGO_TARGET_DIR=F:\RustBuild\audit`。
+- 真实单文件：广东惠东单位存款样本，扫描 2,701 格、574 个 OOXML 规则目标区域、47 个实际显示填充色变化、0 诊断；Python 有 46 个条件格式异常，46 个位置完全相同，新增 AX10 一条。输入哈希不变，端到端 18.6 秒。
+- 真实全量：129/129 结构通过，生成 129 个副本；公式异常 3,345，与 Python 位置完全一致；Rust 条件格式 257、Python 264，共有 256、Python-only 8、Rust-only 1（空值红色 AX10）。所有验收输入哈希未变化，耗时 301,275 ms。最终状态为 122 成功、7 部分完成、0 失败、0 跳过。
+- 7 本“单位贷款置换旧债发生额”工作簿的 Excel COM 显示色扫描调用 Workbooks.Open 返回 HRESULT 0x80020009（“类 Workbooks 的 Open 方法无效”）。其中 4 本有 Python-only 的 C36/D36（共 8 条）；未将打开失败当作无异常。需后续确定是否增加独立安全的 COM 打开回退。
+- 全套 Cargo 测试和 GUI 手动验收未运行。全量验收 Excel 进程计数运行前后均为 3；未执行 Git push。
+
+产物：
+- 单文件：`F:\RustBuild\audit\tmp\s1f1-rust-current-template-129-20261107-smoke\output\`
+- 全量：`F:\RustBuild\audit\tmp\s1f1-rust-current-template-129-20261107-run6\acceptance\`
+- 当前工作簿：`F:\RustBuild\audit\tmp\s1f1-rust-current-template-129-20261107-run6\acceptance\steps\S1-F01\S1-F1_审核结果_20261107_004103_150\汇总核查表校验.xlsx`
+
+删除清单：无。
+未提交、未 push。
+
+2026-11-07 续验：WPS 显示色探测与归因更正
+
+- 真实试跑 7 本 Excel COM 打开失败样本。WPS 每本扫描 116 个候选格，但基础/显示填充色均不可读，产生 116 条诊断、0 条可用颜色变化；7 本全部标记部分完成。7 本输入哈希未变。
+- WPS 自动化进程从运行前 1 个增至 6 个；核对 `/Automation -Embedding`、PID、创建时间和无窗口状态后，清理了 6 个本次测试留下的进程。WPS COM 不作为 S1-F1 显示颜色判定引擎。
+- Rust 现在仅接受无诊断的 Excel COM `DisplayFormat` 观察；WPS 或不完整 Excel 扫描使用现有静态求值并标记部分完成。新增门控测试 3/3、区域选择测试 3/3、`cargo check` 通过，Windows Release 构建通过。没有重跑 129 本全量。
+- 更正 95 条差异归因：未修改基线 `81505fb` 正确加载区域映射后，13 份副本的 95 条全部可提取，没有复现 `IndexError`。原先“95 条由 IndexError 漏提”的确定说法不成立；原因未查明，不能归因于内存不足，也不能声称已修复。
+- 读取用户截图对应的 Excel 修复日志 `error345880_02.xml`：它指向原始输入 `TCL科技集团财务有限公司_金融基础数据-单位贷款_B00_2026-08-31_在线核查表.xlsx`，报告从 `sheet1.xml` 删除部分公式。源文件含 I5:I90 共 86 个公式；7 家机构同表公式文本完全一致。其 SHA-256 与 run6 验收的输入前后值相同，最后修改时间为 2026-10-19，证明 run6 没有修改此源文件。修复日志未给出被删除的具体公式坐标，根因仍需额外证据定位。
+- 更新 `DEVELOPMENT_GOAL.md` 和 `audit-core/probe/reports/s1f1_real_sample_parity_20261106.md`；无暂存、无提交、无 push。GUI 手动验收和全工作区回归未运行。
+
+2026-11-07 续验：静态空白求值试验撤回
+
+- 核对并恢复原生 COM worker 的 `scan_conditional_display_colors` 消息处理；显示色观察仍由隔离 Excel.Application 完成。
+- 7 本静态复核的完整结果为 26 项：旧 Python run4 的 batch16 实际使用 WPS COM，只输出 8 项 C36/D36；直接调用旧 Python OOXML 求值器输出 26 项。缺少 Excel COM 观察，18 项差值暂时无法分类。Rust 的空白静态扩展已撤回，静态回退保持保守策略并标记部分完成。
+- 按 Python 顺序移植 WPS 的激活工作表和 `CalculateFullRebuild` 后，Rust WPS worker 在单文件上 90 秒无响应。已撤回源码补丁，停止 worker，并按 PID/命令行/创建时间确认后清理本次创建的隐藏 WPS 进程。该刷新路径不能用于当前 Rust WPS 会话。
+- 定向显示色门控测试 3/3、区域路由测试 3/3、空白回退测试 1/1 通过；回退 WPS 试验补丁后的 `cargo check --offline --locked -p audit-core --bin open-data-audit --quiet` 与 Windows Release 离线构建通过。未跑 129 本全量、全工作区回归或 GUI 手动验收；未提交、未 push。
+- 用户此前重启的旧 Python run4 现已结束：19/19 批次、129/129 文件成功、3,345 条公式异常、264 条条件格式异常，总计 3,609；无失败、输入哈希变化 0。批次耗时和 934,233 ms，恢复后墙钟耗时 513,250 ms。
+- 尝试将截图所涉非引号跨表公式修复方案用于 7 本置换旧债工作簿前，先检查确认这些工作簿不存在对应跨表公式。没有对源文件实施修改；未修改的探测拷贝已清理。该路径不能解释其 Excel COM `Open` 失败。
+- 当前 Release 原生 COM worker 单格冒烟通过：广东惠东单位存款源文件 `单位存款发生额分产品期限!AX10` 基础色 `16777215`、显示色 `255`，1 格命中、0 诊断；专用 Excel PID 34256 正常退出，源文件 SHA-256 与 run6 一致。未重跑整批 Rust。
+
+2026-11-07 续验：COM 红色基准及静态规则校正
+
+- 按用户指定的红色显示结果作真值。Windows 只在命名“条件格式区域”内用 Excel `Interior.Color`/`DisplayFormat.Interior.Color` 做比较；无命名映射时以 OOXML `sqref` 作为候选范围，不扫整表。
+- `audit-core/src/conditional_format.rs` 现在对空白目标也求值，建模空白算术引用、除零 `#DIV/0!` 错误传播以及 `IF`、`IFERROR`、`ISBLANK` 的基本行为。之前把除零结果压成空值后再按 0 比较，会产生错误触发；现已修正。生产实现仍为纯 Rust，不引入 Python/LO 依赖；静态求值读取工作簿已保存的值，不负责公式重算，过期缓存仍可能与 Excel 当前画面不同。
+- 广东惠东单位存款样本经只读 Excel COM 扫描 2,701 格，47 格变红，全部 `16777215 -> 255`；Rust 静态结果也是相同的 47 格，包含空白红色 AX10。源哈希前后不变。
+- 7 本置换旧债源文件及 7 本审核副本都无法经 Excel COM 普通只读或修复模式打开；HRESULT `0x80020009`，ASCII 路径副本也失败，源输入哈希不变。Rust 静态读取 7 条规则、116 格，每本 0 条；Python WPS COM 8 条，旧 Python OOXML 静态 26 条。没有 Excel 显示色基准，不将 0、8、26 中任一数值当作最终结果；仍需可打开的副本或用户人工确认。
+- 条件格式库测试 28/28 通过；`cargo check --offline --locked -p audit-core --bin open-data-audit --quiet` 及 Windows Release 构建通过。未重跑 129 本全量，未做 GUI 手工验收，无 Git commit/push。

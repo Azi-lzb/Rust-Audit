@@ -1,0 +1,180 @@
+{
+  "schema_version": 1,
+  "status": "completed",
+  "run_id": "20261105_231900_121",
+  "started_at": "2026-11-05T23:19:00.120534300+08:00",
+  "finished_at": "2026-11-05T23:19:06.321382800+08:00",
+  "elapsed_ms": 6201,
+  "output_directory": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\pilot\\rust",
+  "steps": [
+    {
+      "name": "S1-F01 模板审核",
+      "status": "completed",
+      "started_at": "2026-11-05T23:19:00.126795300+08:00",
+      "elapsed_ms": 6182,
+      "exit_status": 0,
+      "input_files_unchanged": true,
+      "changed_inputs": [],
+      "generated_files": [
+        "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\pilot\\rust\\steps\\S1-F01\\S1-F1_审核结果_20261105_231900_175\\0001-广东博罗农村商业银行股份有限公司_五篇大文章-互联网金融业务信息_月度__B00_2026-08-31_在线核查表-recalculated.xlsx",
+        "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\pilot\\rust\\steps\\S1-F01\\S1-F1_审核结果_20261105_231900_175\\汇总核查表校验.xlsx"
+      ],
+      "key_counts": {
+        "conditionalIssues": 0,
+        "filesTotal": 1,
+        "formulaIssues": 0,
+        "matched": true,
+        "skipped": 0,
+        "structurePassed": 1,
+        "totalIssues": 0
+      },
+      "stdout": "{\n  \"logs\": [\n    {\n      \"detail\": false,\n      \"level\": \"info\",\n      \"seq\": 1,\n      \"text\": \"S1-F01 高级设置：计算引擎=自动（Windows=Excel COM，无 Excel 时尝试 WPS；Linux=LibreOffice）；修改引擎=Umya（默认，已验证生产路径）（设置文件 C:\\\\Users\\\\AZI\\\\AppData\\\\Local\\\\open-data-audit\\\\settings.json）\",\n      \"time\": \"23:19:00\"\n    },\n    {\n      \"detail\": false,\n      \"level\": \"info\",\n      \"seq\": 2,\n      \"text\": \"S1-F01 开始预检：已选 1 个源工作簿\",\n      \"time\": \"23:19:00\"\n    },\n    {\n      \"detail\": true,\n      \"level\": \"info\",\n      \"seq\": 3,\n      \"text\": \"S1-F01 输入：1；模板目录：\\\\\\\\?\\\\C:\\\\Users\\\\AZI\\\\Desktop\\\\VibeCode\\\\Rust-Audit\\\\测试数据\\\\S1F1_新旧对比_20261105_231620\\\\business_templates；配置：C:\\\\Users\\\\AZI\\\\Desktop\\\\VibeCode\\\\Rust-Audit\\\\测试数据\\\\S1F1_新旧对比_20261105_231620\\\\pilot\\\\rust-history.xlsx；外部数据：未选择；预期结果路径：\\\\\\\\?\\\\C:\\\\Users\\\\AZI\\\\Desktop\\\\VibeCode\\\\Rust-Audit\\\\测试数据\\\\S1F1_新旧对比_20261105_231620\\\\pilot\\\\rust\\\\steps\\\\S1-F01\\\\S1-F1_审核结果_20261105_231900_175\\\\汇总核查表校验.xlsx\",\n      \"time\": \"23:19:00\"\n    },\n    {\n      \"detail\": false,\n      \"level\": \"info\",\n      \"seq\": 4,\n      \"text\": \"S1-F01 [1/1] 开始模板匹配与表结构检查：广东博罗农村商业银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx\",\n      \"time\": \"23:19:00\"\n    },\n    {\n      \"detail\": false,\n      \"level\": \"info\",\n      \"seq\": 5,\n      \"text\": \"S1-F01 [1/1] 文件=广东博罗农村商业银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx 阶段=模板匹配与表结构检查 结果=structure_passed\",\n      \"time\": \"23:19:00\"\n    },\n    {\n      \"detail\": false,\n      \"level\": \"info\",\n      \"seq\": 6,\n      \"text\": \"S1-F01 模板与表结构预检通过：1 个文件；开始执行正式审核\",\n      \"time\": \"23:19:00\"\n    },\n    {\n      \"detail\": false,\n      \"level\": \"info\",\n      \"seq\": 7,\n      \"text\": \"S1-F01 [1 / 1] 文件=广东博罗农村商业银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx 工作表=互联网单位贷款发生额信息 阶段=复制公式并重算\",\n      \"time\": \"23:19:00\"\n    },\n    {\n      \"detail\": false,\n      \"level\": \"info\",\n      \"seq\": 8,\n      \"text\": \"S1-F01 [1 / 1] 文件=广东博罗农村商业银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx 工作表=互联网单位贷款发生额信息 阶段=验证公式重算结果\",\n      \"time\": \"23:19:03\"\n    },\n    {\n      \"detail\": false,\n      \"level\": \"info\",\n      \"seq\": 9,\n      \"text\": \"S1-F01 [1 / 1] 文件=广东博罗农村商业银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx 工作表=互联网单位贷款发生额信息 阶段=提取公式与条件格式异常\",\n      \"time\": \"23:19:03\"\n    },\n    {\n      \"detail\": false,\n      \"level\": \"info\",\n      \"seq\": 10,\n      \"text\": \"S1-F01 [? / 1] 文件=未知文件 阶段=汇总并写入审核结果\",\n      \"time\": \"23:19:03\"\n    },\n    {\n      \"detail\": false,\n      \"level\": \"info\",\n      \"seq\": 11,\n      \"text\": \"S1-F01 广东博罗农村商业银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx：COMPLETED\",\n      \"time\": \"23:19:06\"\n    },\n    {\n      \"detail\": false,\n      \"level\": \"info\",\n      \"seq\": 12,\n      \"text\": \"S1-F01 总用时：6.0 秒\",\n      \"time\": \"23:19:06\"\n    },\n    {\n      \"detail\": false,\n      \"level\": \"info\",\n      \"seq\": 13,\n      \"text\": \"S1-F01 实际重算引擎：Microsoft Excel COM\",\n      \"time\": \"23:19:06\"\n    },\n    {\n      \"detail\": false,\n      \"level\": \"info\",\n      \"seq\": 14,\n      \"text\": \"S1-F01 结果文件：\\\\\\\\?\\\\C:\\\\Users\\\\AZI\\\\Desktop\\\\VibeCode\\\\Rust-Audit\\\\测试数据\\\\S1F1_新旧对比_20261105_231620\\\\pilot\\\\rust\\\\steps\\\\S1-F01\\\\S1-F1_审核结果_20261105_231900_175\\\\汇总核查表校验.xlsx\",\n      \"time\": \"23:19:06\"\n    },\n    {\n      \"detail\": false,\n      \"level\": \"info\",\n      \"seq\": 15,\n      \"text\": \"S1-F01 审核副本目录：\\\\\\\\?\\\\C:\\\\Users\\\\AZI\\\\Desktop\\\\VibeCode\\\\Rust-Audit\\\\测试数据\\\\S1F1_新旧对比_20261105_231620\\\\pilot\\\\rust\\\\steps\\\\S1-F01\\\\S1-F1_审核结果_20261105_231900_175\",\n      \"time\": \"23:19:06\"\n    },\n    {\n      \"detail\": true,\n      \"level\": \"info\",\n      \"seq\": 16,\n      \"text\": \"S1-F01 正式审核结束：数据期=2026-08；审核副本=1；公式异常=0；条件格式异常=0；读取历史行=9；本期合计=0；真实重算引擎=Excel.Application；结果工作表=本期审核结果；输出=\\\\\\\\?\\\\C:\\\\Users\\\\AZI\\\\Desktop\\\\VibeCode\\\\Rust-Audit\\\\测试数据\\\\S1F1_新旧对比_20261105_231620\\\\pilot\\\\rust\\\\steps\\\\S1-F01\\\\S1-F1_审核结果_20261105_231900_175\\\\汇总核查表校验.xlsx；待人工重算=0；部分完成=0；失败=0；总用时=6.0 秒。原始源文件保持只读。\",\n      \"time\": \"23:19:06\"\n    },\n    {\n      \"detail\": false,\n      \"level\": \"info\",\n      \"seq\": 17,\n      \"text\": \"S1-F01 最终摘要：工作簿总数 1；成功 1；部分完成 0；待人工重算 0；失败 0；跳过 0；生成审核副本 1 个；结果 \\\\\\\\?\\\\C:\\\\Users\\\\AZI\\\\Desktop\\\\VibeCode\\\\Rust-Audit\\\\测试数据\\\\S1F1_新旧对比_20261105_231620\\\\pilot\\\\rust\\\\steps\\\\S1-F01\\\\S1-F1_审核结果_20261105_231900_175\\\\汇总核查表校验.xlsx；输出目录 \\\\\\\\?\\\\C:\\\\Users\\\\AZI\\\\Desktop\\\\VibeCode\\\\Rust-Audit\\\\测试数据\\\\S1F1_新旧对比_20261105_231620\\\\pilot\\\\rust\\\\steps\\\\S1-F01；总耗时 6.0秒。\",\n      \"time\": \"23:19:06\"\n    }\n  ],\n  \"preflight\": {\n    \"auditCopies\": [\n      {\n        \"auditWorkbook\": \"\\\\\\\\?\\\\C:\\\\Users\\\\AZI\\\\Desktop\\\\VibeCode\\\\Rust-Audit\\\\测试数据\\\\S1F1_新旧对比_20261105_231620\\\\pilot\\\\rust\\\\steps\\\\S1-F01\\\\S1-F1_审核结果_20261105_231900_175\\\\0001-广东博罗农村商业银行股份有限公司_五篇大文章-互联网金融业务信息_月度__B00_2026-08-31_在线核查表-recalculated.xlsx\",\n        \"editorEngine\": \"umya_spreadsheet\",\n        \"externalSheetsImported\": 0,\n        \"formulaCells\": 16,\n        \"formulaCellsPrepared\": 16,\n        \"recalculationEngine\": \"Excel.Application\",\n        \"sourceFile\": \"\\\\\\\\?\\\\C:\\\\Users\\\\AZI\\\\Desktop\\\\VibeCode\\\\Rust-Audit\\\\测试数据\\\\S1F1_新旧对比_20261105_231620\\\\pilot\\\\input\\\\广东博罗农村商业银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx\",\n        \"template\": \"\\\\\\\\?\\\\C:\\\\Users\\\\AZI\\\\Desktop\\\\VibeCode\\\\Rust-Audit\\\\测试数据\\\\S1F1_新旧对比_20261105_231620\\\\business_templates\\\\！130.互联网金融业务信息（月度）202608.xlsx\"\n      }\n    ],\n    \"conditionalIssues\": 0,\n    \"externalData\": null,\n    \"failedFiles\": 0,\n    \"fileResults\": [\n      {\n        \"auditWorkbook\": \"\\\\\\\\?\\\\C:\\\\Users\\\\AZI\\\\Desktop\\\\VibeCode\\\\Rust-Audit\\\\测试数据\\\\S1F1_新旧对比_20261105_231620\\\\pilot\\\\rust\\\\steps\\\\S1-F01\\\\S1-F1_审核结果_20261105_231900_175\\\\0001-广东博罗农村商业银行股份有限公司_五篇大文章-互联网金融业务信息_月度__B00_2026-08-31_在线核查表-recalculated.xlsx\",\n        \"issuesExtracted\": true,\n        \"partial\": false,\n        \"reason\": null,\n        \"sourceFile\": \"\\\\\\\\?\\\\C:\\\\Users\\\\AZI\\\\Desktop\\\\VibeCode\\\\Rust-Audit\\\\测试数据\\\\S1F1_新旧对比_20261105_231620\\\\pilot\\\\input\\\\广东博罗农村商业银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx\",\n        \"status\": \"COMPLETED\"\n      }\n    ],\n    \"files\": [\n      {\n        \"auditWorkbook\": \"\\\\\\\\?\\\\C:\\\\Users\\\\AZI\\\\Desktop\\\\VibeCode\\\\Rust-Audit\\\\测试数据\\\\S1F1_新旧对比_20261105_231620\\\\pilot\\\\rust\\\\steps\\\\S1-F01\\\\S1-F1_审核结果_20261105_231900_175\\\\0001-广东博罗农村商业银行股份有限公司_五篇大文章-互联网金融业务信息_月度__B00_2026-08-31_在线核查表-recalculated.xlsx\",\n        \"matchDetails\": \"自动匹配：！130.互联网金融业务信息（月度）202608.xlsx（1 个源文件；源文件工作表全部包含于模板；已忽略未能识别的非报送工作簿）\",\n        \"reason\": null,\n        \"scanAreas\": 0,\n        \"sourceFile\": \"广东博罗农村商业银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx\",\n        \"sourcePath\": \"\\\\\\\\?\\\\C:\\\\Users\\\\AZI\\\\Desktop\\\\VibeCode\\\\Rust-Audit\\\\测试数据\\\\S1F1_新旧对比_20261105_231620\\\\pilot\\\\input\\\\广东博罗农村商业银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx\",\n        \"status\": \"COMPLETED\",\n        \"structureAreas\": 4,\n        \"structureMatch\": {\n          \"checked_labels\": 46,\n          \"diagnostic\": null,\n          \"elapsed_ms\": 0,\n          \"matched\": true,\n          \"matched_labels\": 44,\n          \"missing_sheets\": [],\n          \"read_time_ms\": 0,\n          \"score\": 0.9565217391304348\n        },\n        \"template\": \"\\\\\\\\?\\\\C:\\\\Users\\\\AZI\\\\Desktop\\\\VibeCode\\\\Rust-Audit\\\\测试数据\\\\S1F1_新旧对比_20261105_231620\\\\business_templates\\\\！130.互联网金融业务信息（月度）202608.xlsx\"\n      }\n    ],\n    \"filesTotal\": 1,\n    \"formulaIssues\": 0,\n    \"historyRows\": 9,\n    \"manualRecalcInstructions\": \"自动公式重算不可用或失败，已保留待计算的审核副本。请使用 Microsoft Excel 打开审核副本：1. 按 Ctrl+Alt+F9 强制重新计算；2. 等待 Excel 完成计算；3. 按 Ctrl+S 保存；4. 关闭工作簿；5. 返回审核工具，使用 S1-F3『从审核副本汇总校验核查表』继续审核。如果使用 WPS 或 LibreOffice，请采用对应软件支持的重新计算方式并保存。请勿修改原始报表文件。\",\n    \"outputDirectory\": \"\\\\\\\\?\\\\C:\\\\Users\\\\AZI\\\\Desktop\\\\VibeCode\\\\Rust-Audit\\\\测试数据\\\\S1F1_新旧对比_20261105_231620\\\\pilot\\\\rust\\\\steps\\\\S1-F01\",\n    \"partialFiles\": 0,\n    \"performanceTimings\": {\n      \"endToEndTotalUs\": 6048471,\n      \"preflight\": {\n        \"skipped\": 0,\n        \"sourceFiles\": 1,\n        \"sourceStructureCompareUs\": 915,\n        \"structurePassed\": 1,\n        \"templateMatchingUs\": 666,\n        \"templatePreflightUs\": 31145,\n        \"templateProfileLoadUs\": 8949,\n        \"totalUs\": 41896,\n        \"unclassifiedPreflightUs\": 218,\n        \"unit\": \"microseconds\"\n      },\n      \"request\": {\n        \"requestPreparationOtherUs\": 669,\n        \"requestPreparationTotalUs\": 812,\n        \"sourceDirectoryScanUs\": 143,\n        \"unit\": \"microseconds\"\n      },\n      \"workflow\": {\n        \"conditionalFormatIssueExtractionUs\": 1479,\n        \"copyAndRecalculationPreparationTotalUs\": 3086917,\n        \"copyPreparationAndValidationOtherUs\": 49917,\n        \"excelCoreEditAndOutputValidationUs\": 54000,\n        \"externalExcelRecalculationUs\": 2983000,\n        \"formulaAndValidationIssueExtractionUs\": 5961,\n        \"issueExtractionOtherUs\": 220,\n        \"issueExtractionTotalUs\": 7660,\n        \"otherWorkflowAndRecoveryPersistenceUs\": 11653,\n        \"perFile\": [\n          {\n            \"conditionalFormatExtractionUs\": 1479,\n            \"copyAndRecalculationPreparationUs\": 3086917,\n            \"copyPreparationAndValidationOtherUs\": 49917,\n            \"excelCoreEditAndValidationUs\": 54000,\n            \"externalRecalculationUs\": 2983000,\n            \"formulaIssueExtractionUs\": 5961,\n            \"issueExtractionOtherUs\": 220,\n            \"issueExtractionTotalUs\": 7660,\n            \"sourceFile\": \"\\\\\\\\?\\\\C:\\\\Users\\\\AZI\\\\Desktop\\\\VibeCode\\\\Rust-Audit\\\\测试数据\\\\S1F1_新旧对比_20261105_231620\\\\pilot\\\\input\\\\广东博罗农村商业银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx\"\n          }\n        ],\n        \"periodDetectionUs\": 18,\n        \"recalculationSessionInitializationUs\": 192,\n        \"recalculationSessionShutdownUs\": 2862365,\n        \"resultMergeHistoryAndWorkbookWriteUs\": 25019,\n        \"unit\": \"microseconds\",\n        \"workflowAdapterTotalUs\": 6005513,\n        \"workflowSetupAndInitialManifestUs\": 11634,\n        \"workflowTotalUs\": 3142901\n      }\n    },\n    \"plannedResultPath\": \"\\\\\\\\?\\\\C:\\\\Users\\\\AZI\\\\Desktop\\\\VibeCode\\\\Rust-Audit\\\\测试数据\\\\S1F1_新旧对比_20261105_231620\\\\pilot\\\\rust\\\\steps\\\\S1-F01\\\\S1-F1_审核结果_20261105_231900_175\\\\汇总核查表校验.xlsx\",\n    \"recalculationEngines\": [\n      \"Excel.Application\"\n    ],\n    \"recalculationSidecar\": null,\n    \"recalculationSidecarFound\": false,\n    \"resultError\": null,\n    \"resultPath\": \"\\\\\\\\?\\\\C:\\\\Users\\\\AZI\\\\Desktop\\\\VibeCode\\\\Rust-Audit\\\\测试数据\\\\S1F1_新旧对比_20261105_231620\\\\pilot\\\\rust\\\\steps\\\\S1-F01\\\\S1-F1_审核结果_20261105_231900_175\\\\汇总核查表校验.xlsx\",\n    \"reviewedFiles\": 1,\n    \"runDirectory\": \"\\\\\\\\?\\\\C:\\\\Users\\\\AZI\\\\Desktop\\\\VibeCode\\\\Rust-Audit\\\\测试数据\\\\S1F1_新旧对比_20261105_231620\\\\pilot\\\\rust\\\\steps\\\\S1-F01\\\\S1-F1_审核结果_20261105_231900_175\",\n    \"skipped\": 0,\n    \"status\": \"completed\",\n    \"structurePassed\": 1,\n    \"totalIssues\": 0,\n    \"waitingManualRecalc\": 0\n  },\n  \"result_path\": \"\\\\\\\\?\\\\C:\\\\Users\\\\AZI\\\\Desktop\\\\VibeCode\\\\Rust-Audit\\\\测试数据\\\\S1F1_新旧对比_20261105_231620\\\\pilot\\\\rust\\\\steps\\\\S1-F01\\\\S1-F1_审核结果_20261105_231900_175\\\\汇总核查表校验.xlsx\",\n  \"status\": \"completed\",\n  \"ui_status\": \"S1-F01 审核完成：公式异常 0 条、条件格式异常 0 条；总耗时 6.0 秒；结果已保存\"\n}",
+      "stderr": "",
+      "error_original": null
+    }
+  ],
+  "input_files": [
+    {
+      "path": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！10.基础数据-单位贷款202609.xlsx",
+      "sha256_before": "7f0441d0d246cf536cc4f08364580a4029cefd240b230c46ad5f7606a2adf7e7",
+      "sha256_after": "7f0441d0d246cf536cc4f08364580a4029cefd240b230c46ad5f7606a2adf7e7",
+      "unchanged": true
+    },
+    {
+      "path": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！100.金融基础数据采集（单位存款）202608.xlsx",
+      "sha256_before": "dda41a9b70e9e2e0cd205133615b6985e5d7eeb05a0297816c3ab04b1ebb93e0",
+      "sha256_after": "dda41a9b70e9e2e0cd205133615b6985e5d7eeb05a0297816c3ab04b1ebb93e0",
+      "unchanged": true
+    },
+    {
+      "path": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！110.金融基础数据-存量个人存款202608.xlsx",
+      "sha256_before": "7009ad128731ef1a595c60687f548924b3030aafa0db454125eb8603482a699a",
+      "sha256_after": "7009ad128731ef1a595c60687f548924b3030aafa0db454125eb8603482a699a",
+      "unchanged": true
+    },
+    {
+      "path": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！120.金融基础数据采集（代发工资）202608.xlsx",
+      "sha256_before": "5ed4b7fba4f251255ac679600584c6d1e3386b1de60002a674189e5ea2a0566f",
+      "sha256_after": "5ed4b7fba4f251255ac679600584c6d1e3386b1de60002a674189e5ea2a0566f",
+      "unchanged": true
+    },
+    {
+      "path": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！130.互联网金融业务信息（季度）202608.xlsx",
+      "sha256_before": "472c84a8d1f440507fc2b9cf7950358efb9c178f67757c8e3a8bb56d37763d42",
+      "sha256_after": "472c84a8d1f440507fc2b9cf7950358efb9c178f67757c8e3a8bb56d37763d42",
+      "unchanged": true
+    },
+    {
+      "path": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！130.互联网金融业务信息（月度）202608.xlsx",
+      "sha256_before": "770bdade317e6a06eeab785d1669dda94ec51bb6b59317851da44d46fadd313a",
+      "sha256_after": "770bdade317e6a06eeab785d1669dda94ec51bb6b59317851da44d46fadd313a",
+      "unchanged": true
+    },
+    {
+      "path": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！140.养老产业贷款信息202608.xlsx",
+      "sha256_before": "810fbf9a8d15ebc766e99bbea9233e9eca017c64f3ecd168990d67e42ab57b59",
+      "sha256_after": "810fbf9a8d15ebc766e99bbea9233e9eca017c64f3ecd168990d67e42ab57b59",
+      "unchanged": true
+    },
+    {
+      "path": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！140.数字经济产业贷款信息202608.xlsx",
+      "sha256_before": "3b1820a30dd792d823df11e33f64ffa11ae9ae6b3136c5adc4b4e10861d87105",
+      "sha256_after": "3b1820a30dd792d823df11e33f64ffa11ae9ae6b3136c5adc4b4e10861d87105",
+      "unchanged": true
+    },
+    {
+      "path": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！140.普惠贷款信息202608.xlsx",
+      "sha256_before": "a26ed23cedfaca9b4d95ac4e912d8a7711f8441a9acb0f827db153ffc9c7f66b",
+      "sha256_after": "a26ed23cedfaca9b4d95ac4e912d8a7711f8441a9acb0f827db153ffc9c7f66b",
+      "unchanged": true
+    },
+    {
+      "path": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！140.科技贷款信息202608.xlsx",
+      "sha256_before": "5dbbc2747cd03863b716b159a086a58dee1f6fd10170d25c9a5226b51393b410",
+      "sha256_after": "5dbbc2747cd03863b716b159a086a58dee1f6fd10170d25c9a5226b51393b410",
+      "unchanged": true
+    },
+    {
+      "path": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！140.绿色贷款信息202608.xlsx",
+      "sha256_before": "133e1fc53236bce298aa53c9456632544f140c426728d05d8482b16f908dcd22",
+      "sha256_after": "133e1fc53236bce298aa53c9456632544f140c426728d05d8482b16f908dcd22",
+      "unchanged": true
+    },
+    {
+      "path": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！20.融基础数据-个人贷款202609.xlsx",
+      "sha256_before": "72a8cf81c5bf81ba41347b635602dcba4dea26f9bfff10f2ae7e7bbc0bbad6a7",
+      "sha256_after": "72a8cf81c5bf81ba41347b635602dcba4dea26f9bfff10f2ae7e7bbc0bbad6a7",
+      "unchanged": true
+    },
+    {
+      "path": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！30.存量专项贷款一批报文202608.xlsx",
+      "sha256_before": "214260ebf8b220201daad3b95e41ec00418ecd2812a52d75d824acfc6fb236e9",
+      "sha256_after": "214260ebf8b220201daad3b95e41ec00418ecd2812a52d75d824acfc6fb236e9",
+      "unchanged": true
+    },
+    {
+      "path": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！40.金融基础数据采集（委托贷款）202608.xlsx",
+      "sha256_before": "e7a5c3a862aa1370c0464dc0168e0e49c10a530247fa03e2d0c88b1e9c9d05ac",
+      "sha256_after": "e7a5c3a862aa1370c0464dc0168e0e49c10a530247fa03e2d0c88b1e9c9d05ac",
+      "unchanged": true
+    },
+    {
+      "path": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！50.金融基础数据-票据业务202608.xlsx",
+      "sha256_before": "9432116f3baf2712ca34667a2b6ea778b640eb9671da13bd3c61e5b6fbdaa2e3",
+      "sha256_after": "9432116f3baf2712ca34667a2b6ea778b640eb9671da13bd3c61e5b6fbdaa2e3",
+      "unchanged": true
+    },
+    {
+      "path": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！60.金融基础数据采集（单位贷款置换旧债发生额）202608.xlsx",
+      "sha256_before": "2d1c251daca7e8f6c6fdfca680af9249616c41fd0a3811d7dde41079ed7c99b5",
+      "sha256_after": "2d1c251daca7e8f6c6fdfca680af9249616c41fd0a3811d7dde41079ed7c99b5",
+      "unchanged": true
+    },
+    {
+      "path": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！61.存量专项贷款二批报文202608.xlsx",
+      "sha256_before": "665139ab75ca732ab1b7e1e1d2a0c52fc1c89fad67ae599b4ea8c114da296453",
+      "sha256_after": "665139ab75ca732ab1b7e1e1d2a0c52fc1c89fad67ae599b4ea8c114da296453",
+      "unchanged": true
+    },
+    {
+      "path": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！70.金融基础数据采集（债券业务）202608.xlsx",
+      "sha256_before": "47f6f7402337612684918a01689b16d4a7e8c27932a4cd708d8f60326bf78a94",
+      "sha256_after": "47f6f7402337612684918a01689b16d4a7e8c27932a4cd708d8f60326bf78a94",
+      "unchanged": true
+    },
+    {
+      "path": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！80.金融基础数据采集（股权和特定目的载体投资）202608.xlsx",
+      "sha256_before": "dae9fd4963a0278d3b64b7199474fe1e39444de7ae3f44b529d18d4e8f82c348",
+      "sha256_after": "dae9fd4963a0278d3b64b7199474fe1e39444de7ae3f44b529d18d4e8f82c348",
+      "unchanged": true
+    },
+    {
+      "path": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！90.金融基础数据采集（同业业务）202608.xlsx",
+      "sha256_before": "40977d7dbe924c668c2f6161a942a0c8a7946525eda9def9c08d6f0e8a96774d",
+      "sha256_after": "40977d7dbe924c668c2f6161a942a0c8a7946525eda9def9c08d6f0e8a96774d",
+      "unchanged": true
+    },
+    {
+      "path": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\pilot\\input\\广东博罗农村商业银行股份有限公司_五篇大文章-互联网金融业务信息（月度）_B00_2026-08-31_在线核查表.xlsx",
+      "sha256_before": "f364c54b2298d65f6733d5d2dd28a67a31e64b630a90c46a0ed3953a7eda1a70",
+      "sha256_after": "f364c54b2298d65f6733d5d2dd28a67a31e64b630a90c46a0ed3953a7eda1a70",
+      "unchanged": true
+    },
+    {
+      "path": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\pilot\\rust-history.xlsx",
+      "sha256_before": "b0b49de617da3bfce1d56f4300c123255f16b98a4a2bd9c46130bc8ee7a22ac4",
+      "sha256_after": "b0b49de617da3bfce1d56f4300c123255f16b98a4a2bd9c46130bc8ee7a22ac4",
+      "unchanged": true
+    },
+    {
+      "path": "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\pilot\\rust-manifest.json",
+      "sha256_before": "9a83e0425a76c08d9180c42a94d00248b0959fbaf6f2db7924b9513725769718",
+      "sha256_after": "9a83e0425a76c08d9180c42a94d00248b0959fbaf6f2db7924b9513725769718",
+      "unchanged": true
+    }
+  ],
+  "generated_files": [
+    "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\pilot\\rust\\steps\\S1-F01\\S1-F1_审核结果_20261105_231900_175\\0001-广东博罗农村商业银行股份有限公司_五篇大文章-互联网金融业务信息_月度__B00_2026-08-31_在线核查表-recalculated.xlsx",
+    "\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\pilot\\rust\\steps\\S1-F01\\S1-F1_审核结果_20261105_231900_175\\汇总核查表校验.xlsx"
+  ]
+}

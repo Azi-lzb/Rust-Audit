@@ -1,6 +1,9 @@
 //! Two-period workbook/sheet pairing for the Audit collection frontend.
 
-use crate::report_source::{report_source_identity, ReportSourceIdentity};
+use crate::{
+    discovery::ScanDepth,
+    report_source::{report_source_identity, ReportSourceIdentity},
+};
 use anyhow::{Context, Result};
 use excel_reader::read_sheet_names;
 use serde::Serialize;
@@ -74,8 +77,18 @@ pub fn list_period_pairs(
     current_dir: Option<&Path>,
     previous_dir: Option<&Path>,
 ) -> Result<Vec<PeriodPair>> {
-    let current = collect(current_dir)?;
-    let previous = collect(previous_dir)?;
+    list_period_pairs_with_scan_depth(current_dir, previous_dir, ScanDepth::RootOnly)
+}
+
+/// Match current and previous period workbooks using the configured directory
+/// depth. The original entry point remains root-only for existing CLI callers.
+pub fn list_period_pairs_with_scan_depth(
+    current_dir: Option<&Path>,
+    previous_dir: Option<&Path>,
+    depth: ScanDepth,
+) -> Result<Vec<PeriodPair>> {
+    let current = collect(current_dir, depth)?;
+    let previous = collect(previous_dir, depth)?;
     let mut keys = current
         .keys()
         .chain(previous.keys())
@@ -129,21 +142,22 @@ pub fn list_period_pairs(
 
 /// Recreate the source application's banks filename reminder.
 pub fn report_source_warning(current_dir: Option<&Path>, previous_dir: Option<&Path>) -> String {
+    report_source_warning_with_scan_depth(current_dir, previous_dir, ScanDepth::RootOnly)
+}
+
+pub fn report_source_warning_with_scan_depth(
+    current_dir: Option<&Path>,
+    previous_dir: Option<&Path>,
+    depth: ScanDepth,
+) -> String {
     let mut found = Vec::new();
     for (label, directory) in [("本期", current_dir), ("上期", previous_dir)] {
         let Some(directory) = directory.filter(|directory| directory.is_dir()) else {
             continue;
         };
-        let count = fs::read_dir(directory)
-            .ok()
+        let count = collect_excel_paths(directory, depth)
+            .unwrap_or_default()
             .into_iter()
-            .flatten()
-            .filter_map(std::result::Result::ok)
-            .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_file()))
-            .filter_map(|entry| {
-                let path = entry.path();
-                is_excel_file(&path).then_some(path)
-            })
             .filter(|path| {
                 let stem = path
                     .file_stem()
@@ -166,28 +180,14 @@ pub fn report_source_warning(current_dir: Option<&Path>, previous_dir: Option<&P
     )
 }
 
-fn collect(directory: Option<&Path>) -> Result<BTreeMap<(String, String), SourceSheet>> {
+fn collect(
+    directory: Option<&Path>,
+    depth: ScanDepth,
+) -> Result<BTreeMap<(String, String), SourceSheet>> {
     let Some(directory) = directory.filter(|directory| directory.is_dir()) else {
         return Ok(BTreeMap::new());
     };
-    let mut paths = fs::read_dir(directory)
-        .with_context(|| format!("读取报送目录失败：{}", directory.display()))?
-        .filter_map(std::result::Result::ok)
-        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_file()))
-        .map(|entry| entry.path())
-        .filter(|path| {
-            !path
-                .file_name()
-                .is_some_and(|name| name.to_string_lossy().starts_with("~$"))
-                && is_excel_file(path)
-        })
-        .collect::<Vec<_>>();
-    paths.sort_by(|left, right| {
-        left.file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .cmp(&right.file_name().unwrap_or_default().to_string_lossy())
-    });
+    let paths = collect_excel_paths(directory, depth)?;
 
     let mut items = Vec::new();
     for path in paths {
@@ -223,6 +223,46 @@ fn collect(directory: Option<&Path>) -> Result<BTreeMap<(String, String), Source
         result.insert((item.org_key.clone(), item.form.clone()), item);
     }
     Ok(result)
+}
+
+fn collect_excel_paths(directory: &Path, max_depth: ScanDepth) -> Result<Vec<std::path::PathBuf>> {
+    fn visit(
+        directory: &Path,
+        directory_depth: usize,
+        max_depth: ScanDepth,
+        paths: &mut Vec<std::path::PathBuf>,
+    ) -> Result<()> {
+        for entry in fs::read_dir(directory)
+            .with_context(|| format!("读取报送目录失败：{}", directory.display()))?
+        {
+            let entry = entry?;
+            let path = entry.path();
+            let kind = entry.file_type()?;
+            if kind.is_dir() {
+                let should_recurse = match max_depth {
+                    ScanDepth::RootOnly => false,
+                    ScanDepth::MaxDirectoryDepth(max) => directory_depth < max,
+                    ScanDepth::Full => true,
+                };
+                if should_recurse && entry.file_name() != "执行结果" {
+                    visit(&path, directory_depth + 1, max_depth, paths)?;
+                }
+            } else if kind.is_file()
+                && is_excel_file(&path)
+                && !path
+                    .file_name()
+                    .is_some_and(|name| name.to_string_lossy().starts_with("~$"))
+            {
+                paths.push(path);
+            }
+        }
+        Ok(())
+    }
+
+    let mut paths = Vec::new();
+    visit(directory, 0, max_depth, &mut paths)?;
+    paths.sort();
+    Ok(paths)
 }
 
 fn is_excel_file(path: &Path) -> bool {

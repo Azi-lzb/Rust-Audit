@@ -2,20 +2,25 @@
 //!
 //! This bridge exposes migrated Audit workflows through the existing frontend.
 
+#[cfg(test)]
+use crate::s1_region_summary::s1_region_summary_source_workbooks;
 use crate::{
-    discovery::{detect_period_from_workbooks, organisation_from_name},
+    discovery::{detect_period_from_workbooks, organisation_from_name, ScanDepth},
     models::{CopyRange, Issue},
-    native_file_dialog::{PickKind, PickRequest},
     name_config::{
         load_s1_conditional_mappings, named_areas_from_defined_names,
-        resolve_s1_conditional_area_plan,
+        resolve_s1_conditional_area_plan, FeatureMapping,
     },
-    period_pairs::{list_period_pairs, report_source_warning},
+    native_file_dialog::{PickKind, PickRequest},
+    period_pairs::{list_period_pairs_with_scan_depth, report_source_warning_with_scan_depth},
     s1_conditional_audit::{
-        extract_conditional_issues, S1ConditionalAuditResult, S1ConditionalMetadata,
+        extract_conditional_issues, extract_conditional_issues_with_display_failure,
+        extract_conditional_issues_with_display_scan, S1ConditionalAuditResult,
+        S1ConditionalMetadata,
     },
     s1_formula_audit::{extract_s1_formula_issues, S1FormulaMetadata},
     s1_formula_copy::{
+        execute_s1_formula_copy_batch_with_manual_recovery,
         execute_s1_formula_copy_with_manual_recovery,
         execute_s1_formula_copy_with_manual_recovery_session, S1FormulaCopyOutcome,
     },
@@ -27,7 +32,10 @@ use crate::{
         workbook_recovery_fingerprints, S1RecoveryFile, S1RecoveryManifest, S1RecoveryStatus,
         S1RecoveryStore, S1RecoveryTaskSummary,
     },
-    s1_region_summary::{s1_region_summary_source_workbooks, summarize_s1_named_regions_selected_with_progress},
+    s1_region_summary::{
+        s1_region_summary_source_workbooks_with_depth,
+        summarize_s1_named_regions_selected_with_progress,
+    },
     s1_result_workbook::{write_s1_result_workbook, S1_RESULT_SHEET},
     s1_structure_compare::{
         compare_s1_source_structure, read_s1_structure_template_with_required_sheets,
@@ -42,7 +50,9 @@ use crate::{
         issues_from_validation_formula_scan, S1ValidationFormulaScanPlan,
     },
     s2_config_check::check_s2_config,
-    s2_service::{run_s2_audit, s2_engine_for_stage, S2ProgressEvent, S2RunRequest},
+    s2_service::{
+        run_s2_audit_with_scan_depth, s2_engine_for_stage, S2ProgressEvent, S2RunRequest,
+    },
     s3_current_value_check::{
         input_reader_for_paths, python_regex_scope_matcher,
         run_current_value_check_files_with_progress,
@@ -51,8 +61,6 @@ use crate::{
     s3_explanation_export::export_selected_explanations_with_progress,
     s3_explanation_feedback::execute_explanation_feedback_import_with_progress,
     s3_indicator_split::execute_indicator_comparison_split_with_progress,
-    s5_config_check::validate_s5_config,
-    s5_web::{self, S5WebRunRequest},
 };
 use anyhow::{bail, ensure, Context, Result};
 use axum::{
@@ -69,10 +77,11 @@ use sha2::{Digest, Sha256};
 #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
 use std::process::Command;
 use std::{
+    collections::VecDeque,
     fs,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{Arc, Mutex, MutexGuard, OnceLock},
     thread,
     time::{Duration, Instant},
 };
@@ -81,7 +90,197 @@ use tokio::{net::TcpListener, runtime::Builder};
 const ORIGINAL_HTML: &str = include_str!("../frontend/web/index.html");
 const APP_ICON_PNG: &[u8] = include_bytes!("../frontend/assets/app-icon.png");
 const APP_ICON_ICO: &[u8] = include_bytes!("../frontend/assets/app-icon.ico");
-const APP_TITLE: &str = "Open-Data-Audit (Rust)";
+const APP_TITLE: &str = "审核工具";
+
+fn system_environment_info(openpyxl_status: &(bool, String)) -> Value {
+    static INFO: OnceLock<Value> = OnceLock::new();
+    INFO.get_or_init(|| collect_system_environment_info(openpyxl_status))
+        .clone()
+}
+
+fn collect_system_environment_info(openpyxl_status: &(bool, String)) -> Value {
+    let logical_processors = std::thread::available_parallelism()
+        .map(|count| count.get())
+        .unwrap_or(0);
+    let architecture = match std::env::consts::ARCH {
+        "x86_64" => "x86_64（AMD64）".to_owned(),
+        "aarch64" => "aarch64（ARM64）".to_owned(),
+        "x86" => "x86（32 位）".to_owned(),
+        other => other.to_owned(),
+    };
+    let mut hardware = if logical_processors == 0 {
+        "逻辑处理器数量不可用".to_owned()
+    } else {
+        format!("逻辑处理器 {logical_processors} 个")
+    };
+    #[cfg(target_os = "linux")]
+    if let Some(memory_gib) = linux_memory_gib() {
+        hardware.push_str(&format!("；物理内存约 {memory_gib:.1} GiB"));
+    }
+    hardware.push_str("；显卡信息未采集");
+
+    let (excel, wps, com) = if cfg!(windows) {
+        (
+            "Windows 可选 COM 引擎；诊断页不会启动 Excel".to_owned(),
+            "Windows 可选 COM 引擎；诊断页不会启动 WPS".to_owned(),
+            "本机 COM 接口；任务执行时按配置尝试".to_owned(),
+        )
+    } else {
+        (
+            "不适用（Windows 专用引擎）".to_owned(),
+            "不适用（Windows 专用引擎）".to_owned(),
+            "不适用（当前系统非 Windows）".to_owned(),
+        )
+    };
+    let openpyxl = openpyxl_status.1.clone();
+    let python = executable_in_path(&["python.exe", "python3", "python"])
+        .map(|path| format!("检测到可选 Python：{}；主程序不依赖 Python", path.display()))
+        .unwrap_or_else(|| "PATH 未检测到 Python；主程序不依赖 Python".to_owned());
+    let libreoffice = executable_in_path(&["soffice.exe", "soffice", "libreoffice"])
+        .map(|path| format!("检测到：{}", path.display()))
+        .unwrap_or_else(|| "PATH 未检测到 soffice/libreoffice".to_owned());
+
+    json!({
+        "app": format!(
+            "{} v{}；{} 构建；本机服务 + 默认浏览器",
+            APP_TITLE,
+            env!("CARGO_PKG_VERSION"),
+            if cfg!(debug_assertions) { "Debug" } else { "Release" }
+        ),
+        "os": host_os_description(),
+        "architecture": architecture,
+        "locale": host_locale_description(),
+        "glibc": host_glibc_description(),
+        "hardware": hardware,
+        "excel": excel,
+        "wps": wps,
+        "com": com,
+        "libreoffice": libreoffice,
+        "python": python,
+        "pywin32": "不使用（Office COM 由本机接口调用）",
+        "webview2": "不适用（当前界面由系统默认浏览器承载）",
+        "openpyxl": openpyxl
+    })
+}
+
+fn executable_in_path(names: &[&str]) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    for directory in std::env::split_paths(&path) {
+        for name in names {
+            let candidate = directory.join(name);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+fn host_os_description() -> String {
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(contents) = fs::read_to_string("/etc/os-release") {
+            if let Some(value) = contents.lines().find_map(|line| {
+                line.strip_prefix("PRETTY_NAME=")
+                    .map(|value| value.trim_matches('"').to_owned())
+            }) {
+                return value;
+            }
+        }
+        return "Linux（无法读取 /etc/os-release）".to_owned();
+    }
+    #[cfg(windows)]
+    {
+        if let Ok(output) = std::process::Command::new("cmd")
+            .args(["/C", "ver"])
+            .output()
+        {
+            let value = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+            if let Some(version) = value
+                .split(|character: char| !character.is_ascii_digit() && character != '.')
+                .find(|part| {
+                    part.matches('.').count() >= 2
+                        && part
+                            .chars()
+                            .all(|character| character.is_ascii_digit() || character == '.')
+                })
+            {
+                return format!("Microsoft Windows {version}");
+            }
+        }
+        return "Microsoft Windows".to_owned();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(output) = std::process::Command::new("sw_vers")
+            .arg("-productVersion")
+            .output()
+        {
+            let value = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+            if !value.is_empty() {
+                return format!("macOS {value}");
+            }
+        }
+        "macOS（系统版本读取失败）".to_owned()
+    }
+}
+
+fn host_locale_description() -> String {
+    for key in ["LC_ALL", "LC_CTYPE", "LANG"] {
+        if let Ok(value) = std::env::var(key) {
+            if !value.trim().is_empty() {
+                return format!("{key}={}", value.trim());
+            }
+        }
+    }
+    if cfg!(windows) {
+        "Windows 系统区域；环境变量未设置".to_owned()
+    } else {
+        "环境变量未设置".to_owned()
+    }
+}
+
+fn host_glibc_description() -> String {
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(output) = std::process::Command::new("getconf")
+            .arg("GNU_LIBC_VERSION")
+            .output()
+        {
+            let value = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+            if output.status.success() && !value.is_empty() {
+                return value;
+            }
+        }
+        return "未检测到 glibc 版本（可能使用 musl 或缺少 getconf）".to_owned();
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        "不适用（非 Linux）".to_owned()
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn linux_memory_gib() -> Option<f64> {
+    let contents = fs::read_to_string("/proc/meminfo").ok()?;
+    let kib = contents.lines().find_map(|line| {
+        let value = line.strip_prefix("MemTotal:")?.split_whitespace().next()?;
+        value.parse::<u64>().ok()
+    })?;
+    Some(kib as f64 / 1024.0 / 1024.0)
+}
+
+fn scan_depth_from_value(value: &Value) -> ScanDepth {
+    match value.as_i64().unwrap_or(-1) {
+        0 => ScanDepth::RootOnly,
+        depth if depth > 0 => ScanDepth::MaxDirectoryDepth(depth as usize),
+        _ => ScanDepth::Full,
+    }
+}
+
+fn current_scan_depth(state: &AppState) -> ScanDepth {
+    scan_depth_from_value(&state.lock().value["recursiveDepth"])
+}
 
 const BRIDGE_JS: &str = r#"
 <script>
@@ -132,7 +331,6 @@ impl AppState {
         #[cfg(test)]
         tests::isolate_settings_state_dir();
         let config_path = config_path.to_string_lossy().into_owned();
-        let s5_state = s5_web::initial_state(Path::new(&config_path));
         let central_common_config = Path::new(&config_path)
             .parent()
             .map(|parent| parent.join("3.0大集中通用配置.xlsx"))
@@ -159,18 +357,24 @@ impl AppState {
             .unwrap_or_default();
         let history_config = Path::new(&config_path)
             .parent()
-            .map(|parent| parent.join("逐笔统计系统_配置.xlsx"))
-            .filter(|path| path.is_file())
+            .and_then(|parent| {
+                ["1.逐笔统计系统_配置.xlsx", "逐笔统计系统_配置.xlsx"]
+                    .into_iter()
+                    .map(|name| parent.join(name))
+                    .find(|path| path.is_file())
+            })
             .map(|path| path.to_string_lossy().into_owned())
             .unwrap_or_default();
         let config_report = check_s2_config(&config_path);
-        let openpyxl_status = crate::app_settings::openpyxl_evidence_status();
-    let mut state = json!({
+        let openpyxl_status = crate::app_settings::openpyxl_selection_status();
+        let system_environment_info = system_environment_info(&openpyxl_status);
+        let mut state = json!({
             "appInfo": {"title": APP_TITLE},
+            "systemEnvironmentInfo": system_environment_info,
             "busy": false,
             "currentWork": Value::Null,
             "cancelRequested": false,
-            "status": "Rust 迁移版已启动；当前接通报表采集 S2 功能",
+            "status": "审核工具已启动；S1、S2、S3 入口已接入",
             "log": [],
             "logVersion": 0,
             "lastRunSummary": Value::Null,
@@ -182,11 +386,17 @@ impl AppState {
             "showRunDetailLogs": false,
             "showPerformanceDiagnostics": false,
             "exportRunLogs": false,
+            "s1ConditionalFormatSource": "audit_copy",
+            "conditionalFormatIncludeBlankCells": true,
+            "centralTolerance": 100.0,
+            "centralTrimIndicatorNames": false,
+            "centralAutoOpenResult": false,
             "recursiveDepth": -1,
             "developerAccess": {},
             "developerAccessMessage": "",
             "distributionUnlocked": false,
-            "distributionProfile": "s1s2",
+            "distributionProfile": "s1s2s3",
+            "configUpdateSupported": crate::config_update::supported(),
             "configIssues": {},
             "sourceFiles": [],
             "selectedFiles": [],
@@ -201,7 +411,6 @@ impl AppState {
             "extraFiles": [],
             "mixedTemplates": [],
             "explanationFiles": [],
-            "s5": s5_state,
             "periodSummary": {},
             "periodProgress": {
                 "status": "idle",
@@ -240,7 +449,7 @@ impl AppState {
                     "detail": openpyxl_status.1
                 }
             },
-            "engines": [{"value": "自动", "label": "Rust 迁移功能"}]
+            "engines": [{"value": "自动", "label": "审核工具功能"}]
         });
         let s2_state = json!({
             "input": "",
@@ -371,7 +580,7 @@ pub fn serve_web_ui(port: u16, config_path: PathBuf) -> Result<()> {
             .context("read the bound Audit UI address")?;
         let app = router(AppState::new(config_path));
         let url = format!("http://{address}");
-        println!("Open-Data-Audit Rust web UI: {url}");
+        println!("审核工具 web UI: {url}");
         if let Err(error) = open_default_browser(&url) {
             eprintln!("无法自动打开浏览器，请手动访问 {url}：{error}");
         }
@@ -539,12 +748,6 @@ fn dispatch_api(
 ) -> std::result::Result<Value, ApiError> {
     match method {
         "get_state" => Ok(state.get_state()),
-        "choose_s5" => choose_s5(state, args),
-        "update_s5" => update_s5(state, args),
-        "recognize_s5_inputs" => recognize_s5_inputs(state, args),
-        "start_s5" => start_s5(state, args),
-        "check_s5_config" => check_s5_config(state, args),
-        "get_s5_config_check" => get_s5_config_check(state),
         "check_period_audit_config" => check_period_audit_config(state),
         "choose_period_compare" => choose_period_compare(state, args),
         "choose_central" => choose_central(state, args),
@@ -552,8 +755,26 @@ fn dispatch_api(
         "choose_file" => choose_file(state, args),
         "choose_history_config" => choose_history_config(state, args),
         "clear_path" => clear_path(state, args),
+        "open_path" => open_path(state, args),
         "recognize" => recognize_s1_sources(state),
         "set_selected_files" => set_selected_files(state, args),
+        "get_config_update" => Ok(crate::config_update::inspect()),
+        "apply_config_update" => {
+            let names = args
+                .first()
+                .and_then(Value::as_array)
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_owned)
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            Ok(crate::config_update::apply_updates(&names))
+        }
+        "append_extra_files" => append_extra_files(state, args),
+        "remove_extra_file" => remove_extra_file(state, args),
         "inspect_template_formulas" => inspect_template_formulas(state),
         "start_dag_flow" => start_dag_flow(state, args),
         "list_s1_f3_tasks" => list_s1_f3_tasks(state),
@@ -577,875 +798,93 @@ fn dispatch_api(
         "update" => update_state(state, args),
         _ => Err(ApiError::new(
             StatusCode::NOT_IMPLEMENTED,
-            format!("Rust 迁移版尚未实现接口：{method}"),
+            format!("当前审核工具尚未实现接口：{method}"),
         )),
     }
 }
 
-fn choose_s5(state: &AppState, args: &[Value]) -> std::result::Result<Value, ApiError> {
-    let field = arg_string(args, 0)
-        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "choose_s5 缺少路径类型"))?;
-    if !matches!(
-        field,
-        "input_dir"
-            | "previous_dir"
-            | "template_dir"
-            | "output_dir"
-            | "config_path"
-            | "template_path"
-            | "external_path"
-    ) {
+fn open_path(state: &AppState, args: &[Value]) -> std::result::Result<Value, ApiError> {
+    let requested = arg_string(args, 0)
+        .map(str::trim)
+        .filter(|path| !path.is_empty())
+        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "打开路径不能为空"))?;
+    let path = PathBuf::from(unquote_path(requested));
+    if !path.exists() {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
-            format!("未知的 S5 路径字段：{field}"),
+            format!("要打开的文件或目录不存在：{}", path.display()),
         ));
     }
-    let selected = arg_string(args, 1).unwrap_or_default().trim();
-    if selected.is_empty() {
-        return Ok(state.lock().value["s5"][field].clone());
-    }
-    let path = PathBuf::from(unquote_path(selected));
-    let is_directory = matches!(
-        field,
-        "input_dir" | "previous_dir" | "template_dir" | "output_dir"
-    );
-    if is_directory && !path.is_dir() {
-        return Err(ApiError::new(
-            StatusCode::BAD_REQUEST,
-            format!("所选 S5 目录不存在：{}", path.display()),
-        ));
-    }
-    if !is_directory {
-        if !path.is_file() {
-            return Err(ApiError::new(
-                StatusCode::BAD_REQUEST,
-                format!("所选 S5 文件不存在：{}", path.display()),
-            ));
-        }
-        let extension = path
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .unwrap_or_default();
-        let accepted = if field == "config_path" {
-            extension.eq_ignore_ascii_case("xlsx")
-        } else {
-            extension.eq_ignore_ascii_case("xlsx") || extension.eq_ignore_ascii_case("xlsm")
-        };
-        if !accepted {
-            return Err(ApiError::new(
-                StatusCode::BAD_REQUEST,
-                if field == "config_path" {
-                    "S5 审核配置必须是 XLSX 工作簿".to_owned()
-                } else {
-                    "S5 工作簿仅支持 XLSX/XLSM".to_owned()
-                },
-            ));
-        }
-    }
-    let path = fs::canonicalize(&path).map_err(|error| {
-        ApiError::new(
-            StatusCode::BAD_REQUEST,
-            format!("解析 S5 路径失败：{error}"),
-        )
+    open_path_with_default_app(&path).map_err(|error| {
+        ApiError::internal(format!(
+            "无法使用系统默认程序打开 {}：{error}",
+            path.display()
+        ))
     })?;
-    update_s5(state, &[json!({(field): path.to_string_lossy()})])
+    push_log(
+        &mut state.lock().value,
+        format!("已在系统默认程序中打开：{}", path.display()),
+    );
+    Ok(json!({"opened": true, "path": path.to_string_lossy()}))
 }
 
-fn update_s5(state: &AppState, args: &[Value]) -> std::result::Result<Value, ApiError> {
-    let values = args
-        .first()
-        .and_then(Value::as_object)
-        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "update_s5 需要 JSON 对象"))?;
-    let mut ui = state.lock();
-    if ui.value["busy"] == true {
-        return Err(ApiError::new(
-            StatusCode::CONFLICT,
-            "任务正在运行，暂不能更改 S5 设置",
-        ));
-    }
-    let form = ui.value["s5"]
-        .as_object_mut()
-        .expect("S5 UI state is initialized as an object");
-    let previous_input = form
-        .get("input_dir")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_owned();
-    let previous_directory = form
-        .get("previous_dir")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_owned();
-    let previous_config = form
-        .get("config_path")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_owned();
-    let previous_template_dir = form
-        .get("template_dir")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_owned();
-    let previous_template = form
-        .get("template_path")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_owned();
-    let mut input_changed = false;
-    let mut previous_directory_changed = false;
-    let mut config_changed = false;
-    let mut template_changed = false;
-    for (key, value) in values {
-        match key.as_str() {
-            "input_dir" | "previous_dir" | "template_dir" | "output_dir" | "config_path"
-            | "template_path" | "external_path" | "business" | "period" | "external_period"
-            | "previous_period" => {
-                let text = value.as_str().unwrap_or_default().trim().to_owned();
-                match key.as_str() {
-                    "input_dir" => input_changed = text != previous_input,
-                    "previous_dir" => previous_directory_changed = text != previous_directory,
-                    "config_path" => config_changed = text != previous_config,
-                    "template_dir" => template_changed = text != previous_template_dir,
-                    "template_path" => template_changed = text != previous_template,
-                    _ => {}
-                }
-                form.insert(key.clone(), json!(text));
-            }
-            "output_pinned" | "template_manual" | "period_manual" | "business_manual" => {
-                form.insert(key.clone(), json!(value.as_bool().unwrap_or(false)));
-            }
-            "selected_files" | "previous_files" => {
-                let Some(paths) = value.as_array() else {
-                    return Err(ApiError::new(
-                        StatusCode::BAD_REQUEST,
-                        "S5 选择文件必须是路径列表",
-                    ));
-                };
-                let allowed: std::collections::BTreeSet<String> = if key == "selected_files" {
-                    form.get("files")
-                        .and_then(Value::as_array)
-                        .into_iter()
-                        .flatten()
-                        .filter_map(|row| row["path"].as_str().map(str::to_owned))
-                        .collect()
-                } else {
-                    let previous_dir = form
-                        .get("previous_dir")
-                        .and_then(Value::as_str)
-                        .filter(|path| !path.is_empty())
-                        .ok_or_else(|| {
-                            ApiError::new(StatusCode::BAD_REQUEST, "请先选择 S5 上期文件目录")
-                        })?;
-                    s5_web::input_files(Path::new(previous_dir))
-                        .map_err(|error| ApiError::new(StatusCode::BAD_REQUEST, error))?
-                        .into_iter()
-                        .map(|path| path.to_string_lossy().into_owned())
-                        .collect()
-                };
-                let mut selected = Vec::new();
-                for path in paths.iter().filter_map(Value::as_str) {
-                    if !allowed.contains(path) {
-                        return Err(ApiError::new(
-                            StatusCode::BAD_REQUEST,
-                            if key == "selected_files" {
-                                format!("S5 选择的本期文件不在当前源目录清单中：{path}")
-                            } else {
-                                format!("S5 选择的上期文件不在上期目录清单中：{path}")
-                            },
-                        ));
-                    }
-                    if !selected.iter().any(|known| known == path) {
-                        selected.push(path.to_owned());
-                    }
-                }
-                form.insert(key.clone(), json!(selected));
-            }
-            _ => {}
-        }
-    }
-    let input_dir = form
-        .get("input_dir")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_owned();
-    let files = if input_dir.is_empty() {
-        Vec::new()
-    } else {
-        s5_web::input_files(Path::new(&input_dir))
-            .map_err(|error| ApiError::new(StatusCode::BAD_REQUEST, error))?
-    };
-    let file_rows = s5_web::classify_file_rows(&files, &[]);
-    let old_selected: Vec<String> = form
-        .get("selected_files")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .map(str::to_owned)
-        .collect();
-    let allowed: std::collections::BTreeSet<String> = files
-        .iter()
-        .map(|path| path.to_string_lossy().into_owned())
-        .collect();
-    let selected = if input_changed {
-        allowed.iter().cloned().collect::<Vec<_>>()
-    } else {
-        old_selected
-            .into_iter()
-            .filter(|path| allowed.contains(path))
-            .collect()
-    };
-    form.insert("files".to_owned(), json!(file_rows));
-    form.insert("selected_files".to_owned(), json!(selected));
-    let previous_dir = form
-        .get("previous_dir")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_owned();
-    let previous_files = if previous_dir.is_empty() {
-        Vec::new()
-    } else {
-        s5_web::input_files(Path::new(&previous_dir))
-            .map_err(|error| ApiError::new(StatusCode::BAD_REQUEST, error))?
-            .into_iter()
-            .map(|path| path.to_string_lossy().into_owned())
-            .collect::<Vec<_>>()
-    };
-    let old_previous_files: Vec<String> = form
-        .get("previous_files")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .map(str::to_owned)
-        .collect();
-    let previous_allowed: std::collections::BTreeSet<&str> =
-        previous_files.iter().map(String::as_str).collect();
-    let selected_previous = if previous_directory_changed {
-        previous_files.clone()
-    } else {
-        old_previous_files
-            .into_iter()
-            .filter(|path| previous_allowed.contains(path.as_str()))
-            .collect()
-    };
-    form.insert("previous_files".to_owned(), json!(selected_previous));
-    if input_changed {
-        if form.get("output_pinned") != Some(&json!(true)) {
-            form.insert(
-                "output_dir".to_owned(),
-                json!(if input_dir.is_empty() {
-                    String::new()
-                } else {
-                    Path::new(&input_dir)
-                        .join("执行结果")
-                        .to_string_lossy()
-                        .into_owned()
-                }),
-            );
-        }
-        form.insert("template_path".to_owned(), json!(""));
-        form.insert("template_manual".to_owned(), json!(false));
-        form.insert("business".to_owned(), json!(""));
-        form.insert("business_manual".to_owned(), json!(false));
-        form.insert("period".to_owned(), json!(""));
-        form.insert("period_manual".to_owned(), json!(false));
-        form.insert("recognition".to_owned(), json!({"errors": {}}));
-    }
-    if template_changed || config_changed {
-        form.insert("recognition".to_owned(), json!({"errors": {}}));
-        if config_changed {
-            form.insert("business".to_owned(), json!(""));
-            form.insert("business_manual".to_owned(), json!(false));
-        }
-    }
-    if !values.contains_key("output_pinned") && values.contains_key("output_dir") {
-        form.insert("output_pinned".to_owned(), json!(true));
-    }
-    if values.get("output_pinned").and_then(Value::as_bool) == Some(false) {
-        form.insert(
-            "output_dir".to_owned(),
-            json!(if input_dir.is_empty() {
-                String::new()
-            } else {
-                Path::new(&input_dir)
-                    .join("执行结果")
-                    .to_string_lossy()
-                    .into_owned()
-            }),
-        );
-    }
-    if values.contains_key("template_path") {
-        form.insert(
-            "template_manual".to_owned(),
-            json!(!form
-                .get("template_path")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .is_empty()),
-        );
-    }
-    if values.contains_key("business") {
-        form.insert(
-            "business_manual".to_owned(),
-            json!(!form
-                .get("business")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .is_empty()),
-        );
-    }
-    if values.contains_key("period") {
-        form.insert(
-            "period_manual".to_owned(),
-            json!(!form
-                .get("period")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .is_empty()),
-        );
-    }
-    let snapshot = Value::Object(form.clone());
-    push_log(&mut ui.value, "已更新 S5 文件与配置设置".to_owned());
-    Ok(snapshot)
-}
+#[cfg(windows)]
+fn open_path_with_default_app(path: &Path) -> std::io::Result<()> {
+    use std::{ffi::c_void, os::windows::ffi::OsStrExt, ptr};
 
-fn recognize_s5_inputs(state: &AppState, args: &[Value]) -> std::result::Result<Value, ApiError> {
-    let preserve_template = args.first().and_then(Value::as_bool).unwrap_or(false);
-    let (config_path, input_dir, template_dir, template_path, selected_files, busy) = {
-        let ui = state.lock();
-        let form = &ui.value["s5"];
-        (
-            PathBuf::from(form["config_path"].as_str().unwrap_or_default()),
-            PathBuf::from(form["input_dir"].as_str().unwrap_or_default()),
-            form["template_dir"]
-                .as_str()
-                .filter(|path| !path.is_empty())
-                .map(PathBuf::from),
-            form["template_path"]
-                .as_str()
-                .filter(|path| !path.is_empty())
-                .map(PathBuf::from),
-            form["selected_files"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter_map(Value::as_str)
-                .map(PathBuf::from)
-                .collect::<Vec<_>>(),
-            ui.value["busy"] == true,
+    #[link(name = "shell32")]
+    extern "system" {
+        fn ShellExecuteW(
+            window: *mut c_void,
+            operation: *const u16,
+            file: *const u16,
+            parameters: *const u16,
+            directory: *const u16,
+            show_command: i32,
+        ) -> *mut c_void;
+    }
+
+    let operation = "open".encode_utf16().chain(Some(0)).collect::<Vec<_>>();
+    let file = path
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect::<Vec<_>>();
+    let result = unsafe {
+        ShellExecuteW(
+            ptr::null_mut(),
+            operation.as_ptr(),
+            file.as_ptr(),
+            ptr::null(),
+            ptr::null(),
+            1,
         )
     };
-    if busy {
-        return Err(ApiError::new(
-            StatusCode::CONFLICT,
-            "任务正在运行，暂不能识别 S5 模板",
+    if result as isize <= 32 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("ShellExecuteW 返回错误码 {}", result as usize),
         ));
     }
-    if preserve_template && template_path.is_none() {
-        return Err(ApiError::new(
-            StatusCode::BAD_REQUEST,
-            "请先手动选择匹配模板",
-        ));
-    }
-    let recognition = s5_web::recognize(
-        &config_path,
-        &selected_files,
-        &input_dir,
-        template_dir.as_deref(),
-        preserve_template
-            .then_some(template_path.as_deref())
-            .flatten(),
-    )
-    .map_err(|error| ApiError::new(StatusCode::BAD_REQUEST, error))?;
-    let mut ui = state.lock();
-    if ui.value["busy"] == true {
-        return Err(ApiError::new(
-            StatusCode::CONFLICT,
-            "任务已开始，不能更新 S5 识别结果",
-        ));
-    }
-    let form = ui.value["s5"]
-        .as_object_mut()
-        .expect("S5 UI state is initialized as an object");
-    if !preserve_template {
-        form.insert("template_manual".to_owned(), json!(false));
-        form.insert(
-            "template_path".to_owned(),
-            recognition
-                .get("template_path")
-                .cloned()
-                .unwrap_or(json!("")),
-        );
-    }
-    if form.get("business_manual") != Some(&json!(true)) {
-        form.insert("business".to_owned(), recognition["business"].clone());
-    }
-    if form.get("period_manual") != Some(&json!(true)) {
-        form.insert("period".to_owned(), recognition["period"].clone());
-    }
-    form.insert("recognition".to_owned(), recognition.clone());
-    if let Some(rows) = form.get_mut("files").and_then(Value::as_array_mut) {
-        let selected: std::collections::BTreeSet<String> = selected_files
-            .iter()
-            .map(|path| path.to_string_lossy().into_owned())
-            .collect();
-        for row in rows {
-            let is_selected = row["path"]
-                .as_str()
-                .is_some_and(|path| selected.contains(path));
-            row["selected"] = json!(is_selected);
-            if is_selected {
-                row["template"] = recognition["template_path"]
-                    .as_str()
-                    .and_then(|path| Path::new(path).file_name())
-                    .map(|name| json!(name.to_string_lossy()))
-                    .unwrap_or(json!("未识别"));
-                row["match_status"] = json!(if recognition["errors"]["template"].is_null() {
-                    "matched"
-                } else {
-                    "unmatched"
-                });
-                row["business"] = recognition["business"].clone();
-                row["period"] = recognition["period"].clone();
-                row["match_detail"] = json!(recognition["errors"]);
-            }
-        }
-    }
-    let snapshot = Value::Object(form.clone());
-    push_log(&mut ui.value, "S5 模板、业务和报告期识别完成".to_owned());
-    Ok(snapshot)
+    Ok(())
 }
 
-fn start_s5(state: &AppState, args: &[Value]) -> std::result::Result<Value, ApiError> {
-    let action = arg_string(args, 0).unwrap_or_default();
-    if action != "S5-F01" {
-        return Err(ApiError::new(
-            StatusCode::NOT_IMPLEMENTED,
-            "S5 目前只支持 F1 汇总核查表校验",
-        ));
-    }
-    let mut ui = state.lock();
-    if ui.value["busy"] == true {
-        return Ok(json!({"accepted": false, "message": "已有任务正在运行，请等待完成"}));
-    }
-    let form = ui.value["s5"].clone();
-    let selected: Vec<PathBuf> = form["selected_files"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .map(PathBuf::from)
-        .collect();
-    if selected.is_empty() {
-        return Err(ApiError::new(
-            StatusCode::BAD_REQUEST,
-            "请至少勾选一份 S5 本期工作簿",
-        ));
-    }
-    let mut selected = selected
-        .iter()
-        .map(|path| {
-            fs::canonicalize(path).map_err(|error| {
-                ApiError::new(
-                    StatusCode::BAD_REQUEST,
-                    format!("解析 S5 本期工作簿失败 {}：{error}", path.display()),
-                )
-            })
-        })
-        .collect::<std::result::Result<Vec<_>, _>>()?;
-    let mut seen_current = std::collections::BTreeSet::new();
-    selected.retain(|path| seen_current.insert(path.clone()));
-    let source_path = selected.remove(0);
-    let additional_source_paths = selected;
-    let previous_source_paths: Vec<PathBuf> = form["previous_files"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .map(PathBuf::from)
-        .map(|path| {
-            fs::canonicalize(&path).map_err(|error| {
-                ApiError::new(
-                    StatusCode::BAD_REQUEST,
-                    format!("解析 S5 上期工作簿失败 {}：{error}", path.display()),
-                )
-            })
-        })
-        .collect::<std::result::Result<Vec<_>, _>>()?;
-    let mut seen_previous = std::collections::BTreeSet::new();
-    let previous_source_paths = previous_source_paths
-        .into_iter()
-        .filter(|path| seen_previous.insert(path.clone()))
-        .collect::<Vec<_>>();
-    let previous_period = form["previous_period"]
-        .as_str()
-        .unwrap_or_default()
-        .to_owned();
-    if !previous_source_paths.is_empty() && previous_period.trim().is_empty() {
-        return Err(ApiError::new(
-            StatusCode::BAD_REQUEST,
-            "选择 S5 上期文件目录时必须填写上期报告期",
-        ));
-    }
-    let input_dir = form["input_dir"]
-        .as_str()
-        .filter(|path| !path.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| source_path.parent().map(Path::to_path_buf))
-        .unwrap_or_default();
-    let output_dir = form["output_dir"]
-        .as_str()
-        .filter(|path| !path.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| input_dir.join("执行结果"));
-    let config_path = form["config_path"]
-        .as_str()
-        .filter(|path| !path.is_empty())
-        .map(PathBuf::from)
-        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "请选择 S5 审核配置工作簿"))?;
-    let template_path = form["template_path"]
-        .as_str()
-        .filter(|path| !path.is_empty())
-        .map(PathBuf::from);
-    let template_dir = form["template_dir"]
-        .as_str()
-        .filter(|path| !path.is_empty())
-        .map(PathBuf::from);
-    let external_path = form["external_path"]
-        .as_str()
-        .filter(|path| !path.is_empty())
-        .map(PathBuf::from);
-    let files_total = additional_source_paths.len() + 1;
-    let request = S5WebRunRequest {
-        config_path,
-        source_path,
-        additional_source_paths,
-        previous_source_paths,
-        previous_period,
-        template_dir,
-        template_path,
-        external_path,
-        input_dir,
-        output_dir,
-    };
-    let task_id = next_s5_task_id();
-    ui.value["busy"] = json!(true);
-    ui.value["cancelRequested"] = json!(false);
-    ui.value["status"] = json!("S5-F01 正在运行 Rust 配置化审核……");
-    ui.value["periodProgress"] = json!({
-        "status": "running", "stage": "audit", "label": "S5-F01 配置化审核",
-        "percent": 5, "current": 0, "total": files_total,
-        "message": "读取配置并准备所选工作簿批次", "elapsedSeconds": 0
-    });
-    ui.value["s5"]["task"] = json!({
-        "task_id": task_id, "system": "S5", "function": action,
-        "task_state": "queued", "files_total": files_total,
-        "started_at_epoch": chrono::Local::now().timestamp_millis() as f64 / 1000.0
-    });
-    ui.value["s5"]["progress"] = json!({
-        "phase": "queued", "message": "准备审核", "percent": 0,
-        "file_index": 0, "files_total": files_total
-    });
-    push_log(
-        &mut ui.value,
-        "S5-F01 已启动：Rust 配置、动态取数与规则审核".to_owned(),
-    );
-    push_detail_log(
-        &mut ui.value,
-        format!(
-            "S5-F01 engine=rust_s5_configured_audit；reader=calamine via excel-reader；writer=rust_xlsxwriter；本期文件={} 份；主输入={}；上期文件={} 份（报告期 {}）；配置={}；输出目录={}",
-            files_total,
-            request.source_path.display(),
-            request.previous_source_paths.len(),
-            request.previous_period,
-            request.config_path.display(),
-            request.output_dir.display()
-        ),
-    );
-    drop(ui);
-    let worker_state = state.clone();
-    let worker_task_id = task_id.clone();
-    thread::spawn(move || run_s5_worker(worker_state, worker_task_id, request));
-    Ok(json!({"accepted": true, "task_id": task_id}))
+#[cfg(target_os = "macos")]
+fn open_path_with_default_app(path: &Path) -> std::io::Result<()> {
+    Command::new("open").arg(path).spawn().map(|_| ())
 }
 
-fn run_s5_worker(state: AppState, task_id: String, request: S5WebRunRequest) {
-    let started = Instant::now();
-    let requested_files_total = request.additional_source_paths.len() + 1;
-    {
-        let mut ui = state.lock();
-        ui.value["s5"]["task"]["task_state"] = json!("running");
-        ui.value["s5"]["progress"]["phase"] = json!("audit");
-        ui.value["s5"]["progress"]["message"] = json!("正在读取配置、定位表格并执行审核规则");
-        ui.value["s5"]["progress"]["percent"] = json!(10);
-        push_log(&mut ui.value, "S5-F01 正在读取配置与本期工作簿".to_owned());
-    }
-    let result = s5_web::run(&request);
-    let elapsed = started.elapsed().as_secs_f64();
-    let mut ui = state.lock();
-    match result {
-        Ok(result) => {
-            let run_status = result["status"].as_str().unwrap_or("FAILED");
-            let failure_rows = result["failure_rows"].as_u64().unwrap_or_default();
-            let files_total = result["file_count"].as_u64().unwrap_or_default();
-            let files_processed = result["files_processed"].as_u64().unwrap_or_default();
-            let files_failed = result["files_failed"].as_u64().unwrap_or_default();
-            let previous_source_issues = result["previous_source_issues"]
-                .as_array()
-                .map(Vec::len)
-                .unwrap_or_default();
-            let conditional_diagnostics = result["conditional_formatting"]["unsupported_count"]
-                .as_u64()
-                .unwrap_or_default()
-                + result["conditional_formatting"]["error_count"]
-                    .as_u64()
-                    .unwrap_or_default();
-            let completed = matches!(
-                run_status,
-                "COMPLETED"
-                    | "COMPLETED_WITH_CONDITIONAL_FORMAT_LIMITATIONS"
-                    | "COMPLETED_WITH_ISSUES"
-            );
-            let task_state = if !completed {
-                "failed"
-            } else if failure_rows > 0 || conditional_diagnostics > 0 || previous_source_issues > 0
-            {
-                "partial_failed"
-            } else {
-                "succeeded"
-            };
-            let message = format!(
-                "S5-F01 {}：文件处理 {}/{}（失败 {}），上期身份失败 {} 份，业务 {}，报告期 {}，规则 {} 条，业务触发 {} 条，执行失败 {} 条，条件格式触发 {} 条、待处理诊断 {} 条",
-                if task_state == "succeeded" {
-                    "完成"
-                } else if task_state == "failed" {
-                    "失败"
-                } else {
-                    "完成但需处理"
-                },
-                files_processed,
-                files_total,
-                files_failed,
-                previous_source_issues,
-                result["business"].as_str().unwrap_or(""),
-                result["period"].as_str().unwrap_or(""),
-                result["rule_count"].as_u64().unwrap_or_default(),
-                result["triggered_rows"].as_u64().unwrap_or_default(),
-                failure_rows,
-                result["conditional_format_trigger_count"]
-                    .as_u64()
-                    .unwrap_or_default(),
-                conditional_diagnostics
-            );
-            let output_path = result["result_workbook"].as_str().unwrap_or_default();
-            ui.value["s5"]["task"] = json!({
-                "task_id": task_id,
-                "system": "S5",
-                "function": "S5-F01",
-                "task_state": task_state,
-                "files_total": files_total,
-                "message": message,
-                "result": result,
-                "result_path": output_path,
-                "elapsed_seconds": elapsed
-            });
-            ui.value["s5"]["progress"] = json!({
-                "phase": if task_state == "failed" { "failed" } else { "completed" }, "message": message, "percent": 100,
-                "file_index": files_total, "files_total": files_total, "elapsedSeconds": elapsed
-            });
-            ui.value["status"] = json!(message);
-            ui.value["periodProgress"] = json!({
-                "status": if task_state == "failed" { "failed" } else { "completed" }, "stage": "audit", "label": "S5-F01 配置化审核",
-                "percent": 100, "current": files_total, "total": files_total,
-                "message": message, "elapsedSeconds": elapsed
-            });
-            push_log(&mut ui.value, message.clone());
-            if let Some(files) = result["files"].as_array() {
-                for file in files {
-                    if file["status"] == "failed" {
-                        push_log(
-                            &mut ui.value,
-                            format!(
-                                "S5-F01 文件处理失败：{}；{}",
-                                file["source"].as_str().unwrap_or_default(),
-                                file["error"].as_str().unwrap_or("未知原因")
-                            ),
-                        );
-                    }
-                }
-            }
-            if let Some(issues) = result["previous_source_issues"].as_array() {
-                for issue in issues {
-                    push_log(
-                        &mut ui.value,
-                        format!(
-                            "S5-F01 上期文件身份识别失败：{}；{}",
-                            issue["source"].as_str().unwrap_or_default(),
-                            issue["error"].as_str().unwrap_or("未知原因")
-                        ),
-                    );
-                }
-            }
-            push_log(&mut ui.value, format!("S5-F01 结果工作簿：{output_path}"));
-            push_detail_log(
-                &mut ui.value,
-                format!(
-                    "S5-F01 结束：engine={}；reader={}；writer={}；状态={}；耗时 {:.2} 秒；结果={}",
-                    result["engine"]
-                        .as_str()
-                        .unwrap_or("rust_s5_configured_audit"),
-                    result["reader"]
-                        .as_str()
-                        .unwrap_or("calamine via excel-reader"),
-                    result["writer"].as_str().unwrap_or("rust_xlsxwriter"),
-                    run_status,
-                    elapsed,
-                    output_path
-                ),
-            );
-        }
-        Err(error) => {
-            let message = format!("S5-F01 执行失败：{error}");
-            ui.value["s5"]["task"] = json!({
-                "task_id": task_id,
-                "system": "S5",
-                "function": "S5-F01",
-                "task_state": "failed",
-                "files_total": requested_files_total,
-                "message": message,
-                "elapsed_seconds": elapsed
-            });
-            ui.value["s5"]["progress"]["message"] = json!(message);
-            ui.value["s5"]["progress"]["elapsedSeconds"] = json!(elapsed);
-            ui.value["status"] = json!(message);
-            ui.value["periodProgress"]["status"] = json!("failed");
-            ui.value["periodProgress"]["message"] = json!(message);
-            ui.value["periodProgress"]["elapsedSeconds"] = json!(elapsed);
-            push_log(&mut ui.value, message.clone());
-            push_detail_log(
-                &mut ui.value,
-                format!(
-                    "S5-F01 失败；engine=rust_s5_configured_audit；耗时 {:.2} 秒；错误：{error}",
-                    elapsed
-                ),
-            );
-        }
-    }
-    ui.value["busy"] = json!(false);
-    ui.value["cancelRequested"] = json!(false);
+#[cfg(target_os = "linux")]
+fn open_path_with_default_app(path: &Path) -> std::io::Result<()> {
+    Command::new("xdg-open").arg(path).spawn().map(|_| ())
 }
 
-fn check_s5_config(state: &AppState, args: &[Value]) -> std::result::Result<Value, ApiError> {
-    let scope = arg_string(args, 0).unwrap_or("current_business").to_owned();
-    if !matches!(scope.as_str(), "current_business" | "all_enabled") {
-        return Err(ApiError::new(
-            StatusCode::BAD_REQUEST,
-            format!("未知的 S5 配置检查范围：{scope}"),
-        ));
-    }
-    let mut ui = state.lock();
-    if ui.value["busy"] == true {
-        return Ok(json!({"accepted": false, "message": "其他任务正在运行"}));
-    }
-    let form = ui.value["s5"].clone();
-    let config_path = PathBuf::from(form["config_path"].as_str().unwrap_or_default());
-    if !config_path.is_file() {
-        return Err(ApiError::new(
-            StatusCode::BAD_REQUEST,
-            "请选择 S5 审核配置文件",
-        ));
-    }
-    if scope == "current_business"
-        && form["template_path"]
-            .as_str()
-            .unwrap_or_default()
-            .is_empty()
-    {
-        return Ok(json!({
-            "accepted": false,
-            "message": "当前业务检查需要先点击“识别模板”或手动选择匹配模板"
-        }));
-    }
-    if scope == "all_enabled" && form["template_dir"].as_str().unwrap_or_default().is_empty() {
-        return Ok(json!({"accepted": false, "message": "全量检查需要有效的模板文件目录"}));
-    }
-    let task_id = next_s5_task_id();
-    ui.value["s5"]["configurationCheckTask"] = json!({
-        "task_id": task_id,
-        "task_state": "queued",
-        "scope": scope,
-        "scope_label": if scope == "all_enabled" { "全量启用配置" } else { "当前业务启用配置" },
-        "message": "正在准备 S5 配置检查",
-        "progress": {"percent": 0, "message": "准备读取审核配置"}
-    });
-    drop(ui);
-    let worker_state = state.clone();
-    let worker_task_id = task_id.clone();
-    thread::spawn(move || {
-        {
-            let mut ui = worker_state.lock();
-            ui.value["s5"]["configurationCheckTask"]["task_state"] = json!("running");
-            ui.value["s5"]["configurationCheckTask"]["progress"] = json!({
-                "percent": 10, "message": "正在检查配置、模板与外部引用"
-            });
-        }
-        let result = validate_s5_config(
-            &config_path,
-            form["template_path"].as_str().unwrap_or_default(),
-            form["template_dir"].as_str().unwrap_or_default(),
-            "",
-            form["external_path"].as_str().unwrap_or_default(),
-            form["business"].as_str().unwrap_or_default(),
-            &scope,
-        );
-        let mut ui = worker_state.lock();
-        match result {
-            Ok(report) => {
-                let valid = report["valid"].as_bool().unwrap_or(false);
-                let complete = report["complete"].as_bool().unwrap_or(false);
-                let task_state = if !valid {
-                    "failed"
-                } else if !complete {
-                    "incomplete"
-                } else {
-                    "succeeded"
-                };
-                ui.value["s5"]["configurationCheckTask"] = json!({
-                    "task_id": worker_task_id,
-                    "task_state": task_state,
-                    "scope": scope,
-                    "message": if valid && complete { "S5 配置检查完成" } else { "S5 配置检查发现问题或未验证项" },
-                    "progress": {"percent": 100, "message": "配置检查完成"},
-                    "report": report
-                });
-            }
-            Err(error) => {
-                ui.value["s5"]["configurationCheckTask"] = json!({
-                    "task_id": worker_task_id,
-                    "task_state": "failed",
-                    "scope": scope,
-                    "message": error.to_string(),
-                    "progress": {"percent": 100, "message": "配置检查失败"}
-                });
-            }
-        }
-    });
-    Ok(json!({"accepted": true, "task_id": task_id}))
-}
-
-fn get_s5_config_check(state: &AppState) -> std::result::Result<Value, ApiError> {
-    Ok(state.lock().value["s5"]["configurationCheckTask"].clone())
-}
-
-fn next_s5_task_id() -> String {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static SEQUENCE: AtomicU64 = AtomicU64::new(1);
-    format!(
-        "s5-{}-{}",
-        chrono::Local::now().timestamp_millis(),
-        SEQUENCE.fetch_add(1, Ordering::Relaxed)
-    )
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+fn open_path_with_default_app(_path: &Path) -> std::io::Result<()> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "当前平台不支持通过系统默认程序打开路径",
+    ))
 }
 
 /// 系统原生文件/目录选择的公共入口（`pick_paths` API）。
@@ -1473,7 +912,11 @@ async fn pick_paths(state: &AppState, args: &[Value]) -> std::result::Result<Val
     let (start, start_notice) =
         crate::native_file_dialog::normalize_start(options.get("start").and_then(Value::as_str));
     let request = PickRequest {
-        title: if title.is_empty() { "选择位置".to_owned() } else { title },
+        title: if title.is_empty() {
+            "选择位置".to_owned()
+        } else {
+            title
+        },
         kind,
         extensions: browse_extensions(mode),
         start,
@@ -1499,7 +942,7 @@ fn choose_folder(state: &AppState, args: &[Value]) -> std::result::Result<Value,
     if !matches!(field, "input" | "templateDir" | "output") {
         return Err(ApiError::new(
             StatusCode::NOT_IMPLEMENTED,
-            format!("Rust 迁移版暂不支持选择目录：{field}"),
+            format!("当前审核工具暂不支持选择该目录：{field}"),
         ));
     }
     let selected = arg_string(args, 1).unwrap_or_default().trim();
@@ -1574,7 +1017,7 @@ fn choose_history_config(state: &AppState, args: &[Value]) -> std::result::Resul
 }
 
 fn recognize_s1_sources(state: &AppState) -> std::result::Result<Value, ApiError> {
-    let (input_dir, template_dir, manual_template, busy) = {
+    let (input_dir, template_dir, manual_template, busy, scan_depth) = {
         let ui = state.lock();
         (
             ui.value["input"].as_str().unwrap_or_default().to_owned(),
@@ -1584,6 +1027,7 @@ fn recognize_s1_sources(state: &AppState) -> std::result::Result<Value, ApiError
                 .to_owned(),
             ui.value["templateManual"] == true,
             ui.value["busy"] == true,
+            scan_depth_from_value(&ui.value["recursiveDepth"]),
         )
     };
     if busy {
@@ -1599,7 +1043,7 @@ fn recognize_s1_sources(state: &AppState) -> std::result::Result<Value, ApiError
             "请先选择有效的源数据目录",
         ));
     }
-    let files = s1_region_summary_source_workbooks(&input_dir, true)
+    let files = s1_region_summary_source_workbooks_with_depth(&input_dir, scan_depth)
         .map_err(|error| ApiError::internal(format!("扫描 S1 源数据目录失败：{error:#}")))?;
     let template_dir = PathBuf::from(template_dir);
     let can_match_templates = template_dir.is_dir();
@@ -1613,7 +1057,27 @@ fn recognize_s1_sources(state: &AppState) -> std::result::Result<Value, ApiError
     };
     let mut source_rows = Vec::with_capacity(files.len());
     let mut matched_templates = std::collections::BTreeSet::new();
-    for path in &files {
+    // 手动追加的源目录外文件并入清单并同样参与模板匹配（旧 Audit 口径：
+    // 直接位于输入目录下的追加文件由目录扫描覆盖，不再重复并入）。
+    let extra_files = crate::app_settings::AppSettings::load().extra_files();
+    let mut all_paths = files.clone();
+    for extra in &extra_files {
+        let extra_path = PathBuf::from(extra);
+        if !extra_path.is_file() || extra_path.parent() == Some(&input_dir) {
+            continue;
+        }
+        let known = files
+            .iter()
+            .chain(all_paths.iter())
+            .any(|path| web_path_identity(path) == web_path_identity(&extra_path));
+        if !known {
+            all_paths.push(extra_path);
+        }
+    }
+    for path in &all_paths {
+        let is_extra = !files
+            .iter()
+            .any(|scanned| web_path_identity(scanned) == web_path_identity(path));
         let suggestion = if can_match_templates {
             recommend_template_with_profiles(
                 template_profiles
@@ -1648,7 +1112,8 @@ fn recognize_s1_sources(state: &AppState) -> std::result::Result<Value, ApiError
             "template": template_label,
             "templateMatched": suggestion.matched,
             "templateConfidence": suggestion.confidence,
-            "templateReason": suggestion.details
+            "templateReason": suggestion.details,
+            "extra": is_extra
         }));
     }
     let mut ui = state.lock();
@@ -1659,7 +1124,7 @@ fn recognize_s1_sources(state: &AppState) -> std::result::Result<Value, ApiError
         ));
     }
     ui.value["sourceFiles"] = json!(source_rows);
-    ui.value["selectedFiles"] = json!(files);
+    ui.value["selectedFiles"] = json!(all_paths);
     ui.value["mixedTemplates"] = json!(matched_templates
         .iter()
         .filter_map(|path| path.file_name())
@@ -1679,6 +1144,62 @@ fn recognize_s1_sources(state: &AppState) -> std::result::Result<Value, ApiError
         ),
     );
     Ok(ui.value.clone())
+}
+
+fn refresh_s1_sources_for_scan_depth(state: &AppState) {
+    let (input, previous_sources, previous_selected) = {
+        let ui = state.lock();
+        let previous_sources = ui.value["sourceFiles"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|file| file["path"].as_str().map(str::to_owned))
+            .collect::<std::collections::HashSet<_>>();
+        let previous_selected = ui.value["selectedFiles"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(str::to_owned)
+            .collect::<std::collections::HashSet<_>>();
+        (
+            ui.value["input"].as_str().unwrap_or_default().to_owned(),
+            previous_sources,
+            previous_selected,
+        )
+    };
+
+    if input.trim().is_empty() {
+        let mut ui = state.lock();
+        ui.value["sourceFiles"] = json!([]);
+        ui.value["selectedFiles"] = json!([]);
+        ui.value["mixedTemplates"] = json!([]);
+        return;
+    }
+
+    if let Err(error) = recognize_s1_sources(state) {
+        let mut ui = state.lock();
+        ui.value["sourceFiles"] = json!([]);
+        ui.value["selectedFiles"] = json!([]);
+        ui.value["mixedTemplates"] = json!([]);
+        ui.value["status"] = json!("递归深度已保存，但 S1 源文件列表刷新失败");
+        push_error_log(
+            &mut ui.value,
+            format!("递归深度调整后刷新 S1 源文件列表失败：{}", error.message),
+        );
+        return;
+    }
+
+    let mut ui = state.lock();
+    let selected = ui.value["sourceFiles"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|file| file["path"].as_str())
+        .filter(|path| !previous_sources.contains(*path) || previous_selected.contains(*path))
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    ui.value["selectedFiles"] = json!(selected);
 }
 
 fn set_selected_files(state: &AppState, args: &[Value]) -> std::result::Result<Value, ApiError> {
@@ -1723,13 +1244,149 @@ fn set_selected_files(state: &AppState, args: &[Value]) -> std::result::Result<V
     Ok(json!(true))
 }
 
+/// 手动追加/移除待处理文件后统一持久化 `extraFiles`（其余偏好原样保留）。
+fn persist_extra_files(state: &AppState, files: &[String]) -> std::result::Result<(), ApiError> {
+    let settings = crate::app_settings::AppSettings::load();
+    let mut preferences = settings.preferences.clone();
+    preferences.insert("extraFiles".to_owned(), json!(files));
+    crate::app_settings::AppSettings::store_preferences(
+        settings.calc_engine.as_str(),
+        settings.edit_engine.as_str(),
+        preferences,
+    )
+    .map_err(|error| ApiError::internal(format!("保存用户设置失败：{error:#}")))?;
+    let mut ui = state.lock();
+    ui.value["extraFiles"] = json!(files);
+    Ok(())
+}
+
+/// 待处理清单：批量追加源数据目录外的工作簿（跨会话保留），随后重建
+/// 源文件清单并入清单。与旧 Audit 口径一致：只接受存在的文件并去重。
+fn append_extra_files(state: &AppState, args: &[Value]) -> std::result::Result<Value, ApiError> {
+    let Some(paths) = args.first().and_then(Value::as_array) else {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "append_extra_files 需要路径数组",
+        ));
+    };
+    let requested = paths
+        .iter()
+        .map(|value| {
+            value
+                .as_str()
+                .map(PathBuf::from)
+                .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "追加路径必须是字符串"))
+        })
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    {
+        let ui = state.lock();
+        if ui.value["busy"] == true {
+            return Err(ApiError::new(
+                StatusCode::CONFLICT,
+                "审核正在运行，暂不能追加待处理文件",
+            ));
+        }
+    }
+    let existing: std::collections::HashSet<String> = {
+        let ui = state.lock();
+        ui.value["extraFiles"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|value| value.as_str().map(str::to_owned))
+            .collect()
+    };
+    let mut merged = existing;
+    let mut added = 0usize;
+    for path in requested {
+        let Ok(resolved) = fs::canonicalize(&path) else {
+            continue;
+        };
+        if !resolved.is_file() {
+            continue;
+        }
+        let text = resolved.to_string_lossy().into_owned();
+        if merged.insert(text) {
+            added += 1;
+        }
+    }
+    let mut files: Vec<String> = merged.into_iter().collect();
+    files.sort();
+    persist_extra_files(state, &files)?;
+    {
+        let mut ui = state.lock();
+        push_log(&mut ui.value, format!("已追加 {added} 个待处理文件"));
+    }
+    refresh_s1_source_list(state);
+    Ok(state.get_state())
+}
+
+/// 从追加清单移除一个手动追加的文件（不影响源数据目录扫描结果）。
+fn remove_extra_file(state: &AppState, args: &[Value]) -> std::result::Result<Value, ApiError> {
+    let Some(path) = args.first().and_then(Value::as_str) else {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "remove_extra_file 需要一个路径",
+        ));
+    };
+    {
+        let ui = state.lock();
+        if ui.value["busy"] == true {
+            return Err(ApiError::new(
+                StatusCode::CONFLICT,
+                "审核正在运行，暂不能修改待处理文件",
+            ));
+        }
+    }
+    let previous: Vec<String> = {
+        let ui = state.lock();
+        ui.value["extraFiles"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|value| value.as_str().map(str::to_owned))
+            .collect()
+    };
+    let remaining: Vec<String> = previous
+        .iter()
+        .filter(|item| item.as_str() != path)
+        .cloned()
+        .collect();
+    if remaining.len() != previous.len() {
+        persist_extra_files(state, &remaining)?;
+        {
+            let mut ui = state.lock();
+            let file_name = Path::new(path)
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| path.to_owned());
+            push_log(&mut ui.value, format!("已移除追加文件：{file_name}"));
+        }
+        refresh_s1_source_list(state);
+    }
+    Ok(state.get_state())
+}
+
+/// 在输入目录与模板目录有效时重建源文件清单；目录未就绪时静默跳过
+/// （追加的文件仍保留在设置里，等目录可用后随下次识别一起并入）。
+fn refresh_s1_source_list(state: &AppState) {
+    let input_dir = {
+        let ui = state.lock();
+        ui.value["input"].as_str().unwrap_or_default().to_owned()
+    };
+    if !PathBuf::from(input_dir.trim()).is_dir() {
+        return;
+    }
+    let _ = recognize_s1_sources(state);
+}
+
 fn choose_file(state: &AppState, args: &[Value]) -> std::result::Result<Value, ApiError> {
     let field = arg_string(args, 0)
         .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "choose_file 缺少路径类型"))?;
     if !matches!(field, "template" | "external") {
         return Err(ApiError::new(
             StatusCode::NOT_IMPLEMENTED,
-            format!("Rust 迁移版暂不支持选择文件：{field}"),
+            format!("当前审核工具暂不支持选择该文件：{field}"),
         ));
     }
     let selected = arg_string(args, 1).unwrap_or_default().trim();
@@ -1796,6 +1453,7 @@ struct S1F1PreflightRequest {
     sidecar_path: Option<PathBuf>,
     calc_engine: String,
     edit_engine: String,
+    conditional_format_source: String,
     request_preparation_us: u128,
     source_directory_scan_us: u128,
 }
@@ -1803,7 +1461,9 @@ struct S1F1PreflightRequest {
 struct S1F1TemplatePreflight {
     structure: S1StructureTemplate,
     rule_plan: S1TemplateRulePlan,
+    conditional_mappings: Vec<FeatureMapping>,
     scan_areas: Vec<String>,
+    scan_area_source: String,
     structure_ranges: Vec<CopyRange>,
     scan_area_count: usize,
     structure_area_count: usize,
@@ -1907,8 +1567,9 @@ fn start_s1_f1_workflow(state: &AppState, args: &[Value]) -> std::result::Result
         )
     })?;
     let source_directory_scan_started = Instant::now();
-    let source_files = s1_region_summary_source_workbooks(&input_dir, true)
-        .map_err(|error| ApiError::internal(format!("扫描 S1-F01 源文件失败：{error:#}")))?;
+    let source_files =
+        s1_region_summary_source_workbooks_with_depth(&input_dir, current_scan_depth(state))
+            .map_err(|error| ApiError::internal(format!("扫描 S1-F01 源文件失败：{error:#}")))?;
     let source_directory_scan_us = source_directory_scan_started.elapsed().as_micros();
     if source_files.is_empty() {
         return Err(ApiError::new(
@@ -2070,14 +1731,20 @@ fn start_s1_f1_workflow(state: &AppState, args: &[Value]) -> std::result::Result
             .or_else(find_s1_recalculation_sidecar)
     };
     let settings = crate::app_settings::AppSettings::load();
+    let conditional_format_source = settings.s1_conditional_format_source().to_owned();
     {
         let mut ui = state.lock();
         push_log(
             &mut ui.value,
             format!(
-                "S1-F01 高级设置：计算引擎={}；修改引擎={}（设置文件 {}）",
+                "S1-F01 高级设置：计算引擎={}；修改引擎={}；条件格式提取来源={}（设置文件 {}）",
                 settings.calc_engine.label(),
                 settings.edit_engine.label(),
+                if conditional_format_source == "audit_copy" {
+                    "复制校验区域并重算后的审核副本"
+                } else {
+                    "原始源文件"
+                },
                 crate::app_settings::AppSettings::settings_path_for_display()
             ),
         );
@@ -2097,6 +1764,7 @@ fn start_s1_f1_workflow(state: &AppState, args: &[Value]) -> std::result::Result
         sidecar_path,
         calc_engine: settings.calc_engine.sidecar_engine().to_owned(),
         edit_engine: settings.edit_engine.as_str().to_owned(),
+        conditional_format_source,
         request_preparation_us,
         source_directory_scan_us,
     };
@@ -2360,13 +2028,12 @@ fn run_s1_f3_worker_with_store_started(
                     .unwrap_or_default()
             );
         }
-        let recalculated_workbook =
-            {
-                s1_f3_publish_stage(&state, &active_workbook, "读取人工重算后的公式结果");
+        let recalculated_workbook = {
+            s1_f3_publish_stage(&state, &active_workbook, "读取人工重算后的公式结果");
             excel_reader::read_workbook_with_unknown_error_tokens_as_text(&audit_copy)
                 .context("读取 S1-F3 人工重算副本的公式结果")?
                 .workbook
-            };
+        };
         let result_coverage = excel_reader::formula_result_value_coverage(&recalculated_workbook);
         if result_coverage.formula_cell_count != formula_count
             || result_coverage.typed_result_cell_count != formula_count
@@ -2412,8 +2079,14 @@ fn run_s1_f3_worker_with_store_started(
             org_code: org.0,
             org_name: org.1,
         };
-        let extracted = extract_s1_audit_copy(&item, &item.source, &audit_copy, &metadata)
-            .context("复用 S1-F1 公式和条件格式审核提取")?;
+        let extracted = extract_s1_audit_copy(
+            &item,
+            &item.source,
+            &audit_copy,
+            &manifest.conditional_format_source,
+            &metadata,
+        )
+        .context("复用 S1-F1 公式和条件格式审核提取")?;
         manifest.files[file_index].formula_issues = extracted.formula_issues;
         manifest.files[file_index].conditional_issues = extracted.conditional_issues;
         manifest.files[file_index].conditional_diagnostics = extracted.diagnostics;
@@ -2539,7 +2212,11 @@ fn run_s1_f3_worker_with_store_started(
                 "S1-F03",
                 format!(
                     "恢复工作簿 {}；任务失败；结果未生成；总耗时 {}；原因：{reason}。",
-                    if active_workbook.is_empty() { "未能从恢复清单定位" } else { active_workbook.as_str() },
+                    if active_workbook.is_empty() {
+                        "未能从恢复清单定位"
+                    } else {
+                        active_workbook.as_str()
+                    },
                     format_elapsed(task_started.elapsed())
                 ),
             );
@@ -2564,11 +2241,7 @@ fn s1_f1_end_to_end_total_us(task_started: Instant) -> u128 {
     task_started.elapsed().as_micros()
 }
 
-fn run_s1_f1_worker(
-    state: AppState,
-    request: S1F1PreflightRequest,
-    task_started: Instant,
-) {
+fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest, task_started: Instant) {
     let work_slot: CurrentWorkSlot = std::sync::Arc::new(std::sync::Mutex::new(json!({
         "feature": "S1-F01",
         "total": request.source_files.len(),
@@ -2709,6 +2382,7 @@ fn run_s1_f1_worker(
                             "template": template_path,
                             "matchDetails": match_details,
                             "scanAreas": preflight.scan_area_count,
+                            "scanAreaSource": preflight.scan_area_source,
                             "structureAreas": preflight.structure_area_count,
                             "reason": format!("模板体检未通过：{}", preflight.health_errors.join("；"))
                         })
@@ -2722,6 +2396,7 @@ fn run_s1_f1_worker(
                             Ok(comparison) if comparison.matched => {
                                 structure_passed += 1;
                                 let scan_area_count = preflight.scan_area_count;
+                                let scan_area_source = preflight.scan_area_source.clone();
                                 let structure_area_count = preflight.structure_area_count;
                                 accepted.push(S1F1AcceptedSource {
                                     source: source.clone(),
@@ -2735,6 +2410,7 @@ fn run_s1_f1_worker(
                                     "template": template_path,
                                     "matchDetails": match_details,
                                     "scanAreas": scan_area_count,
+                                    "scanAreaSource": scan_area_source,
                                     "structureAreas": structure_area_count,
                                     "structureMatch": comparison
                                 })
@@ -2788,7 +2464,11 @@ fn run_s1_f1_worker(
             request.source_files.len(),
             source_label,
             status,
-            if reason.is_empty() { String::new() } else { format!("；原因：{reason}") }
+            if reason.is_empty() {
+                String::new()
+            } else {
+                format!("；原因：{reason}")
+            }
         );
         let mut ui = state.lock();
         if status.starts_with("skipped") {
@@ -2923,11 +2603,22 @@ fn run_s1_f1_worker(
                 }),
             );
             current_work_finish(&state, &work_slot);
-            let performance_timings = json!({
+            let mut performance_timings = json!({
                 "request": request_timings,
                 "preflight": preflight_timings,
                 "workflow": output.performance_timings
             });
+            performance_timings["endToEndTotalUs"] = json!(end_to_end_total_us);
+            let recalculation_engine_labels = output
+                .recalculation_engines
+                .iter()
+                .map(|engine| match engine.as_str() {
+                    "Excel.Application" => "Microsoft Excel COM",
+                    "ket.Application" | "KET.Application" => "WPS 表格 COM",
+                    other => other,
+                })
+                .collect::<Vec<_>>()
+                .join("、");
             for file in &mut files {
                 if file["status"] == "structure_passed" {
                     let source_path = file["sourcePath"].as_str().unwrap_or_default();
@@ -2972,7 +2663,7 @@ fn run_s1_f1_worker(
                 "waitingManualRecalc": output.waiting_manual_recalc,
                 "partialFiles": output.partial_files,
                 "failedFiles": output.failed_files,
-                "manualRecalcInstructions": "自动公式重算不可用或失败，已保留待计算的审核副本。请使用 Microsoft Excel 打开审核副本：1. 按 Ctrl+Alt+F9 强制重新计算；2. 等待 Excel 完成计算；3. 按 Ctrl+S 保存；4. 关闭工作簿；5. 返回 Rust-Audit，使用 S1-F3『从审核副本汇总校验核查表』继续审核。如果使用 WPS 或 LibreOffice，请采用对应软件支持的重新计算方式并保存。请勿修改原始报表文件。",
+                "manualRecalcInstructions": "自动公式重算不可用或失败，已保留待计算的审核副本。请使用 Microsoft Excel 打开审核副本：1. 按 Ctrl+Alt+F9 强制重新计算；2. 等待 Excel 完成计算；3. 按 Ctrl+S 保存；4. 关闭工作簿；5. 返回审核工具，使用 S1-F3『从审核副本汇总校验核查表』继续审核。如果使用 WPS 或 LibreOffice，请采用对应软件支持的重新计算方式并保存。请勿修改原始报表文件。",
                 "externalData": request.external_data,
                 "recalculationSidecarFound": request.sidecar_path.is_some(),
                 "recalculationSidecar": request.sidecar_path,
@@ -3027,6 +2718,26 @@ fn run_s1_f1_worker(
                     output.waiting_manual_recalc, output.failed_files, end_to_end_total_seconds
                 )
             });
+            let succeeded = output
+                .file_results
+                .iter()
+                .filter(|file| file["status"] == "COMPLETED")
+                .count();
+            push_log(
+                &mut ui.value,
+                format!("S1-F01 总用时：{end_to_end_total_seconds:.1} 秒"),
+            );
+            push_log(
+                &mut ui.value,
+                format!(
+                    "S1-F01 实际重算引擎：{}",
+                    if recalculation_engine_labels.is_empty() {
+                        "无（没有工作簿完成真实重算）"
+                    } else {
+                        &recalculation_engine_labels
+                    }
+                ),
+            );
             if let Some(result_path) = output.result_path.as_ref() {
                 push_log(
                     &mut ui.value,
@@ -3202,17 +2913,108 @@ struct S1ExtractedAuditCopy {
     conditional_format_extraction_elapsed_us: u128,
 }
 
+fn s1_conditional_format_workbook<'a>(
+    source_file: &'a Path,
+    audit_copy: &'a Path,
+    conditional_format_source: &str,
+) -> &'a Path {
+    if conditional_format_source == "audit_copy" {
+        audit_copy
+    } else {
+        source_file
+    }
+}
+
+fn set_conditional_issues_audit_copy(issues: &mut [Issue], audit_copy: &Path) {
+    for issue in issues {
+        issue.audit_file = audit_copy.display().to_string();
+    }
+}
+
 fn extract_s1_audit_copy(
     item: &S1F1AcceptedSource,
     source_file: &Path,
     audit_copy: &Path,
+    conditional_format_source: &str,
     metadata: &S1FormulaMetadata,
 ) -> Result<S1ExtractedAuditCopy> {
-    extract_s1_audit_copy_with_conditional_extractor(
+    extract_s1_audit_copy_with_include_blank(
         item,
         source_file,
         audit_copy,
+        conditional_format_source,
         metadata,
+        None,
+        crate::app_settings::AppSettings::load().conditional_format_include_blank_cells(),
+    )
+}
+
+fn extract_s1_audit_copy_with_display_observation(
+    item: &S1F1AcceptedSource,
+    source_file: &Path,
+    audit_copy: &Path,
+    conditional_format_source: &str,
+    metadata: &S1FormulaMetadata,
+    display_observation: Option<
+        std::result::Result<crate::conditional_format::ConditionalDisplayScan, String>,
+    >,
+) -> Result<S1ExtractedAuditCopy> {
+    extract_s1_audit_copy_with_include_blank(
+        item,
+        source_file,
+        audit_copy,
+        conditional_format_source,
+        metadata,
+        display_observation,
+        crate::app_settings::AppSettings::load().conditional_format_include_blank_cells(),
+    )
+}
+
+/// 空白格开关显式传入的内部入口；S1-F01 执行链从用户设置读取。
+fn extract_s1_audit_copy_with_include_blank(
+    item: &S1F1AcceptedSource,
+    source_file: &Path,
+    audit_copy: &Path,
+    conditional_format_source: &str,
+    metadata: &S1FormulaMetadata,
+    display_observation: Option<
+        std::result::Result<crate::conditional_format::ConditionalDisplayScan, String>,
+    >,
+    include_blank_cells: bool,
+) -> Result<S1ExtractedAuditCopy> {
+    extract_s1_audit_copy_with_display_observation_and_scan_areas(
+        item,
+        source_file,
+        audit_copy,
+        conditional_format_source,
+        metadata,
+        &item.preflight.scan_areas,
+        display_observation,
+        include_blank_cells,
+    )
+}
+
+fn extract_s1_audit_copy_with_display_observation_and_scan_areas(
+    item: &S1F1AcceptedSource,
+    source_file: &Path,
+    audit_copy: &Path,
+    conditional_format_source: &str,
+    metadata: &S1FormulaMetadata,
+    scan_areas: &[String],
+    display_observation: Option<
+        std::result::Result<crate::conditional_format::ConditionalDisplayScan, String>,
+    >,
+    include_blank_cells: bool,
+) -> Result<S1ExtractedAuditCopy> {
+    extract_s1_audit_copy_with_conditional_extractor_and_display(
+        item,
+        source_file,
+        audit_copy,
+        conditional_format_source,
+        metadata,
+        scan_areas,
+        display_observation,
+        include_blank_cells,
         |workbook_path, source_file, scan_areas, structure_ranges, conditional_metadata| {
             extract_conditional_issues(
                 workbook_path,
@@ -3229,7 +3031,44 @@ fn extract_s1_audit_copy_with_conditional_extractor<F>(
     item: &S1F1AcceptedSource,
     source_file: &Path,
     audit_copy: &Path,
+    conditional_format_source: &str,
     metadata: &S1FormulaMetadata,
+    conditional_extractor: F,
+) -> Result<S1ExtractedAuditCopy>
+where
+    F: FnOnce(
+        &Path,
+        &Path,
+        &[String],
+        &[CopyRange],
+        &S1ConditionalMetadata,
+    ) -> Result<S1ConditionalAuditResult>,
+{
+    // 测试与定向探针入口保持既有口径：空白格命中纳入结果。
+    extract_s1_audit_copy_with_conditional_extractor_and_display(
+        item,
+        source_file,
+        audit_copy,
+        conditional_format_source,
+        metadata,
+        &item.preflight.scan_areas,
+        None,
+        true,
+        conditional_extractor,
+    )
+}
+
+fn extract_s1_audit_copy_with_conditional_extractor_and_display<F>(
+    item: &S1F1AcceptedSource,
+    source_file: &Path,
+    audit_copy: &Path,
+    conditional_format_source: &str,
+    metadata: &S1FormulaMetadata,
+    scan_areas: &[String],
+    display_observation: Option<
+        std::result::Result<crate::conditional_format::ConditionalDisplayScan, String>,
+    >,
+    include_blank_cells: bool,
     conditional_extractor: F,
 ) -> Result<S1ExtractedAuditCopy>
 where
@@ -3271,43 +3110,115 @@ where
     }
 
     let conditional_extraction_started = Instant::now();
-    let conditional_result = conditional_extractor(
-        audit_copy,
-        source_file,
-        &item.preflight.scan_areas,
-        &item.preflight.structure_ranges,
-        &S1ConditionalMetadata {
-            period: metadata.period.clone(),
-            batch_id: metadata.batch_id.clone(),
-            audit_time: metadata.audit_time.clone(),
-            org_code: metadata.org_code.clone(),
-            org_name: metadata.org_name.clone(),
-        },
-    );
+    // Formula findings above intentionally come from the recalculated audit
+    // copy. Conditional-format values use the user's selected workbook source;
+    // the default remains the untouched source to match legacy Python.
+    let conditional_workbook =
+        s1_conditional_format_workbook(source_file, audit_copy, conditional_format_source);
+    let conditional_metadata = S1ConditionalMetadata {
+        period: metadata.period.clone(),
+        batch_id: metadata.batch_id.clone(),
+        audit_time: metadata.audit_time.clone(),
+        org_code: metadata.org_code.clone(),
+        org_name: metadata.org_name.clone(),
+    };
+    let conditional_result = match display_observation {
+        Some(Ok(scan)) => extract_conditional_issues_with_display_scan(
+            conditional_workbook,
+            source_file,
+            scan_areas,
+            &item.preflight.structure_ranges,
+            &conditional_metadata,
+            &scan,
+        ),
+        Some(Err(reason)) => extract_conditional_issues_with_display_failure(
+            conditional_workbook,
+            source_file,
+            scan_areas,
+            &item.preflight.structure_ranges,
+            &conditional_metadata,
+            reason,
+        ),
+        None => conditional_extractor(
+            conditional_workbook,
+            source_file,
+            scan_areas,
+            &item.preflight.structure_ranges,
+            &conditional_metadata,
+        ),
+    };
     let conditional_format_extraction_elapsed_us =
         conditional_extraction_started.elapsed().as_micros();
+    // 空白格开关（默认开启，与 COM DisplayFormat 实际渲染口径一致）：
+    // 关闭时排除目标单元格为空白（值 None 或空文本）的命中，其余口径不变。
+    let mut conditional_result = conditional_result;
+    if !include_blank_cells {
+        if let Ok(result) = conditional_result.as_mut() {
+            let before = result.issues.len();
+            result.issues.retain(|issue| {
+                !(issue.target_value.is_null()
+                    || issue
+                        .target_value
+                        .as_str()
+                        .is_some_and(|text| text.is_empty()))
+            });
+            result
+                .evaluation
+                .diagnostics
+                .push(crate::conditional_format::ConditionalDiagnostic {
+                    sheet: String::new(),
+                    cell: String::new(),
+                    applies_to: String::new(),
+                    rule_type: "blank_cells".to_owned(),
+                    formula: String::new(),
+                    priority: 0,
+                    status: crate::conditional_format::EvaluationStatus::Unsupported,
+                    reason: format!(
+                        "已按设置排除空白单元格命中 {before} → {}",
+                        result.issues.len()
+                    ),
+                });
+        }
+    }
 
     let (
-        conditional_issues,
+        mut conditional_issues,
         mut diagnostics,
         conditional_partial,
         conditional_diagnostic_count,
         unresolved_indicator_count,
         conditional_error,
     ) = match conditional_result {
-        Ok(conditional_result) => (
-            conditional_result.issues,
-            conditional_result
+        Ok(conditional_result) => {
+            let mut diagnostics = conditional_result
                 .evaluation
                 .diagnostics
                 .iter()
                 .map(|diagnostic| json!({"kind":"conditional_format", "diagnostic":diagnostic}))
-                .collect::<Vec<_>>(),
-            conditional_result.status != "completed",
-            conditional_result.evaluation.diagnostics.len(),
-            conditional_result.context.unresolved_indicator_count,
-            None,
-        ),
+                .collect::<Vec<_>>();
+            if conditional_result.evaluation.status == "evaluated_com_display" {
+                diagnostics.push(json!({
+                    "kind": "conditional_display_color_scan",
+                    "engine": conditional_result.evaluation.display_engine,
+                    "engineProcessId": conditional_result.evaluation.display_engine_process_id,
+                    "scannedCells": conditional_result.evaluation.scanned_cells,
+                    "changedFills": conditional_result.evaluation.triggered.iter().map(|trigger| json!({
+                        "sheet": trigger.sheet,
+                        "cell": trigger.cell,
+                        "baseFillColor": trigger.base_fill_color,
+                        "displayFillColor": trigger.display_fill_color,
+                    })).collect::<Vec<_>>(),
+                }));
+            }
+            (
+                conditional_result.issues,
+                diagnostics,
+                conditional_result.status != "completed",
+                conditional_result.evaluation.diagnostics.len(),
+                conditional_result.context.unresolved_indicator_count,
+                None,
+            )
+        }
         Err(error) => {
             let message = format!("{error:#}");
             (
@@ -3325,6 +3236,9 @@ where
             )
         }
     };
+    // CF evaluation may read the untouched source workbook, but result links
+    // must always open the per-source audit copy alongside formula findings.
+    set_conditional_issues_audit_copy(&mut conditional_issues, audit_copy);
     if !formula_result
         .summary
         .read_diagnostics
@@ -3589,6 +3503,55 @@ fn write_s1_recovery_manifest_result(
     summary_for_s1_result(&result_path, &prepared)
 }
 
+/// 结果 JSON 中的修复统计；未修复（含无需修复）时为 null。
+fn excel_open_repair_json(
+    repair: Option<&crate::excel_open_repair::ExcelOpenRepairReport>,
+) -> Value {
+    match repair {
+        Some(repair) => json!({
+            "changed": repair.changed,
+            "quoted": repair.quoted,
+            "paneFixed": repair.pane_fixed,
+        }),
+        None => Value::Null,
+    }
+}
+
+/// S1-F01 审核副本的 Excel COM 打开修复完成后向运行日志说明；口径与旧
+/// Python Audit 一致：只改审核副本，原始报送文件不动。
+fn log_s1_excel_open_repair(
+    state: Option<&AppState>,
+    source: &Path,
+    outcome: &S1FormulaCopyOutcome,
+) {
+    let repair = match outcome {
+        S1FormulaCopyOutcome::Recalculated(report) => report.excel_open_repair.as_ref(),
+        S1FormulaCopyOutcome::WaitingManualRecalc(report) => report.excel_open_repair.as_ref(),
+    };
+    let (Some(repair), Some(app)) = (repair, state) else {
+        return;
+    };
+    let detail = [
+        (repair.quoted > 0).then(|| format!("工作表引用补引号 {} 处", repair.quoted)),
+        (repair.pane_fixed > 0).then(|| format!("冻结窗格修正 {} 处", repair.pane_fixed)),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join("、");
+    let file_name = source
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| source.display().to_string());
+    let mut ui = app.lock();
+    push_log(
+        &mut ui.value,
+        format!(
+            "{file_name}：Excel 无法打开原样副本，已在审核副本上修复（{detail}）；原始文件未改动。"
+        ),
+    );
+}
+
 fn execute_s1_f1_workflow(
     request: &S1F1PreflightRequest,
     accepted: &[S1F1AcceptedSource],
@@ -3597,50 +3560,160 @@ fn execute_s1_f1_workflow(
 ) -> Result<S1F1WorkflowOutput> {
     let adapter_started = Instant::now();
     let session_initialization_started = Instant::now();
-    let mut recalculation_session = if cfg!(windows) {
+    let recalculation_session = std::cell::RefCell::new(if cfg!(windows) {
         Some(S1RecalculationSession::new_native(&request.calc_engine)?)
-    } else if matches!(request.calc_engine.as_str(), "auto" | "lo") {
-        // Linux：一个审核批次创建一个由 sidecar 拥有的隔离 LibreOffice 会话
-        // （rules/13 §4.5），逐本打开/重算/保存/关闭；创建失败时保持旧的
-        // 逐本 sidecar 路径作为有界回退。
-        match request
-            .sidecar_path
-            .as_deref()
-            .ok_or_else(|| anyhow::anyhow!("缺少公式重算 sidecar"))
-            .and_then(|sidecar| S1RecalculationSession::new(sidecar, &request.calc_engine))
+    } else {
+        None
+    });
+    // Keep one private WPS COM session available for workbooks that Excel
+    // cannot open for DisplayFormat inspection. It is started lazily and then
+    // reused for the remaining files in this batch.
+    let conditional_display_wps_fallback = std::cell::RefCell::new(None::<S1RecalculationSession>);
+    let use_linux_lo_batch = !cfg!(windows)
+        && matches!(request.calc_engine.as_str(), "auto" | "lo")
+        && request.sidecar_path.is_some();
+    let mut linux_batch_results: Option<VecDeque<Result<S1FormulaCopyOutcome>>> = None;
+    let mut linux_batch_index = 0usize;
+    let session_initialization_us = session_initialization_started.elapsed().as_micros();
+    let mut display_probe = |workbook_path: &Path,
+                             scan_areas: &[String]|
+     -> Result<crate::conditional_format::ConditionalDisplayScan> {
+        #[cfg(windows)]
         {
-            Ok(session) => Some(session),
-            Err(error) => {
-                eprintln!(
-                    "S1-F01 Linux 公式重算会话创建失败，回退逐本 sidecar 路径：{error:#}"
+            let primary_scan = recalculation_session
+                .borrow_mut()
+                .as_mut()
+                .context("S1-F01 原生 Office COM session 不可用")?
+                .scan_conditional_display_colors(workbook_path, scan_areas);
+            let retry_with_wps = match &primary_scan {
+                Ok(scan) => !is_wps_com_engine(&scan.engine_name),
+                Err(_) => true,
+            };
+            let scan = match primary_scan.and_then(require_complete_com_display_scan) {
+                Ok(scan) => scan,
+                Err(primary_error)
+                    if retry_with_wps && matches!(request.calc_engine.as_str(), "auto" | "lo") =>
+                {
+                    let wps_scan = {
+                        let mut fallback = conditional_display_wps_fallback.borrow_mut();
+                        if fallback.is_none() {
+                            *fallback = Some(
+                                S1RecalculationSession::new_native("wps")
+                                    .context("启动 S1-F01 专用 WPS 显示色回退会话")?,
+                            );
+                        }
+                        fallback
+                            .as_mut()
+                            .context("S1-F01 WPS 显示色回退会话初始化失败")?
+                            .scan_conditional_display_colors(workbook_path, scan_areas)
+                    };
+                    match wps_scan.and_then(require_complete_com_display_scan) {
+                        Ok(scan) => {
+                            if let Some(app) = state {
+                                let mut ui = app.lock();
+                                push_warn_log(
+                                    &mut ui.value,
+                                    format!(
+                                        "S1-F01 首选 COM DisplayFormat 扫描失败，已使用复用的 WPS COM 会话完成扫描：{}；首选引擎原因：{}",
+                                        workbook_path.file_name().map(|name| name.to_string_lossy()).unwrap_or_default(),
+                                        primary_error
+                                    ),
+                                );
+                            }
+                            scan
+                        }
+                        Err(wps_error) => {
+                            let error = anyhow::anyhow!(
+                                "首选 Office COM 显示色扫描失败：{primary_error:#}；WPS COM 回退也失败：{wps_error:#}"
+                            );
+                            if let Some(app) = state {
+                                let mut ui = app.lock();
+                                push_warn_log(
+                                    &mut ui.value,
+                                    format!(
+                                        "S1-F01 条件格式 COM 显示色扫描失败：{}；{}",
+                                        workbook_path
+                                            .file_name()
+                                            .map(|name| name.to_string_lossy())
+                                            .unwrap_or_default(),
+                                        error
+                                    ),
+                                );
+                            }
+                            return Err(error);
+                        }
+                    }
+                }
+                Err(error) => {
+                    if let Some(app) = state {
+                        let mut ui = app.lock();
+                        push_warn_log(
+                            &mut ui.value,
+                            format!(
+                                "S1-F01 条件格式显示色扫描失败：{}；{}",
+                                workbook_path
+                                    .file_name()
+                                    .map(|name| name.to_string_lossy())
+                                    .unwrap_or_default(),
+                                error
+                            ),
+                        );
+                    }
+                    return Err(error);
+                }
+            };
+            if let Some(app) = state {
+                let mut ui = app.lock();
+                push_log(
+                    &mut ui.value,
+                    format!(
+                        "S1-F01 条件格式显示色扫描：{}；引擎={}；扫描 {} 格；实际颜色变化 {} 处；诊断 {} 条",
+                        workbook_path.file_name().map(|name| name.to_string_lossy()).unwrap_or_default(),
+                        scan.engine_name.as_str(),
+                        scan.scanned_cells,
+                        scan.changes.len(),
+                        scan.diagnostics.len()
+                    ),
                 );
-                None
+                for diagnostic in scan.diagnostics.iter().take(3) {
+                    push_warn_log(&mut ui.value, diagnostic.clone());
+                }
             }
+            Ok(scan)
         }
+        #[cfg(not(windows))]
+        {
+            let _ = (workbook_path, scan_areas);
+            anyhow::bail!("当前平台没有 Excel COM DisplayFormat 能力，条件格式显示色未能实测")
+        }
+    };
+    // 条件格式判定方式：PYTHON=纯 OOXML 规则求值（不启动 COM 显示扫描）；
+    // COM_DISPLAY=显示扫描作为触发事实（Windows 渲染基线）。COM_EVALUATE
+    // 未实现，任务开始前明确失败。
+    let conditional_format_evaluator = crate::app_settings::AppSettings::load()
+        .conditional_format_evaluator()
+        .to_owned();
+    anyhow::ensure!(
+        conditional_format_evaluator != "COM_EVALUATE",
+        "条件格式判定方式 COM_EVALUATE（Excel/WPS 公式引擎逐条求值）尚未在本产品实现；请在高级设置改用 PYTHON 或 COM_DISPLAY"
+    );
+    let display_probe_enabled = conditional_format_evaluator == "COM_DISPLAY";
+    let mut display_probe_opt: Option<
+        &mut dyn FnMut(
+            &Path,
+            &[String],
+        ) -> Result<crate::conditional_format::ConditionalDisplayScan>,
+    > = if display_probe_enabled {
+        Some(&mut display_probe)
     } else {
         None
     };
-    let session_initialization_us = session_initialization_started.elapsed().as_micros();
-    let mut output = execute_s1_f1_workflow_with_progress(
+    let mut output = execute_s1_f1_workflow_with_progress_and_display(
         request,
         accepted,
         None,
         |item, request, audit_copy, modifier| {
-            if let Some(slot) = work_slot.as_ref() {
-                // 每文件开始：工作簿名 + 复制阶段 + 序号（真实节点，非预估）。
-                current_work_update(
-                    slot,
-                    json!({
-                        "workbook": item.source.file_name().map(|name| name.to_string_lossy().into_owned()),
-                        "stage": "复制公式",
-                        "index": accepted.iter().position(|accepted_item| accepted_item.source == item.source).map(|p| p + 1),
-                    }),
-                );
-                if let Some(app) = state {
-                    current_work_publish(app, slot);
-                }
-            }
-            if let Some(session) = recalculation_session.as_mut() {
+            let outcome = if let Some(session) = recalculation_session.borrow_mut().as_mut() {
                 execute_s1_formula_copy_with_manual_recovery_session(
                     &item.source,
                     &item.template,
@@ -3651,6 +3724,63 @@ fn execute_s1_f1_workflow(
                     modifier,
                     session,
                 )
+            } else if use_linux_lo_batch {
+                if linux_batch_results.is_none() {
+                    ensure!(
+                        accepted.first().is_some_and(|first| {
+                            web_path_identity(&first.source) == web_path_identity(&item.source)
+                        }),
+                        "Linux S1-F1 LibreOffice 批次没有从首个输入开始"
+                    );
+                    let sidecar = request
+                        .sidecar_path
+                        .as_deref()
+                        .context("Linux S1-F1 LibreOffice 批次缺少重算 sidecar")?;
+                    let batch_items = accepted
+                        .iter()
+                        .enumerate()
+                        .map(|(index, source)| {
+                            Ok((
+                                source.source.clone(),
+                                source.template.clone(),
+                                request
+                                    .run_directory
+                                    .join(s1_recalculated_filename(index + 1, &source.source)?),
+                            ))
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+                    ensure!(
+                        batch_items
+                            .first()
+                            .is_some_and(|first| first.2.as_path() == audit_copy),
+                        "Linux S1-F1 批次输出路径与恢复清单不一致"
+                    );
+                    // Formula-copy editing is independent per source. Prepare
+                    // all candidates first, then reuse one LibreOffice process
+                    // for the full batch. A batch failure returns retained
+                    // cache-cleared copies for the existing S1-F3 recovery flow.
+                    linux_batch_results = Some(VecDeque::from(
+                        execute_s1_formula_copy_batch_with_manual_recovery(
+                            &batch_items,
+                            request.mapping_config.as_deref(),
+                            request.external_data.as_deref(),
+                            sidecar,
+                            modifier,
+                        ),
+                    ));
+                }
+                let expected = accepted
+                    .get(linux_batch_index)
+                    .context("Linux S1-F1 批次结果顺序超出输入列表")?;
+                ensure!(
+                    web_path_identity(&expected.source) == web_path_identity(&item.source),
+                    "Linux S1-F1 批次结果与当前源文件顺序不一致"
+                );
+                linux_batch_index += 1;
+                linux_batch_results
+                    .as_mut()
+                    .and_then(VecDeque::pop_front)
+                    .context("Linux S1-F1 LibreOffice 批次结果缺失")?
             } else {
                 execute_s1_formula_copy_with_manual_recovery(
                     &item.source,
@@ -3662,7 +3792,9 @@ fn execute_s1_f1_workflow(
                     modifier,
                     &request.calc_engine,
                 )
-            }
+            }?;
+            log_s1_excel_open_repair(state, &item.source, &outcome);
+            Ok(outcome)
         },
         |item, index, stage| {
             let Some(slot) = work_slot.as_ref() else {
@@ -3704,25 +3836,83 @@ fn execute_s1_f1_workflow(
                 );
             }
         },
+        display_probe_opt,
     )?;
     let session_shutdown_started = Instant::now();
-    drop(recalculation_session);
+    drop(conditional_display_wps_fallback.into_inner());
+    drop(recalculation_session.into_inner());
     let session_shutdown_us = session_shutdown_started.elapsed().as_micros();
     output.performance_timings["recalculationSessionInitializationUs"] =
         json!(session_initialization_us);
-    output.performance_timings["recalculationSessionShutdownUs"] =
-        json!(session_shutdown_us);
+    output.performance_timings["recalculationSessionShutdownUs"] = json!(session_shutdown_us);
     output.performance_timings["workflowAdapterTotalUs"] =
         json!(adapter_started.elapsed().as_micros());
     Ok(output)
+}
+
+fn is_wps_com_engine(engine_name: &str) -> bool {
+    engine_name.eq_ignore_ascii_case("ket.Application")
+        || engine_name.eq_ignore_ascii_case("KET.Application")
+        || engine_name.to_ascii_lowercase().contains("wps")
+}
+
+fn require_complete_com_display_scan(
+    scan: crate::conditional_format::ConditionalDisplayScan,
+) -> Result<crate::conditional_format::ConditionalDisplayScan> {
+    anyhow::ensure!(
+        scan.engine_name.eq_ignore_ascii_case("Excel.Application")
+            || is_wps_com_engine(&scan.engine_name),
+        "条件格式显示色需要 Excel/WPS COM DisplayFormat；当前引擎 {} 不作为颜色判定基准，改用静态求值并标记部分完成",
+        scan.engine_name
+    );
+    if let Some(diagnostic) = scan.diagnostics.first() {
+        anyhow::bail!(
+            "Excel/WPS COM 显示色扫描不完整（{} 条诊断），改用静态求值并标记部分完成：{}",
+            scan.diagnostics.len(),
+            diagnostic
+        );
+    }
+    Ok(scan)
 }
 
 fn execute_s1_f1_workflow_with_progress<F, P>(
     request: &S1F1PreflightRequest,
     accepted: &[S1F1AcceptedSource],
     recovery_store: Option<S1RecoveryStore>,
+    copy_executor: F,
+    publish_stage: P,
+) -> Result<S1F1WorkflowOutput>
+where
+    F: FnMut(
+        &S1F1AcceptedSource,
+        &S1F1PreflightRequest,
+        &Path,
+        &ExcelModifier,
+    ) -> Result<S1FormulaCopyOutcome>,
+    P: FnMut(Option<&S1F1AcceptedSource>, Option<usize>, &str),
+{
+    execute_s1_f1_workflow_with_progress_and_display(
+        request,
+        accepted,
+        recovery_store,
+        copy_executor,
+        publish_stage,
+        None,
+    )
+}
+
+fn execute_s1_f1_workflow_with_progress_and_display<F, P>(
+    request: &S1F1PreflightRequest,
+    accepted: &[S1F1AcceptedSource],
+    recovery_store: Option<S1RecoveryStore>,
     mut copy_executor: F,
     mut publish_stage: P,
+    mut display_probe: Option<
+        &mut dyn FnMut(
+            &Path,
+            &[String],
+        ) -> Result<crate::conditional_format::ConditionalDisplayScan>,
+    >,
 ) -> Result<S1F1WorkflowOutput>
 where
     F: FnMut(
@@ -3829,6 +4019,7 @@ where
         recovery_files,
     );
     manifest.external_data = request.external_data.clone();
+    manifest.conditional_format_source = request.conditional_format_source.clone();
     store
         .save(&mut manifest)
         .context("保存 S1-F01 正式审核前的恢复任务清单")?;
@@ -3935,6 +4126,7 @@ where
                     "recalculationEngine": "manual_pending",
                     "formulaCellsPrepared": copy.formula_cells_prepared,
                     "externalSheetsImported": copy.external_sheets_imported,
+                    "excelOpenRepair": excel_open_repair_json(copy.excel_open_repair.as_ref()),
                     "reason": copy.reason
                 }));
                 file_results.push(json!({
@@ -3942,7 +4134,8 @@ where
                     "status": manifest.files[file_index].status.as_str(),
                     "reason": manifest.files[file_index].reason,
                     "auditWorkbook": copy.audit_copy,
-                    "formulaCells": formula_count
+                    "formulaCells": formula_count,
+                    "excelOpenRepair": excel_open_repair_json(copy.excel_open_repair.as_ref())
                 }));
                 store.save(&mut manifest)?;
             }
@@ -4003,11 +4196,53 @@ where
                 publish_stage(
                     Some(item),
                     Some(accepted_index + 1),
-                    "提取公式与条件格式异常",
+                    "读取条件格式区域实际显示填充色",
                 );
                 let extraction_started = Instant::now();
-                let extracted =
-                    extract_s1_audit_copy(item, &item.source, &audit_workbook, &metadata);
+                let conditional_workbook = s1_conditional_format_workbook(
+                    &item.source,
+                    &audit_workbook,
+                    &request.conditional_format_source,
+                );
+                let (conditional_scan_areas, conditional_scan_area_source, display_observation) =
+                    match s1_f1_conditional_scan_area_plan(item, conditional_workbook) {
+                        Ok(plan) if plan.no_rules => (
+                            plan.areas,
+                            plan.source,
+                            Some(Ok(crate::conditional_format::ConditionalDisplayScan {
+                                engine_name: "no_conditional_rules".to_owned(),
+                                ..Default::default()
+                            })),
+                        ),
+                        Ok(plan) => {
+                            let observation = display_probe.as_mut().map(|probe| {
+                                (**probe)(conditional_workbook, &plan.areas)
+                                    .map_err(|error| format!("{error:#}"))
+                            });
+                            (plan.areas, plan.source, observation)
+                        }
+                        Err(error) => (
+                            item.preflight.scan_areas.clone(),
+                            "selected_workbook_ooxml_rule_targets_unavailable",
+                            Some(Err(format!("{error:#}"))),
+                        ),
+                    };
+                publish_stage(
+                    Some(item),
+                    Some(accepted_index + 1),
+                    "提取公式与条件格式异常",
+                );
+                let extracted = extract_s1_audit_copy_with_display_observation_and_scan_areas(
+                    item,
+                    &item.source,
+                    &audit_workbook,
+                    &request.conditional_format_source,
+                    &metadata,
+                    &conditional_scan_areas,
+                    display_observation,
+                    crate::app_settings::AppSettings::load()
+                        .conditional_format_include_blank_cells(),
+                );
                 let file_issue_extraction_us = extraction_started.elapsed().as_micros();
                 issue_extraction_us += file_issue_extraction_us;
                 let (file_formula_extraction_us, file_conditional_extraction_us) =
@@ -4033,7 +4268,9 @@ where
                     "conditionalFormatExtractionUs": file_conditional_extraction_us,
                     "issueExtractionOtherUs": file_issue_extraction_us
                         .saturating_sub(file_formula_extraction_us)
-                        .saturating_sub(file_conditional_extraction_us)
+                        .saturating_sub(file_conditional_extraction_us),
+                    "conditionalScanAreaSource": conditional_scan_area_source,
+                    "conditionalScanAreaCount": conditional_scan_areas.len()
                 }));
                 match extracted {
                     Ok(extracted) => {
@@ -4067,13 +4304,19 @@ where
                     "recalculationEngine": execution.recalculation.engine,
                     "formulaCellsPrepared": execution.formula_cells_prepared,
                     "externalSheetsImported": execution.external_sheets_imported,
-                    "formulaCells": formula_count
+                    "excelOpenRepair": excel_open_repair_json(execution.excel_open_repair.as_ref()),
+                    "formulaCells": formula_count,
+                    "conditionalScanAreaSource": conditional_scan_area_source,
+                    "conditionalScanAreaCount": conditional_scan_areas.len()
                 }));
                 file_results.push(json!({
                     "sourceFile": item.source,
                     "status": manifest.files[file_index].status.as_str(),
                     "reason": manifest.files[file_index].reason,
-                    "auditWorkbook": audit_workbook
+                    "auditWorkbook": audit_workbook,
+                    "conditionalScanAreaSource": conditional_scan_area_source,
+                    "conditionalScanAreaCount": conditional_scan_areas.len(),
+                    "excelOpenRepair": excel_open_repair_json(execution.excel_open_repair.as_ref())
                 }));
                 store.save(&mut manifest)?;
             }
@@ -4290,18 +4533,131 @@ fn s1_f1_template_preflight(
         .filter(|item| item.level == "错误")
         .map(|item| format!("{} {}：{}", item.sheet_name, item.location, item.message))
         .collect::<Vec<_>>();
-    let scan_area_count = area_plan.scan_areas.len();
+    let (scan_areas, scan_area_source) = if area_plan.scan_areas.is_empty() {
+        // Some production templates store conditional formatting directly in
+        // worksheet XML but omit a matching `条件格式区域` defined name. In
+        // that case, use only the explicit OOXML sqref targets; never expand
+        // the scan to whole worksheets or the workbook used range.
+        let rule_areas = excel_reader::read_conditional_formatting_areas(template_path)
+            .context("读取模板 OOXML 条件格式规则目标区域")?;
+        let scan_areas = rule_areas
+            .into_iter()
+            .map(|area| format!("'{}'!{}", area.sheet_name.replace('\'', "''"), area.address))
+            .collect::<Vec<_>>();
+        let source = if scan_areas.is_empty() {
+            "missing"
+        } else {
+            "ooxml_rule_targets"
+        };
+        (scan_areas, source.to_owned())
+    } else {
+        (area_plan.scan_areas, "defined_names".to_owned())
+    };
+    let scan_area_count = scan_areas.len();
     let structure_area_count = area_plan.structure_ranges.len();
     Ok(S1F1TemplatePreflight {
         structure,
         rule_plan,
-        scan_areas: area_plan.scan_areas,
+        conditional_mappings: mappings,
+        scan_areas,
+        scan_area_source,
         structure_ranges: area_plan.structure_ranges,
         scan_area_count,
         structure_area_count,
         health_passed: health.passed,
         health_errors,
     })
+}
+
+#[derive(Clone, Debug)]
+struct S1F1ConditionalScanAreaPlan {
+    areas: Vec<String>,
+    source: &'static str,
+    no_rules: bool,
+}
+
+fn resolve_s1_f1_conditional_scan_area_plan(
+    selected_workbook_named_areas: &[String],
+    workbook_rule_areas: &[excel_reader::ConditionalFormattingArea],
+) -> Result<S1F1ConditionalScanAreaPlan> {
+    if workbook_rule_areas.is_empty() {
+        return Ok(S1F1ConditionalScanAreaPlan {
+            areas: Vec::new(),
+            source: "selected_workbook_no_conditional_rules",
+            no_rules: true,
+        });
+    }
+
+    // 扫描范围以 OOXML 规则 sqref 为准（Excel 真实口径：条件格式按规则
+    // AppliesTo 生效）。命名区域只在规则 sqref 解析失败时兜底，避免按业务
+    // 命名区域收窄而漏掉 sqref 内的触发（对齐基线 257 条含 sqref 内全部格）。
+    let areas = workbook_rule_areas
+        .iter()
+        .map(|area| format!("'{}'!{}", area.sheet_name.replace('\'', "''"), area.address))
+        .collect::<Vec<_>>();
+    anyhow::ensure!(
+        !areas.is_empty(),
+        "条件格式规则存在，但未能从所选工作簿解析任何 sqref 扫描区域"
+    );
+    Ok(S1F1ConditionalScanAreaPlan {
+        areas,
+        source: "selected_workbook_ooxml_rule_targets",
+        no_rules: false,
+    })
+}
+
+fn s1_f1_conditional_scan_area_plan(
+    item: &S1F1AcceptedSource,
+    conditional_workbook: &Path,
+) -> Result<S1F1ConditionalScanAreaPlan> {
+    let rule_areas = excel_reader::read_conditional_formatting_areas(conditional_workbook)
+        .map(|mut areas| {
+            if std::env::var_os("AUDIT_DEBUG_SCAN_PLAN").is_some() {
+                eprintln!(
+                    "S1F01-SCAN-PLAN file={} areas={:?}",
+                    item.source
+                        .file_name()
+                        .map(|name| name.to_string_lossy().into_owned())
+                        .unwrap_or_default(),
+                    areas
+                        .iter()
+                        .map(|area| format!("{}!{}", area.sheet_name, area.address))
+                        .collect::<Vec<_>>()
+                );
+            }
+            areas
+        })
+        .with_context(|| {
+            format!(
+                "读取所选条件格式工作簿的 OOXML 规则范围失败：{}",
+                conditional_workbook.display()
+            )
+        })?;
+    if rule_areas.is_empty() {
+        return resolve_s1_f1_conditional_scan_area_plan(&[], &rule_areas);
+    }
+    let defined_names =
+        excel_reader::read_defined_names(conditional_workbook).with_context(|| {
+            format!(
+                "读取所选条件格式工作簿的命名区域失败：{}",
+                conditional_workbook.display()
+            )
+        })?;
+    let sheet_names = excel_reader::read_sheet_names(conditional_workbook).with_context(|| {
+        format!(
+            "读取所选条件格式工作簿的工作表目录失败：{}",
+            conditional_workbook.display()
+        )
+    })?;
+    let named_areas = named_areas_from_defined_names(&defined_names);
+    let name_plan = resolve_s1_conditional_area_plan(
+        &item.preflight.conditional_mappings,
+        None,
+        &named_areas,
+        &sheet_names,
+    )
+    .context("按所选条件格式工作簿的命名区域解析条件格式扫描范围")?;
+    resolve_s1_f1_conditional_scan_area_plan(&name_plan.scan_areas, &rule_areas)
 }
 
 fn cached_s1_f1_template_preflight(
@@ -4377,9 +4733,10 @@ fn start_dag_flow(state: &AppState, args: &[Value]) -> std::result::Result<Value
     if workflow != "dag:汇总校验结果说明" {
         return Err(ApiError::new(
             StatusCode::NOT_IMPLEMENTED,
-            format!("Rust 迁移版尚未接通工作流：{workflow}"),
+            format!("当前审核工具尚未接入该工作流：{workflow}"),
         ));
     }
+    let task_started = Instant::now();
     let values = args.get(1).and_then(Value::as_object).ok_or_else(|| {
         ApiError::new(StatusCode::BAD_REQUEST, "启动 S1-F02 需要当前 GUI 路径设置")
     })?;
@@ -4401,8 +4758,9 @@ fn start_dag_flow(state: &AppState, args: &[Value]) -> std::result::Result<Value
             format!("解析 S1-F02 源目录失败：{error}"),
         )
     })?;
-    let source_files = s1_region_summary_source_workbooks(&input_dir, true)
-        .map_err(|error| ApiError::internal(format!("扫描 S1-F02 源文件失败：{error:#}")))?;
+    let source_files =
+        s1_region_summary_source_workbooks_with_depth(&input_dir, current_scan_depth(state))
+            .map_err(|error| ApiError::internal(format!("扫描 S1-F02 源文件失败：{error:#}")))?;
     if source_files.is_empty() {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
@@ -4786,7 +5144,7 @@ fn choose_central(state: &AppState, args: &[Value]) -> std::result::Result<Value
         _ => {
             return Err(ApiError::new(
                 StatusCode::NOT_IMPLEMENTED,
-                format!("Rust 迁移版暂不支持选择大集中路径：{field}"),
+                format!("当前审核工具暂不支持选择该大集中路径：{field}"),
             ));
         }
     };
@@ -5129,10 +5487,7 @@ fn run_s3_execution_compare_worker(
             });
             push_log(
                 &mut ui.value,
-                format!(
-                    "S3-F01 阶段：文件={}；{step}",
-                    current_file_display
-                ),
+                format!("S3-F01 阶段：文件={}；{step}", current_file_display),
             );
             push_detail_log(
                 &mut ui.value,
@@ -5198,6 +5553,22 @@ fn run_s3_execution_compare_worker(
                     format_elapsed(task_started.elapsed())
                 ),
             );
+            // 高级设置：完成后用系统默认程序自动打开比较结果工作簿（默认关闭）。
+            if crate::app_settings::AppSettings::load().central_auto_open_result() {
+                match open_path_with_default_app(&report.output_path) {
+                    Ok(()) => push_log(
+                        &mut ui.value,
+                        format!("已自动打开比较结果：{}", report.output_path.display()),
+                    ),
+                    Err(error) => push_log(
+                        &mut ui.value,
+                        format!(
+                            "自动打开比较结果失败（{}）：{error}",
+                            report.output_path.display()
+                        ),
+                    ),
+                }
+            }
         }
         Err(error) => {
             ui.value["status"] = json!("大集中执行比较失败");
@@ -5731,7 +6102,7 @@ fn persist_state_preferences(state: &AppState) -> std::result::Result<(), ApiErr
                 .to_owned(),
             ui.value["advancedSettings"]["editEngine"]
                 .as_str()
-                .unwrap_or("umya")
+                .unwrap_or("auto")
                 .to_owned(),
             ui.value.clone(),
         )
@@ -5746,13 +6117,9 @@ fn persist_state_preferences(state: &AppState) -> std::result::Result<(), ApiErr
                 .collect()
         })
         .unwrap_or_default();
-    crate::app_settings::AppSettings::store_preferences(
-        &calc_engine,
-        &edit_engine,
-        preferences,
-    )
-    .map(|_| ())
-    .map_err(|error| ApiError::internal(format!("保存用户设置失败：{error:#}")))
+    crate::app_settings::AppSettings::store_preferences(&calc_engine, &edit_engine, preferences)
+        .map(|_| ())
+        .map_err(|error| ApiError::internal(format!("保存用户设置失败：{error:#}")))
 }
 
 fn s3_production_modifier(feature: &str) -> std::result::Result<ExcelModifier, ApiError> {
@@ -5774,8 +6141,6 @@ fn s3_production_modifier(feature: &str) -> std::result::Result<ExcelModifier, A
     }
     Ok(modifier)
 }
-
-
 
 fn start_central_indicator_split(state: &AppState) -> std::result::Result<Value, ApiError> {
     let task_started = Instant::now();
@@ -6467,7 +6832,10 @@ fn run_s3_current_value_check_worker(
                 "workbook": current_file.file_name().map(|name| name.to_string_lossy().into_owned()),
                 "stage": stage,
             });
-            push_log(&mut ui.value, format!("S3-F04 阶段：文件={}；{}", current_file.display(), stage));
+            push_log(
+                &mut ui.value,
+                format!("S3-F04 阶段：文件={}；{}", current_file.display(), stage),
+            );
         },
     );
     let mut ui = state.lock();
@@ -6571,7 +6939,7 @@ fn toggle_central_output_pin(
         _ => {
             return Err(ApiError::new(
                 StatusCode::NOT_IMPLEMENTED,
-                format!("Rust 迁移版暂不支持固定该输出目录：{kind}"),
+                format!("当前审核工具暂不支持固定该输出目录：{kind}"),
             ));
         }
     };
@@ -6849,7 +7217,7 @@ fn clear_period_path(state: &AppState, args: &[Value]) -> std::result::Result<Va
     ) {
         return Err(ApiError::new(
             StatusCode::NOT_IMPLEMENTED,
-            format!("Rust 迁移版暂不支持清除路径：{kind}"),
+            format!("当前审核工具暂不支持清除该路径：{kind}"),
         ));
     }
     let mut ui = state.lock();
@@ -6979,8 +7347,8 @@ fn browse_dir(_state: &AppState, args: &[Value]) -> std::result::Result<Value, A
 }
 
 fn start_period_compare_v2(state: &AppState) -> std::result::Result<Value, ApiError> {
-    let request = {
     let task_started = Instant::now();
+    let (request, scan_depth) = {
         let mut ui = state.lock();
         if ui.value["busy"] == true {
             return Ok(json!(false));
@@ -7044,6 +7412,7 @@ fn start_period_compare_v2(state: &AppState) -> std::result::Result<Value, ApiEr
             .filter(|path| !path.is_empty())
             .map(PathBuf::from)
             .unwrap_or_else(|| current_path.join("执行结果"));
+        let scan_depth = scan_depth_from_value(&ui.value["recursiveDepth"]);
         ui.value["busy"] = json!(true);
         clear_run_summary(&mut ui.value);
         ui.value["cancelRequested"] = json!(false);
@@ -7052,7 +7421,7 @@ fn start_period_compare_v2(state: &AppState) -> std::result::Result<Value, ApiEr
         ui.value["periodProgress"] = json!({
             "status": "running", "stage": "config", "label": "检查审核配置",
             "percent": 0, "current": 0, "total": 0,
-            "message": "准备执行 Rust S2 审核", "elapsedSeconds": 0
+            "message": "准备执行 S2 审核", "elapsedSeconds": 0
         });
         ui.started_at = Some(task_started);
         let request = S2RunRequest {
@@ -7065,29 +7434,43 @@ fn start_period_compare_v2(state: &AppState) -> std::result::Result<Value, ApiEr
         push_log(
             &mut ui.value,
             format!(
-                "Rust S2 开始：本期 {}；上期 {}；输出 {}",
+                "S2 开始：本期 {}；上期 {}；输出 {}",
                 request.current_directory.display(),
                 request.previous_directory.display(),
                 request.output_directory.display()
             ),
         );
-        request
+        (request, scan_depth)
     };
 
     let worker_state = state.clone();
     thread::Builder::new()
         .name("audit-s2-service".to_owned())
-        .spawn(move || run_s2_worker(worker_state, request, task_started)
+        .spawn(move || run_s2_worker(worker_state, request, scan_depth, task_started))
         .map_err(|error| {
             let mut ui = state.lock();
             ui.value["busy"] = json!(false);
-            ui.value["status"] = json!("无法启动 Rust S2 审核线程");
+            ui.value["currentWork"] = Value::Null;
+            ui.value["status"] = json!("无法启动 S2 审核线程");
+            publish_run_summary(
+                &mut ui.value,
+                "S2-F01",
+                format!(
+                    "任务启动失败；结果未生成；总耗时 {}；原因：{error}。",
+                    format_elapsed(task_started.elapsed())
+                ),
+            );
             ApiError::internal(format!("启动审核线程失败：{error}"))
         })?;
     Ok(json!(true))
 }
 
-fn run_s2_worker(state: AppState, request: S2RunRequest, task_started: Instant)
+fn run_s2_worker(
+    state: AppState,
+    request: S2RunRequest,
+    scan_depth: ScanDepth,
+    task_started: Instant,
+) {
     let mut active_stage: Option<(String, String, Instant)> = None;
     let mut active_workbook: Option<String> = None;
     let mut last_logged_workbook: Option<String> = None;
@@ -7098,8 +7481,7 @@ fn run_s2_worker(state: AppState, request: S2RunRequest, task_started: Instant)
                 .and_then(|extension| extension.to_str())
                 .is_some_and(|extension| {
                     extension.eq_ignore_ascii_case("xls") || extension.eq_ignore_ascii_case("xlsx")
-                })
-        {
+                }) {
             Some(event.message.clone())
         } else {
             None
@@ -7125,12 +7507,7 @@ fn run_s2_worker(state: AppState, request: S2RunRequest, task_started: Instant)
                 &mut ui.value,
                 format!(
                     "S2 阶段开始：{}；stage={}；engine={}；进度={}/{}；{}",
-                    event.label,
-                    event.stage,
-                    engine,
-                    event.current,
-                    event.total,
-                    event.message
+                    event.label, event.stage, engine, event.current, event.total, event.message
                 ),
             );
             active_stage = Some((event.stage.clone(), engine.to_owned(), Instant::now()));
@@ -7168,7 +7545,7 @@ fn run_s2_worker(state: AppState, request: S2RunRequest, task_started: Instant)
             stage_elapsed,
         );
     };
-    let result = run_s2_audit(&request, Some(&mut on_progress));
+    let result = run_s2_audit_with_scan_depth(&request, scan_depth, Some(&mut on_progress));
     drop(on_progress);
     let failed_file = active_workbook.clone();
     let failed_stage = active_stage.as_ref().map(|(stage, _, _)| stage.clone());
@@ -7225,7 +7602,10 @@ fn run_s2_worker(state: AppState, request: S2RunRequest, task_started: Instant)
                 report_path,
                 format_elapsed(task_started.elapsed())
             );
-            ui.value["status"] = json!(format!("跨期比较完成；总耗时 {}", format_elapsed(task_started.elapsed())));
+            ui.value["status"] = json!(format!(
+                "跨期比较完成；总耗时 {}",
+                format_elapsed(task_started.elapsed())
+            ));
             publish_run_summary(&mut ui.value, "S2-F01", final_summary);
         }
         Err(error) => {
@@ -7271,7 +7651,10 @@ fn run_s2_worker(state: AppState, request: S2RunRequest, task_started: Instant)
                     "任务失败；位置={}；结果未生成；总耗时 {}；原因：{error:#}。",
                     failed_file
                         .as_deref()
-                        .map(|file| format!("文件 {file}，阶段 {}", failed_stage.as_deref().unwrap_or("未知阶段")))
+                        .map(|file| format!(
+                            "文件 {file}，阶段 {}",
+                            failed_stage.as_deref().unwrap_or("未知阶段")
+                        ))
                         .unwrap_or_else(|| "未能定位到工作簿".to_owned()),
                     format_elapsed(task_started.elapsed())
                 ),
@@ -7326,6 +7709,7 @@ fn update_state(state: &AppState, args: &[Value]) -> std::result::Result<Value, 
     }
     let previous_input = ui.value["input"].as_str().unwrap_or_default().to_owned();
     let mut input_changed = false;
+    let mut recursive_depth_changed = false;
     let mut explicit_output = false;
     for (key, value) in updates {
         match key.as_str() {
@@ -7364,6 +7748,16 @@ fn update_state(state: &AppState, args: &[Value]) -> std::result::Result<Value, 
                 }
                 ui.value[key] = value.clone();
             }
+            "recursiveDepth" => {
+                let Some(depth) = value.as_i64().filter(|depth| (-1..=10).contains(depth)) else {
+                    return Err(ApiError::new(
+                        StatusCode::BAD_REQUEST,
+                        "递归扫描深度必须是 -1 到 10 的整数（-1 表示最深层，0 表示当前目录）",
+                    ));
+                };
+                recursive_depth_changed = ui.value["recursiveDepth"].as_i64() != Some(depth);
+                ui.value["recursiveDepth"] = json!(depth);
+            }
             "centralExpressionSchema"
                 if matches!(value.as_str(), Some("FIVE_SEGMENT_V1" | "LEGACY_8")) =>
             {
@@ -7386,6 +7780,68 @@ fn update_state(state: &AppState, args: &[Value]) -> std::result::Result<Value, 
                     ));
                 }
                 ui.value[key] = value.clone();
+            }
+            "conditionalFormatIncludeBlankCells"
+            | "centralTrimIndicatorNames"
+            | "centralAutoOpenResult" => {
+                if !value.is_boolean() {
+                    return Err(ApiError::new(
+                        StatusCode::BAD_REQUEST,
+                        format!("{key} 必须是布尔值"),
+                    ));
+                }
+                ui.value[key] = value.clone();
+            }
+            "conditionalFormatEvaluator" => {
+                let text = value.as_str().unwrap_or_default();
+                if text == "COM_EVALUATE" {
+                    return Err(ApiError::new(
+                        StatusCode::BAD_REQUEST,
+                        "COM_EVALUATE（Excel/WPS 公式引擎逐条求值）尚未在本产品实现；可用 PYTHON（OOXML 规则求值）或 COM_DISPLAY（实际显示填充）",
+                    ));
+                }
+                let validated =
+                    crate::app_settings::validate_preference(key, value).map_err(|error| {
+                        ApiError::new(StatusCode::BAD_REQUEST, format!("{error:#}"))
+                    })?;
+                ui.value[key] = validated;
+                push_log(
+                    &mut ui.value,
+                    format!(
+                        "条件格式判定方式已更新：{}",
+                        if text == "COM_DISPLAY" {
+                            "COM_DISPLAY（Excel/WPS 实际显示填充）"
+                        } else {
+                            "PYTHON（OOXML 规则求值）"
+                        }
+                    ),
+                );
+            }
+            "centralTolerance" => {
+                let validated =
+                    crate::app_settings::validate_preference(key, value).map_err(|error| {
+                        ApiError::new(StatusCode::BAD_REQUEST, format!("{error:#}"))
+                    })?;
+                ui.value[key] = validated;
+            }
+            "s1ConditionalFormatSource" => {
+                let source =
+                    crate::app_settings::validate_preference(key, value).map_err(|error| {
+                        ApiError::new(StatusCode::BAD_REQUEST, format!("{error:#}"))
+                    })?;
+                let selected_source = source.as_str().unwrap_or("source").to_owned();
+                ui.value[key] = source;
+                push_log(
+                    &mut ui.value,
+                    format!(
+                        "S1-F01 条件格式提取来源已更新：{}",
+                        if selected_source == "audit_copy" {
+                            "复制校验区域并重算后的审核副本"
+                        } else {
+                            "原始源文件"
+                        }
+                    ),
+                );
             }
             "filePickerMode"
                 if matches!(
@@ -7422,10 +7878,10 @@ fn update_state(state: &AppState, args: &[Value]) -> std::result::Result<Value, 
                     .unwrap_or(
                         ui.value["advancedSettings"]["editEngine"]
                             .as_str()
-                            .unwrap_or("umya"),
+                            .unwrap_or("auto"),
                     );
                 if edit == "openpyxl" {
-                    let (available, detail) = crate::app_settings::openpyxl_evidence_status();
+                    let (available, detail) = crate::app_settings::openpyxl_selection_status();
                     if !available {
                         return Err(ApiError::new(
                             StatusCode::BAD_REQUEST,
@@ -7433,14 +7889,12 @@ fn update_state(state: &AppState, args: &[Value]) -> std::result::Result<Value, 
                         ));
                     }
                 }
-                let settings = crate::app_settings::AppSettings::store(calc, edit)
-                    .map_err(|error| {
+                let settings =
+                    crate::app_settings::AppSettings::store(calc, edit).map_err(|error| {
                         ApiError::new(StatusCode::BAD_REQUEST, format!("{error:#}"))
                     })?;
-                ui.value["advancedSettings"]["calcEngine"] =
-                    json!(settings.calc_engine.as_str());
-                ui.value["advancedSettings"]["editEngine"] =
-                    json!(settings.edit_engine.as_str());
+                ui.value["advancedSettings"]["calcEngine"] = json!(settings.calc_engine.as_str());
+                ui.value["advancedSettings"]["editEngine"] = json!(settings.edit_engine.as_str());
                 push_log(
                     &mut ui.value,
                     format!(
@@ -7454,7 +7908,7 @@ fn update_state(state: &AppState, args: &[Value]) -> std::result::Result<Value, 
             _ => {
                 return Err(ApiError::new(
                     StatusCode::NOT_IMPLEMENTED,
-                    format!("Rust 迁移版暂不支持修改设置：{key}"),
+                    format!("当前审核工具暂不支持修改该设置：{key}"),
                 ));
             }
         }
@@ -7472,7 +7926,7 @@ fn update_state(state: &AppState, args: &[Value]) -> std::result::Result<Value, 
             .to_owned();
         let edit_engine = ui.value["advancedSettings"]["editEngine"]
             .as_str()
-            .unwrap_or("umya")
+            .unwrap_or("auto")
             .to_owned();
         let preferences: std::collections::BTreeMap<String, Value> = ui
             .value
@@ -7490,9 +7944,7 @@ fn update_state(state: &AppState, args: &[Value]) -> std::result::Result<Value, 
             &edit_engine,
             preferences,
         )
-        .map_err(|error| {
-            ApiError::internal(format!("保存用户设置失败：{error:#}"))
-        })?;
+        .map_err(|error| ApiError::internal(format!("保存用户设置失败：{error:#}")))?;
     }
     let input = ui.value["input"].as_str().unwrap_or_default().to_owned();
     if let Some(pinned) = updates.get("outputPinned").and_then(Value::as_bool) {
@@ -7507,7 +7959,14 @@ fn update_state(state: &AppState, args: &[Value]) -> std::result::Result<Value, 
     } else if input_changed && ui.value["outputPinned"] != true {
         ui.value["output"] = json!(s1_output_directory_following_input(&input));
     }
-    Ok(ui.value.clone())
+    let updated = ui.value.clone();
+    drop(ui);
+    if recursive_depth_changed {
+        refresh_s1_sources_for_scan_depth(state);
+        refresh_period_pairs(state);
+        return Ok(state.get_state());
+    }
+    Ok(updated)
 }
 
 fn s1_output_directory_following_input(input: &str) -> String {
@@ -7535,7 +7994,7 @@ fn browse_extensions(mode: &str) -> &'static [&'static str] {
 }
 
 fn refresh_period_pairs(state: &AppState) {
-    let (current, previous, old_warning) = {
+    let (current, previous, old_warning, scan_depth) = {
         let ui = state.lock();
         (
             ui.value["pcCurDir"]
@@ -7550,10 +8009,13 @@ fn refresh_period_pairs(state: &AppState) {
                 .as_str()
                 .unwrap_or_default()
                 .to_owned(),
+            scan_depth_from_value(&ui.value["recursiveDepth"]),
         )
     };
-    let warning = report_source_warning(current.as_deref(), previous.as_deref());
-    let pairs = list_period_pairs(current.as_deref(), previous.as_deref());
+    let warning =
+        report_source_warning_with_scan_depth(current.as_deref(), previous.as_deref(), scan_depth);
+    let pairs =
+        list_period_pairs_with_scan_depth(current.as_deref(), previous.as_deref(), scan_depth);
     let mut ui = state.lock();
     ui.value["periodSourceWarning"] = json!(warning);
     match pairs {
@@ -7718,7 +8180,11 @@ fn publish_run_summary(state: &mut Value, feature: &str, summary: String) {
 fn format_elapsed(elapsed: Duration) -> String {
     let total_ms = elapsed.as_millis();
     if total_ms >= 60_000 {
-        format!("{}分{:.1}秒", total_ms / 60_000, (total_ms % 60_000) as f64 / 1_000.0)
+        format!(
+            "{}分{:.1}秒",
+            total_ms / 60_000,
+            (total_ms % 60_000) as f64 / 1_000.0
+        )
     } else if total_ms < 1_000 {
         let total_ms = (elapsed.as_secs_f64() * 1_000.0).round() as u64;
         if total_ms == 0 {
@@ -7736,10 +8202,7 @@ fn format_elapsed(elapsed: Duration) -> String {
 /// 结构：{feature, workbook, sheet, stage, index, total, done, failed, skipped}
 type CurrentWorkSlot = std::sync::Arc<std::sync::Mutex<Value>>;
 
-fn current_work_update(
-    slot: &CurrentWorkSlot,
-    patch: Value,
-) {
+fn current_work_update(slot: &CurrentWorkSlot, patch: Value) {
     let mut work = slot.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     if !work.is_object() {
         *work = json!({});
@@ -7826,10 +8289,9 @@ mod tests {
         apply_s1_f3_recovery_state, browse_dir, cached_s1_f1_template_preflight,
         execute_s1_f1_workflow_with_progress, extract_s1_audit_copy_with_conditional_extractor,
         format_elapsed, progress_value, publish_run_summary, push_log, render_index,
-        run_s1_f3_worker_with_store, s1_f1_template_preflight, run_s1_f1_for_acceptance,
-        s1_f1_current_sheet, LOG_CAPACITY,
-        write_s1_recovery_manifest_result, AppState, S1F1AcceptedSource, S1F1OutputDirectoryGuard,
-        S1F1PreflightRequest,
+        require_complete_com_display_scan, run_s1_f1_for_acceptance, run_s1_f3_worker_with_store,
+        s1_f1_current_sheet, s1_f1_template_preflight, write_s1_recovery_manifest_result, AppState,
+        S1F1AcceptedSource, S1F1OutputDirectoryGuard, S1F1PreflightRequest, LOG_CAPACITY,
     };
     use crate::central_csv::EXPECTED_HEADERS;
     use crate::models::Issue;
@@ -7851,10 +8313,199 @@ mod tests {
         time::{Duration, SystemTime, UNIX_EPOCH},
     };
 
-    /// 把用户级设置文件（settings.json）隔离到测试专用目录：并发测试线程
-    /// 触碰白名单键都会触发持久化，不隔离会互相竞争并覆盖用户真实设置。
-    /// 整个测试进程只设定一次；并发写安全由 app_settings 的唯一 tmp 文件名
-    /// 与原子改名保证。
+    #[test]
+    fn conditional_scan_areas_fall_back_to_selected_workbook_rule_targets() {
+        let source_rules = [excel_reader::ConditionalFormattingArea {
+            sheet_name: "指标'sheet".to_owned(),
+            address: "A2:C9".to_owned(),
+        }];
+        let plan = super::resolve_s1_f1_conditional_scan_area_plan(&[], &source_rules)
+            .expect("derive scan target from selected workbook OOXML rules");
+
+        assert_eq!(plan.source, "selected_workbook_ooxml_rule_targets");
+        assert!(!plan.no_rules);
+        assert_eq!(plan.areas, ["'指标''sheet'!A2:C9"]);
+    }
+
+    #[test]
+    // 扫描范围已改为 OOXML sqref 优先（Excel 真实口径）；命名区域不再收窄。
+    #[test]
+    fn conditional_scan_areas_prefer_ooxml_rule_targets_over_defined_names() {
+        let selected_workbook_names = ["'指标'!B5:B20".to_owned()];
+        let source_rules = [excel_reader::ConditionalFormattingArea {
+            sheet_name: "指标".to_owned(),
+            address: "D1:D50".to_owned(),
+        }];
+        let plan = super::resolve_s1_f1_conditional_scan_area_plan(
+            &selected_workbook_names,
+            &source_rules,
+        )
+        .expect("use selected workbook named range");
+
+        assert_eq!(plan.source, "selected_workbook_ooxml_rule_targets");
+        assert_eq!(plan.areas, vec!["'指标'!D1:D50".to_owned()]);
+        assert!(!plan.no_rules);
+    }
+
+    #[test]
+    fn conditional_scan_areas_report_selected_workbook_without_rules() {
+        let plan = super::resolve_s1_f1_conditional_scan_area_plan(&[], &[])
+            .expect("no rules is a valid empty plan");
+
+        assert_eq!(plan.source, "selected_workbook_no_conditional_rules");
+        assert!(plan.areas.is_empty());
+        assert!(plan.no_rules);
+    }
+
+    #[test]
+    fn conditional_display_scan_accepts_complete_wps_com_observation() {
+        let scan = crate::conditional_format::ConditionalDisplayScan {
+            engine_name: "ket.Application".to_owned(),
+            scanned_cells: 1,
+            ..Default::default()
+        };
+
+        assert!(require_complete_com_display_scan(scan).is_ok());
+    }
+
+    #[test]
+    fn conditional_display_scan_rejects_incomplete_com_observation() {
+        let scan = crate::conditional_format::ConditionalDisplayScan {
+            engine_name: "ket.Application".to_owned(),
+            scanned_cells: 1,
+            diagnostics: vec!["Sheet1!A1 颜色不可读".to_owned()],
+            ..Default::default()
+        };
+
+        let error = require_complete_com_display_scan(scan)
+            .expect_err("incomplete COM observation must use static fallback");
+        assert!(error.to_string().contains("扫描不完整"));
+        assert!(error.to_string().contains("颜色不可读"));
+    }
+
+    #[test]
+    fn conditional_display_scan_accepts_complete_excel_observation() {
+        let scan = crate::conditional_format::ConditionalDisplayScan {
+            engine_name: "Excel.Application".to_owned(),
+            scanned_cells: 1,
+            ..Default::default()
+        };
+
+        assert!(require_complete_com_display_scan(scan).is_ok());
+    }
+
+    #[test]
+    fn conditional_display_scan_rejects_non_office_engine() {
+        let scan = crate::conditional_format::ConditionalDisplayScan {
+            engine_name: "LibreOffice".to_owned(),
+            ..Default::default()
+        };
+
+        let error = require_complete_com_display_scan(scan)
+            .expect_err("non-COM engine must not be treated as DisplayFormat observation");
+        assert!(error.to_string().contains("Excel/WPS COM DisplayFormat"));
+    }
+
+    #[test]
+    fn run_log_keeps_append_sequence_and_final_summary_beyond_ring_buffer() {
+        let mut state = json!({"log": [], "logVersion": 0, "lastRunSummary": null});
+        push_log(&mut state, "同一阶段".to_owned());
+        push_log(&mut state, "同一阶段".to_owned());
+        assert_eq!(state["log"].as_array().unwrap().len(), 1);
+        assert_eq!(state["logVersion"], 1);
+
+        for index in 0..LOG_CAPACITY + 1 {
+            push_log(&mut state, format!("阶段 {index}"));
+        }
+        publish_run_summary(
+            &mut state,
+            "S3-F05",
+            "生成工作簿 2 个；总耗时 31 毫秒。".to_owned(),
+        );
+
+        let entries = state["log"].as_array().unwrap();
+        assert_eq!(entries.len(), LOG_CAPACITY);
+        assert!(entries
+            .windows(2)
+            .all(|pair| pair[0]["seq"].as_u64() < pair[1]["seq"].as_u64()));
+        assert!(entries.last().unwrap()["text"]
+            .as_str()
+            .unwrap()
+            .contains("S3-F05 最终摘要"));
+        assert_eq!(
+            state["lastRunSummary"]["text"],
+            "生成工作簿 2 个；总耗时 31 毫秒。"
+        );
+    }
+
+    #[test]
+    fn elapsed_time_format_does_not_round_short_runs_to_zero_seconds() {
+        assert_eq!(format_elapsed(Duration::from_millis(37)), "37 毫秒");
+        assert_eq!(format_elapsed(Duration::ZERO), "小于 1 毫秒");
+        assert_eq!(format_elapsed(Duration::from_millis(1_234)), "1.2秒");
+        assert_eq!(format_elapsed(Duration::from_millis(61_200)), "1分1.2秒");
+    }
+
+    // 把用户级设置文件（settings.json）隔离到测试专用目录。隔离目录
+    // 在进程内只设定一次；所有触发偏好持久化的测试及修改环境变量的
+    // 测试通过共享锁串行化，避免写入其他测试刚删除的目录。
+    thread_local! {
+        static AUDIT_STATE_ENV_LOCK_HELD: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
+
+    struct AuditStateEnvTestGuard {
+        guard: Option<std::sync::MutexGuard<'static, ()>>,
+    }
+
+    impl Drop for AuditStateEnvTestGuard {
+        fn drop(&mut self) {
+            if self.guard.is_some() {
+                AUDIT_STATE_ENV_LOCK_HELD.with(|held| held.set(false));
+            }
+        }
+    }
+
+    fn audit_state_env_guard() -> AuditStateEnvTestGuard {
+        if AUDIT_STATE_ENV_LOCK_HELD.with(std::cell::Cell::get) {
+            return AuditStateEnvTestGuard { guard: None };
+        }
+        let guard = crate::app_settings::AUDIT_STATE_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        AUDIT_STATE_ENV_LOCK_HELD.with(|held| held.set(true));
+        AuditStateEnvTestGuard { guard: Some(guard) }
+    }
+
+    /// Settings access uses process-global AUDIT_STATE_DIR. Serialize test
+    /// dispatches that persist preferences or initialize an engine from the
+    /// settings file, not only tests that explicitly replace the environment.
+    fn dispatch_api(
+        state: &AppState,
+        method: &str,
+        args: &[Value],
+    ) -> std::result::Result<Value, super::ApiError> {
+        let persists_preferences = matches!(
+            method,
+            "choose_central"
+                | "choose_history_config"
+                | "choose_period_compare"
+                | "start_dag_flow"
+                | "import_central_explanation_feedback"
+                | "start_central_indicator_split"
+        ) || (method == "update"
+            && args
+                .first()
+                .and_then(Value::as_object)
+                .is_some_and(|values| {
+                    values.contains_key("advancedSettings")
+                        || values
+                            .keys()
+                            .any(|key| crate::app_settings::preference_spec(key).is_some())
+                }));
+        let _settings_env_guard = persists_preferences.then(audit_state_env_guard);
+        super::dispatch_api(state, method, args)
+    }
+
     pub(crate) fn isolate_settings_state_dir() {
         static ISOLATED: std::sync::Once = std::sync::Once::new();
         // 首个测试状态创建时才设定隔离目录；已自行设置 AUDIT_STATE_DIR 的
@@ -7879,51 +8530,11 @@ mod tests {
     }
 
     fn test_state() -> AppState {
+        let _settings_env_guard = audit_state_env_guard();
         isolate_settings_state_dir();
         AppState::new(PathBuf::from("missing-test-config.xlsx"))
     }
 
-    #[test]
-    fn run_log_keeps_append_sequence_and_final_summary_beyond_ring_buffer() {
-        let mut state = json!({"log": [], "logVersion": 0, "lastRunSummary": null});
-        super::push_log(&mut state, "同一阶段".to_owned());
-        super::push_log(&mut state, "同一阶段".to_owned());
-        assert_eq!(state["log"].as_array().unwrap().len(), 1);
-        assert_eq!(state["logVersion"], 1);
-
-        for index in 0..super::LOG_CAPACITY + 1 {
-            super::push_log(&mut state, format!("阶段 {index}"));
-        }
-        super::publish_run_summary(
-            &mut state,
-            "S3-F05",
-            "生成工作簿 2 个；总耗时 31 毫秒。".to_owned(),
-        );
-
-        let entries = state["log"].as_array().unwrap();
-        assert_eq!(entries.len(), super::LOG_CAPACITY);
-        assert!(entries
-            .windows(2)
-            .all(|pair| pair[0]["seq"].as_u64() < pair[1]["seq"].as_u64()));
-        assert!(entries
-            .last()
-            .unwrap()["text"]
-            .as_str()
-            .unwrap()
-            .contains("S3-F05 最终摘要"));
-        assert_eq!(
-            state["lastRunSummary"]["text"],
-            "生成工作簿 2 个；总耗时 31 毫秒。"
-        );
-    }
-
-    #[test]
-    fn elapsed_time_format_does_not_round_short_runs_to_zero_seconds() {
-        assert_eq!(super::format_elapsed(Duration::from_millis(37)), "37 毫秒");
-        assert_eq!(super::format_elapsed(Duration::ZERO), "小于 1 毫秒");
-        assert_eq!(super::format_elapsed(Duration::from_millis(1_234)), "1.2秒");
-        assert_eq!(super::format_elapsed(Duration::from_millis(61_200)), "1分1.2秒");
-    }
     #[test]
     fn s1_output_directory_tracks_input_until_explicitly_pinned() {
         let state = test_state();
@@ -8377,6 +8988,7 @@ mod tests {
             &item,
             &source,
             &audit_copy,
+            "source",
             &S1FormulaMetadata {
                 period: "2026-07".to_owned(),
                 batch_id: "conditional-partial-test".to_owned(),
@@ -8384,7 +8996,12 @@ mod tests {
                 org_code: "1001".to_owned(),
                 org_name: "测试机构".to_owned(),
             },
-            |_, _, _, _, _| anyhow::bail!("合成条件格式局部读取失败"),
+            |workbook_path, source_path, _, _, _| {
+                assert_eq!(workbook_path, source.as_path());
+                assert_eq!(source_path, source.as_path());
+                assert_ne!(workbook_path, audit_copy.as_path());
+                anyhow::bail!("合成条件格式局部读取失败")
+            },
         )?;
 
         assert_eq!(extracted.formula_issues.len(), 1);
@@ -8401,6 +9018,36 @@ mod tests {
 
         fs::remove_dir_all(root)?;
         Ok(())
+    }
+
+    #[test]
+    fn conditional_findings_link_to_audit_copy_when_read_from_source() {
+        let source = Path::new("source.xlsx");
+        let audit_copy = Path::new("audit-copy.xlsx");
+        let mut issue = recovery_result_issue(source, source);
+
+        super::set_conditional_issues_audit_copy(std::slice::from_mut(&mut issue), audit_copy);
+
+        assert_eq!(issue.source_file, source.display().to_string());
+        assert_eq!(issue.audit_file, audit_copy.display().to_string());
+    }
+
+    #[test]
+    fn s1_conditional_format_value_source_selects_source_or_audit_copy() {
+        let source = Path::new("source.xlsx");
+        let audit_copy = Path::new("audit-copy.xlsx");
+        assert_eq!(
+            super::s1_conditional_format_workbook(source, audit_copy, "source"),
+            source
+        );
+        assert_eq!(
+            super::s1_conditional_format_workbook(source, audit_copy, "audit_copy"),
+            audit_copy
+        );
+        assert_eq!(
+            super::s1_conditional_format_workbook(source, audit_copy, "unknown"),
+            source
+        );
     }
 
     #[test]
@@ -8449,6 +9096,7 @@ mod tests {
             sidecar_path: None,
             calc_engine: "auto".to_owned(),
             edit_engine: "umya".to_owned(),
+            conditional_format_source: "audit_copy".to_owned(),
             request_preparation_us: 0,
             source_directory_scan_us: 0,
         };
@@ -8492,6 +9140,7 @@ mod tests {
                                 formula_cells_prepared: manual.formula_cells_prepared,
                                 cached_values_cleared: manual.cached_values_cleared,
                                 external_sheets_imported: manual.external_sheets_imported,
+                                excel_open_repair: None,
                             },
                         ))
                     }
@@ -8555,6 +9204,7 @@ mod tests {
         assert!(result_path.is_file());
 
         let manifest = store.load("s1-f1-mixed-recalc")?;
+        assert_eq!(manifest.conditional_format_source, "audit_copy");
         let completed = manifest
             .files
             .iter()
@@ -9451,10 +10101,8 @@ mod tests {
         assert!(served.contains("window.bridge = { api: api }"));
         assert!(super::ORIGINAL_HTML.contains("bridge.api.start_central_comparison()"));
         assert!(super::ORIGINAL_HTML.contains("bridge.api.start_central_explanation_export()"));
-        assert!(
-            super::ORIGINAL_HTML
-                .contains("bridge.api.import_central_explanation_feedback(picked.paths)")
-        );
+        assert!(super::ORIGINAL_HTML
+            .contains("bridge.api.import_central_explanation_feedback(picked.paths)"));
         assert!(super::ORIGINAL_HTML.contains("bridge.api.start_central_indicator_split()"));
         assert!(super::ORIGINAL_HTML.contains("bridge.api.start_central_cross_period()"));
         assert!(super::ORIGINAL_HTML.contains("onclick=\"runCentralForms()\""));
@@ -9519,88 +10167,6 @@ mod tests {
                 "{filename} should be rejected"
             );
         }
-    }
-
-    #[test]
-    fn s5_gui_path_selection_scans_workbooks_and_rejects_other_formats() {
-        let suffix = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock")
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!("audit-web-s5-selection-{suffix}"));
-        fs::create_dir_all(&root).expect("create S5 selection fixture directory");
-        let source = root.join("current.xlsx");
-        let ignored = root.join("~$locked.xlsx");
-        let other_format = root.join("not-a-workbook.csv");
-        write_s1_region_source(&source);
-        write_s1_region_source(&ignored);
-        fs::write(&other_format, "ignored").expect("write non-Excel file");
-
-        let state = test_state();
-        dispatch_api(
-            &state,
-            "choose_s5",
-            &[json!("input_dir"), json!(root.to_string_lossy())],
-        )
-        .expect("select S5 input directory");
-        let form = state.get_state()["s5"].clone();
-        assert_eq!(form["files"].as_array().unwrap().len(), 1);
-        assert_eq!(form["selected_files"].as_array().unwrap().len(), 1);
-        assert_eq!(form["files"][0]["name"], "current.xlsx");
-
-        let error = dispatch_api(
-            &state,
-            "choose_s5",
-            &[
-                json!("external_path"),
-                json!(other_format.to_string_lossy()),
-            ],
-        )
-        .expect_err("reject CSV as S5 workbook");
-        assert!(error.message.contains("仅支持 XLSX/XLSM"));
-        fs::remove_dir_all(&root).expect("remove S5 selection fixture directory");
-    }
-
-    #[test]
-    fn s5_gui_previous_directory_selects_supported_workbooks_for_identity_matching() {
-        let suffix = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock")
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!("audit-web-s5-previous-{suffix}"));
-        let previous_dir = root.join("previous");
-        fs::create_dir_all(&previous_dir).expect("create S5 previous directory");
-        let previous = previous_dir.join("previous.xlsx");
-        let ignored = previous_dir.join("notes.txt");
-        write_s1_region_source(&previous);
-        fs::write(&ignored, "ignored").expect("write unrelated file");
-
-        let state = test_state();
-        dispatch_api(
-            &state,
-            "choose_s5",
-            &[json!("previous_dir"), json!(previous_dir.to_string_lossy())],
-        )
-        .expect("select S5 previous directory");
-        let form = state.get_state()["s5"].clone();
-        assert_eq!(form["previous_files"].as_array().unwrap().len(), 1);
-        let expected_previous = fs::canonicalize(previous)
-            .unwrap()
-            .to_string_lossy()
-            .into_owned();
-        assert_eq!(
-            form["previous_files"][0].as_str(),
-            Some(expected_previous.as_str())
-        );
-
-        dispatch_api(
-            &state,
-            "update_s5",
-            &[json!({"previous_period": "2026-06-30"})],
-        )
-        .expect("save previous report period");
-        assert_eq!(state.get_state()["s5"]["previous_period"], "2026-06-30");
-        fs::remove_dir_all(&root).expect("remove S5 previous fixture directory");
     }
 
     #[test]
@@ -9833,12 +10399,9 @@ mod tests {
         fs::remove_dir_all(root).expect("remove S3 config-check files");
     }
 
-    /// AUDIT_STATE_DIR is process-global; tests that touch it must serialize.
-    static ADVANCED_SETTINGS_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
     #[test]
     fn advanced_settings_update_persists_and_logs_selection() {
-        let _guard = ADVANCED_SETTINGS_ENV_LOCK.lock().unwrap();
+        let _settings_env_guard = audit_state_env_guard();
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock")
@@ -9849,6 +10412,7 @@ mod tests {
             nonce
         ));
         fs::create_dir_all(&state_dir).expect("create isolated settings directory");
+        let previous_state_dir = std::env::var("AUDIT_STATE_DIR").ok();
         std::env::set_var("AUDIT_STATE_DIR", &state_dir);
 
         let state = test_state();
@@ -9873,20 +10437,117 @@ mod tests {
                 .expect("valid settings JSON");
         assert_eq!(persisted["calc_engine"], "wps");
 
+        let updated = dispatch_api(
+            &state,
+            "update",
+            &[json!({"s1ConditionalFormatSource": "audit_copy"})],
+        )
+        .expect("valid conditional-format source must persist");
+        assert_eq!(updated["s1ConditionalFormatSource"], "audit_copy");
+        let persisted: Value =
+            serde_json::from_slice(&fs::read(&settings_file).expect("read updated settings file"))
+                .expect("valid updated settings JSON");
+        assert_eq!(
+            persisted["preferences"]["s1ConditionalFormatSource"],
+            "audit_copy"
+        );
+        assert_eq!(
+            crate::app_settings::AppSettings::load().s1_conditional_format_source(),
+            "audit_copy"
+        );
+
         // The next state build reflects the persisted selection (worker threads
         // read the file, not the GUI state).
         assert_eq!(
-            crate::app_settings::AppSettings::load().calc_engine.as_str(),
+            crate::app_settings::AppSettings::load()
+                .calc_engine
+                .as_str(),
             "wps"
         );
 
         std::env::remove_var("AUDIT_STATE_DIR");
+        if let Some(previous) = previous_state_dir {
+            std::env::set_var("AUDIT_STATE_DIR", previous);
+        }
         fs::remove_dir_all(&state_dir).expect("remove isolated settings directory");
     }
 
     #[test]
-    fn advanced_settings_rejects_unknown_engines_and_unavailable_openpyxl() {
-        let _guard = ADVANCED_SETTINGS_ENV_LOCK.lock().unwrap();
+    fn extra_files_append_remove_and_persist() {
+        let _settings_env_guard = audit_state_env_guard();
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let state_dir = std::env::temp_dir().join(format!(
+            "audit_web_extra_files_{}_{}",
+            std::process::id(),
+            nonce
+        ));
+        fs::create_dir_all(&state_dir).expect("create isolated settings directory");
+        let previous_state_dir = std::env::var("AUDIT_STATE_DIR").ok();
+        std::env::set_var("AUDIT_STATE_DIR", &state_dir);
+
+        let work = std::env::temp_dir().join(format!(
+            "audit_web_extra_files_work_{}_{}",
+            std::process::id(),
+            nonce
+        ));
+        fs::create_dir_all(&work).expect("create work directory");
+        let workbook = work.join("追加工作簿.xlsx");
+        fs::write(&workbook, b"placeholder").expect("write workbook placeholder");
+        let missing = work.join("不存在.xlsx");
+
+        let state = test_state();
+        let appended = dispatch_api(
+            &state,
+            "append_extra_files",
+            &[json!([
+                workbook.display().to_string(),
+                workbook.display().to_string(),
+                missing.display().to_string()
+            ])],
+        )
+        .expect("append_extra_files must succeed");
+        let listed = appended["extraFiles"]
+            .as_array()
+            .expect("extraFiles must be an array")
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        assert_eq!(listed.len(), 1, "重复路径与不存在的文件都不得入列");
+        assert!(
+            listed[0].replace('/', "\\").ends_with("追加工作簿.xlsx"),
+            "实际入列：{listed:?}"
+        );
+
+        // 持久化：重新加载设置能看到追加结果。
+        let settings = crate::app_settings::AppSettings::load();
+        assert_eq!(settings.extra_files().len(), 1);
+
+        let removed = dispatch_api(&state, "remove_extra_file", &[json!(listed[0])])
+            .expect("remove_extra_file must succeed");
+        assert_eq!(
+            removed["extraFiles"].as_array().map(Vec::len),
+            Some(0),
+            "移除后清单应为空"
+        );
+        assert!(crate::app_settings::AppSettings::load()
+            .extra_files()
+            .is_empty());
+
+        std::env::remove_var("AUDIT_STATE_DIR");
+        if let Some(previous) = previous_state_dir {
+            std::env::set_var("AUDIT_STATE_DIR", previous);
+        }
+        let _ = fs::remove_dir_all(&state_dir);
+        let _ = fs::remove_dir_all(&work);
+    }
+
+    #[test]
+    fn advanced_settings_rejects_unknown_engines_and_allows_openpyxl_trial_selection() {
+        let _settings_env_guard = audit_state_env_guard();
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock")
@@ -9897,9 +10558,18 @@ mod tests {
             nonce
         ));
         fs::create_dir_all(&state_dir).expect("create isolated settings directory");
+        let previous_state_dir = std::env::var("AUDIT_STATE_DIR").ok();
         std::env::set_var("AUDIT_STATE_DIR", &state_dir);
 
         let state = test_state();
+        let engine_options = state.lock().value["advancedSettings"]["editEngineOptions"]
+            .as_array()
+            .expect("GUI exposes edit engine choices")
+            .iter()
+            .filter_map(|option| option["value"].as_str())
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        assert_eq!(engine_options, ["auto", "ooxml", "openpyxl", "umya"]);
         let invalid = dispatch_api(
             &state,
             "update",
@@ -9909,25 +10579,45 @@ mod tests {
         assert_eq!(invalid.status, StatusCode::BAD_REQUEST);
         assert!(invalid.message.contains("auto、excel、wps 或 libreoffice"));
 
-        let openpyxl_error = dispatch_api(
+        for engine in ["auto", "ooxml", "umya"] {
+            let updated = dispatch_api(
+                &state,
+                "update",
+                &[json!({"advancedSettings": {"editEngine": engine}})],
+            )
+            .expect("each non-worker GUI engine choice is accepted");
+            assert_eq!(updated["advancedSettings"]["editEngine"], engine);
+        }
+
+        let openpyxl_status = crate::app_settings::openpyxl_selection_status();
+        let openpyxl_update = dispatch_api(
             &state,
             "update",
             &[json!({"advancedSettings": {"editEngine": "openpyxl"}})],
-        )
-        .expect_err("openpyxl without positive evidence must be rejected");
-        assert_eq!(openpyxl_error.status, StatusCode::BAD_REQUEST);
-        assert!(
-            openpyxl_error.message.contains("openpyxl 修改引擎不可用"),
-            "rejection must carry the evidence reason: {}",
-            openpyxl_error.message
         );
-        // A rejected store must not change the persisted selection.
-        assert_eq!(
-            crate::app_settings::AppSettings::load().calc_engine.as_str(),
-            "auto"
-        );
+        if openpyxl_status.0 {
+            let openpyxl_update = openpyxl_update
+                .expect("openpyxl trial is selectable when its runtime is available");
+            assert_eq!(
+                openpyxl_update["advancedSettings"]["editEngine"],
+                "openpyxl"
+            );
+            assert_eq!(
+                crate::app_settings::AppSettings::load()
+                    .edit_engine
+                    .as_str(),
+                "openpyxl"
+            );
+        } else {
+            let error = openpyxl_update.expect_err("missing worker runtime must reject selection");
+            assert_eq!(error.status, StatusCode::BAD_REQUEST);
+            assert!(error.message.contains(&openpyxl_status.1));
+        }
 
         std::env::remove_var("AUDIT_STATE_DIR");
+        if let Some(previous) = previous_state_dir {
+            std::env::set_var("AUDIT_STATE_DIR", previous);
+        }
         fs::remove_dir_all(&state_dir).expect("remove isolated settings directory");
     }
 
@@ -9981,6 +10671,7 @@ mod tests {
         .expect("copy previous S2 fixture");
         let config = fixture_root.join("s2_config/check_valid.xlsx");
         let external = fixture_root.join("s2_external_import/plain_layout.xlsx");
+        let _settings_env_guard = audit_state_env_guard();
         let state = AppState::new(config.clone());
 
         for (kind, path) in [
@@ -10201,10 +10892,41 @@ mod tests {
     }
 
     #[test]
-    fn state_reports_s2_paths_and_unmigrated_status() {
+    fn recursive_depth_update_validates_range_and_persists() {
+        let state = test_state();
+        let saved = dispatch_api(&state, "update", &[json!({"recursiveDepth": 2})])
+            .expect("valid depth must be accepted");
+        assert_eq!(saved["recursiveDepth"], 2);
+        assert_eq!(
+            crate::app_settings::AppSettings::load()
+                .preferences
+                .get("recursiveDepth")
+                .and_then(Value::as_i64),
+            Some(2),
+            "depth must persist to the user settings file"
+        );
+
+        let rejected = dispatch_api(&state, "update", &[json!({"recursiveDepth": 11})]);
+        let Err(error) = rejected else {
+            panic!("depth 11 must be rejected");
+        };
+        assert_eq!(error.status, axum::http::StatusCode::BAD_REQUEST);
+        assert!(
+            error.message.contains("-1 到 10"),
+            "error names the valid range"
+        );
+        assert_eq!(
+            state.get_state()["recursiveDepth"],
+            2,
+            "rejected input must not change state"
+        );
+    }
+
+    #[test]
+    fn state_reports_s2_paths_and_s3_enabled_by_default() {
         let state = test_state();
         let value = state.get_state();
-        assert_eq!(value["distributionProfile"], "s1s2");
+        assert_eq!(value["distributionProfile"], "s1s2s3");
         assert!(value["pcConfig"].is_string());
         assert_eq!(value["filePickerMode"], "自动");
         assert_eq!(value["busy"], false);
@@ -10293,6 +11015,7 @@ mod tests {
             .join("fixtures")
             .join("s2_config")
             .join("check_valid.xlsx");
+        let _settings_env_guard = audit_state_env_guard();
         let state = AppState::new(config);
 
         let report = dispatch_api(&state, "check_period_audit_config", &[])
@@ -10611,6 +11334,9 @@ mod tests {
 
     #[test]
     fn choosing_and_clearing_period_directories_refreshes_pair_preview() {
+        // AUDIT_STATE_DIR 是进程级变量：与本测试并行运行的持久化测试可能
+        // 切换甚至删除该目录，串行化以避免写入已删除路径。
+        let _settings_env_guard = audit_state_env_guard();
         let suffix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock")

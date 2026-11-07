@@ -18,6 +18,10 @@ use std::{
 
 const RECOVERY_SCHEMA_VERSION: u32 = 1;
 
+fn default_s1_conditional_format_source() -> String {
+    "source".to_owned()
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum S1RecoveryStatus {
@@ -79,6 +83,10 @@ pub struct S1RecoveryManifest {
     pub audit_time: String,
     pub mapping_config: Option<PathBuf>,
     pub mapping_config_sha256: Option<String>,
+    /// The S1-F01 conditional-format value source must remain stable when a
+    /// pending manual-recalculation task resumes through S1-F3.
+    #[serde(default = "default_s1_conditional_format_source")]
+    pub conditional_format_source: String,
     pub history_issues: Vec<Issue>,
     pub skipped_files: Vec<Value>,
     pub files: Vec<S1RecoveryFile>,
@@ -118,6 +126,7 @@ impl S1RecoveryManifest {
             audit_time: audit_time.into(),
             mapping_config,
             mapping_config_sha256,
+            conditional_format_source: default_s1_conditional_format_source(),
             history_issues,
             skipped_files,
             files,

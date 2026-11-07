@@ -44,6 +44,18 @@
 
 口径说明：早期另有每册 7,200 个公式的热会话微基准，Python/Rust 在 `CalculateFull` 路径上约 3.5/4.7 秒；最终批量验收的每册负载为 6,000 个公式、7,200 个非空缓存，并完整计入 worker/Excel 进程退出等待。两组都是 COM 重算子步骤，不是相同负载，不能合并倍率，也都不构成 S1-F1 模板匹配至结果输出的整链路耗时。当前 COM 平价结论以最终 2/10/33 批次验收为准；早期逐轮证据保留在性能历史。
 
+### S1-F1 Linux LibreOffice 批次探针（独立合成路径，不与 Python 基线合并）
+
+WSL Ubuntu + LibreOffice 24.2.7.2；每本 400 行数据、401 个公式；单次测量。对照是每本分别启动 sidecar/LibreOffice 与一个批次调用 sidecar `recalculate-batch`，两种路径的公式文本、401 个公式缓存、原始输入字节及进程清理均验证通过。
+
+| 工作簿数 | 逐本冷调用 | 单批调用 | 逐本/批次 | 批次均摊/本 |
+|---:|---:|---:|---:|---:|
+| 2 | 5,933 ms | 4,987 ms | 1.19× | 2,494 ms |
+| 10 | 32,813 ms | 10,575 ms | 3.10× | 1,058 ms |
+| 33 | 80,381 ms | 21,837 ms | 3.68× | 662 ms |
+
+各批次报告一次 `soffice --convert-to` 调用且 `profile_processes_remaining=0`。这是单轮 S1-F1 重算子路径合成探针，不是完整 GUI 业务耗时、Python/Rust 对照或 Kylin/UOS 验收。数据与限制见[专项报告](probe/reports/s1f1_lo_batch_convert_20261104.md)及[机器数据](probe/reports/s1f1_lo_batch_convert_20261104.json)。
+
 ## 性能地图的覆盖边界
 
 - 平台为 Windows x86_64。多数 A/B 测量使用合成负载；S2-F1 使用仓库测试夹具。没有 Kylin/UOS 或 Linux 性能结论。

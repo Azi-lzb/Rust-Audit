@@ -578,7 +578,7 @@ fn cli_summarizes_used_and_fixed_named_ranges_and_logs_both_views() {
             .iter()
             .map(|sheet| sheet.name.as_str())
             .collect::<Vec<_>>(),
-        ["Data_2", "Data"]
+        ["Data", "Data_2"]
     );
     assert_eq!(read_text(&output.sheets[0], "A1"), "来源文件");
     assert_eq!(read_text(&output.sheets[0], "B1"), "来源工作表");
@@ -592,13 +592,13 @@ fn cli_summarizes_used_and_fixed_named_ranges_and_logs_both_views() {
     assert_eq!(read_text(&output.sheets[0], "D2"), "甲组");
     assert_eq!(read_text(&output.sheets[0], "E2"), "甲");
     assert_eq!(read_numeric(&output.sheets[0], "F3"), 0.0);
-    assert_eq!(read_value(&output.sheets[0], "C4"), CellValue::Empty);
-    assert_eq!(read_text(&output.sheets[0], "D4"), "乙组");
-    assert_eq!(read_text(&output.sheets[0], "E4"), "丙");
-    assert_eq!(read_text(&output.sheets[0], "E5"), "丁");
-    assert_eq!(read_text(&output.sheets[1], "E4"), "乙");
-    assert_eq!(read_text(&output.sheets[1], "E5"), "丙");
-    assert_eq!(read_text(&output.sheets[1], "E6"), "丁");
+    assert_eq!(read_text(&output.sheets[0], "E4"), "乙");
+    assert_eq!(read_text(&output.sheets[0], "E5"), "丙");
+    assert_eq!(read_text(&output.sheets[0], "E6"), "丁");
+    assert_eq!(read_value(&output.sheets[1], "C4"), CellValue::Empty);
+    assert_eq!(read_text(&output.sheets[1], "D4"), "乙组");
+    assert_eq!(read_text(&output.sheets[1], "E4"), "丙");
+    assert_eq!(read_text(&output.sheets[1], "E5"), "丁");
     for (path, expected) in sources {
         assert_eq!(fs::read(path).expect("read source after run"), expected);
     }
@@ -764,16 +764,9 @@ fn cli_summarizes_unmatched_source_sheets_with_the_fallback_template() {
             .iter()
             .map(|sheet| sheet.name.as_str())
             .collect::<Vec<_>>(),
-        ["另一张表", "未匹配表"]
+        ["未匹配表", "另一张表"]
     );
-    let other_sheet = &output.sheets[0];
-    assert_eq!(read_text(other_sheet, "B2"), "另一张表");
-    assert_eq!(read_text(other_sheet, "C2"), "批次-01");
-    assert_eq!(read_text(other_sheet, "D2"), "区域乙");
-    assert_eq!(read_text(other_sheet, "E2"), "另一条记录");
-    assert_eq!(read_numeric(other_sheet, "F2"), 12.0);
-
-    let sheet = &output.sheets[1];
+    let sheet = &output.sheets[0];
     assert_eq!(read_text(sheet, "A1"), "来源文件");
     assert_eq!(read_text(sheet, "B1"), "来源工作表");
     assert_eq!(read_text(sheet, "C1"), "批次");
@@ -791,6 +784,14 @@ fn cli_summarizes_unmatched_source_sheets_with_the_fallback_template() {
     assert_eq!(read_text(sheet, "C4"), "批次-02");
     assert_eq!(read_text(sheet, "D4"), "区域丙");
     assert_eq!(read_text(sheet, "E4"), "记录丙");
+
+    let other_sheet = &output.sheets[1];
+    assert_eq!(read_text(other_sheet, "B2"), "另一张表");
+    assert_eq!(read_text(other_sheet, "C2"), "批次-01");
+    assert_eq!(read_text(other_sheet, "D2"), "区域乙");
+    assert_eq!(read_text(other_sheet, "E2"), "另一条记录");
+    assert_eq!(read_numeric(other_sheet, "F2"), 12.0);
+
     assert_eq!(read_numeric(sheet, "F4"), 5.0);
     assert_eq!(
         fs::read(&template).expect("read fallback template after run"),
@@ -823,8 +824,8 @@ fn cli_summarizes_unmatched_source_sheets_with_the_fallback_template() {
     assert_eq!(fixed_payload["summary"]["data_rows"], 4);
     let fixed_output = read_workbook(&fixed_output_path).expect("read fixed fallback summary");
     assert_eq!(fixed_output.sheets.len(), 2);
-    assert_eq!(read_text(&fixed_output.sheets[1], "E2"), "记录甲");
-    assert_eq!(read_numeric(&fixed_output.sheets[1], "F4"), 5.0);
+    assert_eq!(read_text(&fixed_output.sheets[0], "E2"), "记录甲");
+    assert_eq!(read_numeric(&fixed_output.sheets[0], "F4"), 5.0);
     assert_eq!(
         fs::read(&template).expect("read fixed fallback template after run"),
         template_before

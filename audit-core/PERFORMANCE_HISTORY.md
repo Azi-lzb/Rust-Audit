@@ -314,3 +314,9 @@ S3-F1 耗时基准按用户要求暂结，本次只补其缺少的内存维度�
 运行时检测到 21 个 Excel COM 或 Rust-Tools XLS 转换相关进程，因此该采样只用于阶段定位，JSON 明确标记 `performance_eligible_for_baseline=false`；没有据此更新 Python/Rust 倍率或改产品代码。既有全量 Python/Rust 三轮值与结构对拍、4,320/59 ms 中位数保持为正式 S1-F2 性能证据。当前诊断未显示值得继续优化的 Rust 业务阶段。
 
 驱动、逐轮 JSON 和报告见 `tests/compare/perf_s1f2_stage_profile_20261030.py`、`probe/reports/s1f2_stage_profile_20261030.json`、`probe/reports/s1f2_stage_profile_20261030.md`。Release SHA-256 为 `d9823be57071493acb04834f4144a3f91631ef3fdc4f576344e130af59c7b1b8`；测量时 Git HEAD 为 `7517a9c`，相关工作区仍未提交（项目规则禁止未经请求提交）。Python AST 检查及输出可读性/跨轮一致性检查通过；没有 Cargo 编译/测试、没有 Git push。后续如需把阶段计时用于正式基线，应在无并发负载时重采。
+
+## 2026-11-04：S1-F1 Linux LibreOffice GUI 批次复用
+
+Linux GUI 将同一审核批次中可准备的公式副本集中送入一次 `recalculate-batch`。该 sidecar 调用为整批启动一次使用独立 profile 的 `soffice --convert-to`，顺序处理工作簿并验证各本缓存；批次结束确认专用 profile 无剩余进程。实现使用批量转换通道，不是常驻或跨文件 UNO 文档会话。重算失败的工作簿保留无缓存公式副本供人工重算，避免从错误批次路径退回逐本冷启动。
+
+WSL Ubuntu / LibreOffice 24.2.7.2，单轮 400 行合成文件：2 本逐本/批次 5,933/4,987 ms（1.19×）；10 本 32,813/10,575 ms（3.10×）；33 本 80,381/21,837 ms（3.68×）。每档 `soffice_conversion_invocations=1`、profile 残留进程数为 0；输出公式文本、401 个公式缓存和输入字节保护均通过。Linux `audit-core --lib s1_f1` 4/4、LibreOffice sidecar 集成测试 2/2 通过；Windows 公式复制定向测试 17/17、sidecar 集成测试目标编译通过；忽略的性能测试手动运行通过。单轮合成结果只说明复用效应，不是 Python/Rust 或完整业务 A/B。真实 S1-F1 文件、Linux 桌面 GUI、Kylin V10/UOS V20 尚待人工验收。详见 `probe/reports/s1f1_lo_batch_convert_20261104.md/.json`。

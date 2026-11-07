@@ -1,0 +1,57 @@
+Rust-Audit 环境信息与递归扫描深度接通记录
+时间：2026-11-04 15:24（Asia/Shanghai）
+仓库：C:\Users\AZI\Desktop\VibeCode\Rust-Audit
+分支：main
+开始时 HEAD：99ea348
+状态：未提交；保留原有工作区修改
+
+## 本轮问题与修正
+
+1. 高级设置“本机环境信息”全显示“未知”
+   - 根因：前端读取 state.systemEnvironmentInfo，但 Rust 初始状态没有写入该对象。
+   - 修改：web_bridge.rs 启动时采集并回传程序版本、操作系统、运行架构、区域环境变量、Linux glibc、逻辑处理器/可读取的 Linux 内存、可选引擎/依赖状态。
+   - 探测不启动 Excel、WPS 或 LibreOffice。Python/LibreOffice 只检查 PATH；Office/COM 显示平台能力说明，不代表已确认具体产品版本或当前 COM 激活目标。
+   - 更新产品顶栏状态，移除过期的“只接通 S2”文案。S3 是否显示仍受原 distributionProfile 控制，本轮没有改发行配置。
+
+2. 递归扫描深度设置此前未接到扫描逻辑
+   - 常规设置新增可持久化选择：仅当前目录、指定深度或全部层级。
+   - 偏好设置支持整数范围校验及 settings.json 保存/启动回载。
+   - S1 源文件识别、F1、F2 扫描使用该深度。
+   - S2 两期文件配对、来源提示和实际导入使用同一深度。
+   - 保留原来的 root-only CLI 入口，S5 未修改。
+   - 遍历继续排除“执行结果”目录及 Excel 临时锁文件。
+
+## 涉及文件
+
+- audit-core/frontend/web/index.html
+- audit-core/src/app_settings.rs
+- audit-core/src/period_pairs.rs
+- audit-core/src/s1_region_summary.rs
+- audit-core/src/s2_import.rs
+- audit-core/src/s2_service.rs
+- audit-core/src/web_bridge.rs
+
+## 验证状态
+
+- 已运行 git diff --check：通过；Git 仅提示现有 CRLF/LF 转换警告。
+- 未运行 Cargo build/check/test/run 或任何编译相关命令；未打包 EXE。
+- 页面和 Rust 运行行为尚需新构建后人工验收。
+- 当前仓库还有此前遗留的未提交修改；本轮未覆盖、重置、提交或推送这些内容。
+
+## 人工验收建议
+
+新构建启动后检查：
+1. 高级设置环境信息页中，产品、系统、CPU 架构、硬件等不再全部显示“未知”。
+2. 顶栏不再显示“当前接通报表采集 S2 功能”；确认 S3 菜单仍按发行配置决定是否显示。
+3. 修改递归深度后重启，确认选择值保留。
+4. 在仅根目录、一级子目录、两级子目录各放一份无敏感测试工作簿，检查 S1 源文件列表、S2 两期配对与执行导入遵循选择深度。
+5. 确认 S2 输出目录和 Excel 临时锁文件不会被当作输入。
+
+## 2026-11-04 重建与回归补充
+
+- WSL Ubuntu 全工作区回归：命令 `cargo test --offline --locked --workspace -j 1 --no-fail-fast -- --quiet`；84 个测试目标，508 passed、7 failed、32 ignored。完整日志：`F:\RustBuild\audit\workspace-test-20261104-nofailfast.log`。
+- 首次回归发现 summarize_s1_named_regions 内部调用仍传 bool；已修正为 true→ScanDepth::Full、false→RootOnly，保留既有业务语义。后续全量测试顺利编译并执行。
+- 7 个失败目标：S5 Windows 风格路径样例在 Linux Path 下将目录与文件名合并解析；production_capability_verification、excel-editor 的 insert_rows / s3_f3_edit_operations / validator_row_mapping 共 4 个目标失败于旧式批注 drawing 引用恢复校验；两个 S1 条件格式 CLI 目标的日志断言未满足。未对这些超出本轮范围的失败做修复。
+- Windows 发布构建：`build-release.bat` 成功，Release 编译耗时约 2m12s，更新 `dist\open-data-audit.exe`（27,977,216 bytes）。运行 `dist\open-data-audit.exe --version` 成功，输出 `open-data-audit 0.1.0`。
+- 打包：`package.bat` 成功，生成 `dist\open-data-audit-windows-x64-20261104-170722.zip`（10,452,140 bytes）。包内 EXE 与 dist EXE 的 SHA-256 均为 `C58BFAC8D7293569FF236FDBB82E86C03084DCA5B6321805F5F9DD1D473A6DC6`；压缩包包含程序、run.bat、README 与默认配置。
+- Windows 新 EXE 尚未进行 GUI 手工验收；WSL 回归存在上述失败，不作为全绿验收。

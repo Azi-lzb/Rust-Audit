@@ -118,9 +118,9 @@ An optional --port or --config argument is passed to the serve command. The
 launcher requires dist/open-data-audit.exe, which is produced only by an
 explicitly authorized build-release.bat run.
 
-The bridge connects S1-F2, S2-F1, S3-F1, S3 current-period checks, S3
-explanation export, and S5-F1 to their Rust handlers. S1-F1 and the S3
-institution split are not connected as complete workflows. An API being wired
+The bridge connects the active S1, S2 and S3 workflows to their Rust handlers.
+S5 UI, APIs, CLI and business modules have been removed; historical reports remain archival evidence.
+S1-F1 and the S3 institution split are not connected as complete workflows. An API being wired
 does not establish business acceptance; see DEVELOPMENT_GOAL.md at the
 repository root and the historical audit-core/MIGRATION_INVENTORY.md for
 current status and scoped evidence.

@@ -311,10 +311,10 @@ pub fn formula_result_value_coverage(workbook: &WorkbookDump) -> FormulaResultVa
     coverage
 }
 
-/// Compare formula locations and text while allowing LibreOffice's harmless
-/// serialization of the Excel boolean constants `TRUE`/`FALSE` as
-/// zero-argument calls `TRUE()`/`FALSE()`. All other formula text, including
-/// sheet references and ranges, must remain identical.
+/// Compare formula locations and text while allowing calculation engines to
+/// normalize boolean literals and add or remove optional quotes around known
+/// internal sheet references. Cell references, ranges, functions and other
+/// formula text must remain identical.
 pub fn formula_texts_equivalent_after_recalculation(
     source: &WorkbookDump,
     result: &WorkbookDump,
@@ -322,6 +322,11 @@ pub fn formula_texts_equivalent_after_recalculation(
     if source.sheets.len() != result.sheets.len() {
         return false;
     }
+    let sheet_names = source
+        .sheets
+        .iter()
+        .map(|sheet| sheet.name.as_str())
+        .collect::<Vec<_>>();
     source
         .sheets
         .iter()
@@ -331,11 +336,130 @@ pub fn formula_texts_equivalent_after_recalculation(
                 && before.formulas.len() == after.formulas.len()
                 && before.formulas.iter().all(|(cell, formula)| {
                     after.formulas.get(cell).is_some_and(|result_formula| {
-                        canonicalize_formula_boolean_literals(formula)
-                            == canonicalize_formula_boolean_literals(result_formula)
+                        formula_text_equivalent_after_recalculation(
+                            formula,
+                            result_formula,
+                            &sheet_names,
+                        )
                     })
                 })
         })
+}
+
+/// Compare a formula while allowing only known calculation-engine rewrites:
+/// boolean literals with or without empty parentheses, and optional quoting
+/// around references to known internal worksheets. External workbook links,
+/// cell references, functions and all other formula text remain significant.
+pub fn formula_text_equivalent_after_recalculation(
+    source_formula: &str,
+    result_formula: &str,
+    sheet_names: &[&str],
+) -> bool {
+    canonicalize_formula_for_recalculation(source_formula, sheet_names)
+        == canonicalize_formula_for_recalculation(result_formula, sheet_names)
+}
+
+fn canonicalize_formula_for_recalculation(formula: &str, sheet_names: &[&str]) -> String {
+    let formula = canonicalize_formula_boolean_literals(formula);
+    canonicalize_formula_sheet_reference_quoting(&formula, sheet_names)
+}
+
+fn canonicalize_formula_sheet_reference_quoting(formula: &str, sheet_names: &[&str]) -> String {
+    let mut candidates = sheet_names
+        .iter()
+        .copied()
+        .map(|name| (name, name.chars().collect::<Vec<_>>()))
+        .collect::<Vec<_>>();
+    candidates.sort_by_key(|(_, characters)| std::cmp::Reverse(characters.len()));
+
+    let characters = formula.chars().collect::<Vec<_>>();
+    let mut output = String::with_capacity(formula.len());
+    let mut index = 0usize;
+    let mut in_string = false;
+    while index < characters.len() {
+        let character = characters[index];
+        if character == '"' {
+            output.push(character);
+            if in_string && characters.get(index + 1) == Some(&'"') {
+                output.push('"');
+                index += 2;
+                continue;
+            }
+            in_string = !in_string;
+            index += 1;
+            continue;
+        }
+        if in_string {
+            output.push(character);
+            index += 1;
+            continue;
+        }
+
+        if character == '\'' {
+            let mut quoted_name = Vec::new();
+            let mut cursor = index + 1;
+            let mut closing_quote = None;
+            while cursor < characters.len() {
+                if characters[cursor] == '\'' {
+                    if characters.get(cursor + 1) == Some(&'\'') {
+                        quoted_name.push('\'');
+                        cursor += 2;
+                    } else {
+                        closing_quote = Some(cursor);
+                        break;
+                    }
+                } else {
+                    quoted_name.push(characters[cursor]);
+                    cursor += 1;
+                }
+            }
+            if let Some(closing_quote) = closing_quote {
+                if characters.get(closing_quote + 1) == Some(&'!') {
+                    let name = quoted_name.iter().collect::<String>();
+                    if let Some((canonical, _)) = candidates
+                        .iter()
+                        .find(|(candidate, _)| candidate.eq_ignore_ascii_case(&name))
+                    {
+                        output.push('\'');
+                        output.push_str(&canonical.replace('\'', "''"));
+                        output.push_str("'!");
+                        index = closing_quote + 2;
+                        continue;
+                    }
+                }
+            }
+            output.push(character);
+            index += 1;
+            continue;
+        }
+
+        let external_reference_boundary = index > 0 && characters[index - 1] == ']';
+        let identifier_boundary = index == 0
+            || !(characters[index - 1].is_alphanumeric()
+                || matches!(characters[index - 1], '_' | '.'));
+        let matched_name = if !external_reference_boundary && identifier_boundary {
+            candidates.iter().find(|(_, name)| {
+                index + name.len() < characters.len()
+                    && characters[index..index + name.len()]
+                        .iter()
+                        .zip(name)
+                        .all(|(left, right)| left.eq_ignore_ascii_case(right))
+                    && characters[index + name.len()] == '!'
+            })
+        } else {
+            None
+        };
+        if let Some((name, _)) = matched_name {
+            output.push('\'');
+            output.push_str(&name.replace('\'', "''"));
+            output.push_str("'!");
+            index += name.chars().count() + 1;
+        } else {
+            output.push(character);
+            index += 1;
+        }
+    }
+    output
 }
 
 /// Canonicalize only the boolean literal spelling known to differ after
@@ -499,6 +623,15 @@ pub struct DefinedNameRecord {
     pub areas: Vec<DefinedNameArea>,
 }
 
+/// One `sqref` area covered by an OOXML conditional-formatting block.
+/// Multiple rule blocks may cover the same area; the reader returns each
+/// sheet/address pair once so callers can inspect only those target ranges.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ConditionalFormattingArea {
+    pub sheet_name: String,
+    pub address: String,
+}
+
 #[derive(Clone, Debug)]
 struct WorkbookSheetIdentity {
     name: String,
@@ -573,6 +706,51 @@ pub fn read_defined_names(path: impl AsRef<Path>) -> Result<Vec<DefinedNameRecor
         });
     }
     Ok(records)
+}
+
+/// Read the exact OOXML conditional-formatting target ranges without loading
+/// cell values. This is a targeted fallback for templates that store rules on
+/// worksheets but omit a `条件格式区域` defined name.
+pub fn read_conditional_formatting_areas(
+    path: impl AsRef<Path>,
+) -> Result<Vec<ConditionalFormattingArea>> {
+    let path = path.as_ref();
+    ensure!(
+        path.extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| {
+                extension.eq_ignore_ascii_case("xlsx") || extension.eq_ignore_ascii_case("xlsm")
+            }),
+        "conditional-formatting area reader only supports .xlsx and .xlsm"
+    );
+    let metadata = extract_ooxml_metadata(path)
+        .with_context(|| format!("read conditional-formatting areas from {}", path.display()))?;
+    let mut seen = BTreeSet::new();
+    let mut areas = Vec::new();
+    for (sheet_name, sheet_metadata) in metadata {
+        for node in sheet_metadata.conditional_formatting {
+            if node.get("name").and_then(Value::as_str) != Some("conditionalFormatting") {
+                continue;
+            }
+            let Some(sqref) = node
+                .get("attributes")
+                .and_then(|attributes| attributes.get("sqref"))
+                .and_then(Value::as_str)
+            else {
+                continue;
+            };
+            for address in sqref.split_whitespace().filter(|address| !address.is_empty()) {
+                let key = (sheet_name.clone(), address.to_ascii_uppercase());
+                if seen.insert(key) {
+                    areas.push(ConditionalFormattingArea {
+                        sheet_name: sheet_name.clone(),
+                        address: address.to_owned(),
+                    });
+                }
+            }
+        }
+    }
+    Ok(areas)
 }
 
 fn workbook_sheet_identities(
@@ -1733,7 +1911,25 @@ pub fn uses_1904_date_system(path: impl AsRef<Path>) -> Result<bool> {
 /// not read cell values, and it deliberately does not fall back to Calamine
 /// when the workbook part is missing or malformed.
 pub fn read_xlsx_sheet_names_ooxml(path: impl AsRef<Path>) -> Result<Vec<String>> {
-    let path = path.as_ref();
+    read_xlsx_sheet_names_ooxml_filtered(path.as_ref(), false)
+}
+
+/// Read the worksheet directory while ignoring Excel `veryHidden` sheets.
+///
+/// S1-F01 template matching follows the source Python rule: calculation and
+/// reconciliation sheets marked `veryHidden` are not report tabs and must not
+/// prevent a report template match. Ordinary `hidden` sheets remain part of
+/// this classification rule.
+pub fn read_xlsx_sheet_names_ooxml_excluding_very_hidden(
+    path: impl AsRef<Path>,
+) -> Result<Vec<String>> {
+    read_xlsx_sheet_names_ooxml_filtered(path.as_ref(), true)
+}
+
+fn read_xlsx_sheet_names_ooxml_filtered(
+    path: &Path,
+    exclude_very_hidden: bool,
+) -> Result<Vec<String>> {
     ensure!(
         path.extension()
             .and_then(|extension| extension.to_str())
@@ -1762,6 +1958,7 @@ pub fn read_xlsx_sheet_names_ooxml(path: impl AsRef<Path>) -> Result<Vec<String>
                 && node.tag_name().namespace() == Some(SPREADSHEET_MAIN_NS)
                 && node.tag_name().name() == "sheet"
         })
+        .filter(|node| !exclude_very_hidden || node.attribute("state") != Some("veryHidden"))
         .filter_map(|node| node.attribute("name"))
         .map(str::to_owned)
         .collect::<Vec<_>>();
@@ -2488,11 +2685,45 @@ mod tests {
             extension
         ));
         let workbook = format!(
-            r#"<s:workbook xmlns:s="{SPREADSHEET_MAIN_NS}" xmlns:x="urn:unrelated"><s:sheets><s:sheet name="单位贷款" sheetId="1"/><s:sheet name="图表页" sheetId="2"/><x:sheet name="must-be-ignored" sheetId="3"/></s:sheets></s:workbook>"#
+            r#"<s:workbook xmlns:s="{SPREADSHEET_MAIN_NS}" xmlns:x="urn:unrelated"><s:sheets><s:sheet name="单位贷款" sheetId="1"/><s:sheet name="普通隐藏表" sheetId="2" state="hidden"/><s:sheet name="内部计算表" sheetId="3" state="veryHidden"/><x:sheet name="must-be-ignored" sheetId="4"/></s:sheets></s:workbook>"#
         );
         let mut archive = ZipWriter::new(fs::File::create(&path)?);
         archive.start_file("xl/workbook.xml", SimpleFileOptions::default())?;
         archive.write_all(workbook.as_bytes())?;
+        archive.finish()?;
+        Ok(path)
+    }
+
+    fn conditional_formatting_areas_fixture() -> Result<PathBuf> {
+        let path = std::env::temp_dir().join(format!(
+            "excel-reader-cf-areas-{}-{}.xlsx",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_nanos()
+        ));
+        let root_rels = format!(
+            r#"<Relationships xmlns="{PACKAGE_REL_NS}"><Relationship Id="rId0" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>"#
+        );
+        let workbook = format!(
+            r#"<s:workbook xmlns:s="{SPREADSHEET_MAIN_NS}" xmlns:r="{OFFICE_REL_NS}"><s:sheets><s:sheet name="单位存款" sheetId="1" r:id="rId1"/></s:sheets></s:workbook>"#
+        );
+        let workbook_rels = format!(
+            r#"<Relationships xmlns="{PACKAGE_REL_NS}"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>"#
+        );
+        let worksheet = format!(
+            r#"<s:worksheet xmlns:s="{SPREADSHEET_MAIN_NS}"><s:sheetData/><s:conditionalFormatting sqref="$A$1:$B$2 D4"><s:cfRule type="expression" priority="1"><s:formula>A1&gt;0</s:formula></s:cfRule></s:conditionalFormatting><s:conditionalFormatting sqref="D4"><s:cfRule type="cellIs" priority="2" operator="greaterThan"><s:formula>5</s:formula></s:cfRule></s:conditionalFormatting></s:worksheet>"#
+        );
+        let mut archive = ZipWriter::new(fs::File::create(&path)?);
+        for (name, xml) in [
+            ("_rels/.rels", root_rels),
+            ("xl/workbook.xml", workbook),
+            ("xl/_rels/workbook.xml.rels", workbook_rels),
+            ("xl/worksheets/sheet1.xml", worksheet),
+        ] {
+            archive.start_file(name, SimpleFileOptions::default())?;
+            archive.write_all(xml.as_bytes())?;
+        }
         archive.finish()?;
         Ok(path)
     }
@@ -2635,7 +2866,23 @@ mod tests {
         let fixture = sheet_name_ooxml_fixture("xlsx")?;
         let names = read_xlsx_sheet_names_ooxml(&fixture)?;
         fs::remove_file(fixture)?;
-        assert_eq!(names, vec!["单位贷款".to_owned(), "图表页".to_owned()]);
+        assert_eq!(
+            names,
+            vec![
+                "单位贷款".to_owned(),
+                "普通隐藏表".to_owned(),
+                "内部计算表".to_owned()
+            ]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn ooxml_sheet_name_adapter_excludes_only_very_hidden_sheets() -> Result<()> {
+        let fixture = sheet_name_ooxml_fixture("xlsx")?;
+        let names = read_xlsx_sheet_names_ooxml_excluding_very_hidden(&fixture)?;
+        fs::remove_file(fixture)?;
+        assert_eq!(names, vec!["单位贷款".to_owned(), "普通隐藏表".to_owned()]);
         Ok(())
     }
 
@@ -2644,7 +2891,36 @@ mod tests {
         let fixture = sheet_name_ooxml_fixture("xlsm")?;
         let names = read_xlsx_sheet_names_ooxml(&fixture)?;
         fs::remove_file(fixture)?;
-        assert_eq!(names, vec!["单位贷款".to_owned(), "图表页".to_owned()]);
+        assert_eq!(
+            names,
+            vec![
+                "单位贷款".to_owned(),
+                "普通隐藏表".to_owned(),
+                "内部计算表".to_owned()
+            ]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn ooxml_conditional_format_area_reader_deduplicates_rule_targets() -> Result<()> {
+        let fixture = conditional_formatting_areas_fixture()?;
+        let areas = read_conditional_formatting_areas(&fixture)?;
+        fs::remove_file(fixture)?;
+
+        assert_eq!(
+            areas,
+            vec![
+                ConditionalFormattingArea {
+                    sheet_name: "单位存款".to_owned(),
+                    address: "$A$1:$B$2".to_owned(),
+                },
+                ConditionalFormattingArea {
+                    sheet_name: "单位存款".to_owned(),
+                    address: "D4".to_owned(),
+                },
+            ]
+        );
         Ok(())
     }
 
@@ -3085,6 +3361,90 @@ mod tests {
         assert!(!formula_texts_equivalent_after_recalculation(
             &workbook("'TRUE()'!A1"),
             &workbook("'TRUE'!A1")
+        ));
+
+        assert_eq!(
+            canonicalize_formula_sheet_reference_quoting(
+                "=Data!A1+'Data (prior)'!A1+\"Data!A1\"+MyData!A1",
+                &["Data", "Data (prior)"]
+            ),
+            "='Data'!A1+'Data (prior)'!A1+\"Data!A1\"+MyData!A1"
+        );
+
+        let workbook_with_references = |formula: &str| WorkbookDump {
+            schema_version: 1,
+            reader: "test",
+            elapsed_ms: 0,
+            sheets: vec![
+                SheetDump {
+                    name: "Audit".to_owned(),
+                    values: BTreeMap::new(),
+                    formulas: BTreeMap::from([("D2".to_owned(), formula.to_owned())]),
+                    formula_status: "ok".to_owned(),
+                    merges: Vec::new(),
+                    merge_status: "ok".to_owned(),
+                    comments: BTreeMap::new(),
+                    comments_status: "ok".to_owned(),
+                    conditional_formatting: Vec::new(),
+                    conditional_formatting_status: "ok".to_owned(),
+                    data_validations: Vec::new(),
+                    data_validations_status: "ok".to_owned(),
+                },
+                SheetDump {
+                    name: "Data".to_owned(),
+                    values: BTreeMap::new(),
+                    formulas: BTreeMap::new(),
+                    formula_status: "ok".to_owned(),
+                    merges: Vec::new(),
+                    merge_status: "ok".to_owned(),
+                    comments: BTreeMap::new(),
+                    comments_status: "ok".to_owned(),
+                    conditional_formatting: Vec::new(),
+                    conditional_formatting_status: "ok".to_owned(),
+                    data_validations: Vec::new(),
+                    data_validations_status: "ok".to_owned(),
+                },
+                SheetDump {
+                    name: "Data (prior)".to_owned(),
+                    values: BTreeMap::new(),
+                    formulas: BTreeMap::new(),
+                    formula_status: "ok".to_owned(),
+                    merges: Vec::new(),
+                    merge_status: "ok".to_owned(),
+                    comments: BTreeMap::new(),
+                    comments_status: "ok".to_owned(),
+                    conditional_formatting: Vec::new(),
+                    conditional_formatting_status: "ok".to_owned(),
+                    data_validations: Vec::new(),
+                    data_validations_status: "ok".to_owned(),
+                },
+            ],
+        };
+        assert!(formula_texts_equivalent_after_recalculation(
+            &workbook_with_references("IF(Data!A1=1,'Data (prior)'!A1,Data!B2)"),
+            &workbook_with_references("IF('Data'!A1=1,'Data (prior)'!A1,'Data'!B2)")
+        ));
+        assert!(!formula_texts_equivalent_after_recalculation(
+            &workbook_with_references("Data!A1"),
+            &workbook_with_references("'Data (prior)'!A1")
+        ));
+    }
+
+    #[test]
+    fn formula_comparison_accepts_excel_quoting_for_parenthesized_sheet_names() {
+        let sheet_names = ["存量个人贷款信息", "个人贷款发生额信息（隐藏发放）"];
+        let before =
+            "=IF(ISBLANK(个人贷款发生额信息（隐藏发放）!C10),0,个人贷款发生额信息（隐藏发放）!C10)";
+        let after = "=IF(ISBLANK('个人贷款发生额信息（隐藏发放）'!C10),0,'个人贷款发生额信息（隐藏发放）'!C10)";
+        assert!(formula_text_equivalent_after_recalculation(
+            before,
+            after,
+            &sheet_names,
+        ));
+        assert!(!formula_text_equivalent_after_recalculation(
+            before,
+            &after.replace("!C10", "!D10"),
+            &sheet_names,
         ));
     }
 

@@ -34,6 +34,7 @@ pub struct S1RecalculationSession {
     stdin: Option<ChildStdin>,
     responses: Option<Receiver<std::result::Result<String, String>>>,
     excel_process_id: Option<u32>,
+    active_engine: Option<String>,
     owned_excel_identity: Option<(u32, u64)>,
     owned_excel_cleanup_succeeded: Option<bool>,
     owns_excel_process: bool,
@@ -59,6 +60,7 @@ impl S1RecalculationSession {
             stdin: None,
             responses: None,
             excel_process_id: None,
+            active_engine: None,
             owned_excel_identity: None,
             owned_excel_cleanup_succeeded: None,
             owns_excel_process: false,
@@ -103,6 +105,7 @@ impl S1RecalculationSession {
             stdin: None,
             responses: None,
             excel_process_id: None,
+            active_engine: None,
             owned_excel_identity: None,
             owned_excel_cleanup_succeeded: None,
             owns_excel_process: false,
@@ -116,6 +119,12 @@ impl S1RecalculationSession {
     #[doc(hidden)]
     pub fn last_owned_excel_identity(&self) -> Option<(u32, u64)> {
         self.owned_excel_identity
+    }
+
+    /// The originally requested engine (`auto`/`excel`/`wps`/`lo`); the active
+    /// engine may differ after a fallback. S1 副本修复等路由决策依赖它。
+    pub fn engine_request(&self) -> &str {
+        &self.engine_request
     }
 
     #[doc(hidden)]
@@ -176,6 +185,68 @@ impl S1RecalculationSession {
             }
         };
         finish_recalculation(&input_path, &output_path, &candidate, report, started)
+    }
+
+    /// Scan actual Excel DisplayFormat fills in the named S1 conditional-format
+    /// areas. The existing isolated native COM worker is reused for the whole
+    /// batch; it never attaches to or closes a user-owned Office instance.
+    #[cfg(windows)]
+    pub fn scan_conditional_display_colors(
+        &mut self,
+        input_path: impl AsRef<Path>,
+        scan_areas: &[String],
+    ) -> Result<crate::conditional_format::ConditionalDisplayScan> {
+        ensure!(self.native_office, "原生 Excel COM 显示色扫描工作进程不可用");
+        ensure!(
+            !scan_areas.is_empty(),
+            "模板没有配置条件格式扫描区域；无法按实际显示色审核"
+        );
+        let input_path = input_path.as_ref();
+        ensure!(input_path.is_file(), "条件格式显示色扫描输入不存在");
+
+        // If the user selected LibreOffice for formula calculation, the same
+        // Audit worker still uses a separate private Excel COM application for
+        // Windows DisplayFormat observation, then returns to the LO choice.
+        let selected_engine = self.engine_request.clone();
+        if selected_engine == "lo" {
+            self.engine_request = "auto".to_owned();
+        }
+        let attempt = (|| -> Result<crate::conditional_format::ConditionalDisplayScan> {
+            self.ensure_started()?;
+            let request = serde_json::json!({
+                "type": "scan_conditional_display_colors",
+                "input": sidecar_io_path(input_path).display().to_string(),
+                "scan_areas": scan_areas,
+            });
+            let stdin = self
+                .stdin
+                .as_mut()
+                .context("原生 COM 显示色扫描输入不可用")?;
+            serde_json::to_writer(&mut *stdin, &request)?;
+            stdin.write_all(b"\n")?;
+            stdin.flush()?;
+            let response = self.receive_response()?;
+            let report: Value =
+                serde_json::from_str(&response).context("解析原生 COM 显示色扫描结果")?;
+            ensure!(
+                report.get("status").and_then(Value::as_str)
+                    == Some("display_colors_scanned"),
+                "Excel COM 显示色扫描失败：{}",
+                report
+                    .get("error")
+                    .and_then(Value::as_str)
+                    .unwrap_or("worker 未报告扫描完成")
+            );
+            serde_json::from_value(
+                report
+                    .get("scan")
+                    .cloned()
+                    .context("Excel COM 显示色扫描响应缺少 scan")?,
+            )
+            .context("解析 Excel COM 显示色扫描数据")
+        })();
+        self.engine_request = selected_engine;
+        attempt
     }
 
     fn fallback_to_libreoffice(
@@ -296,6 +367,10 @@ impl S1RecalculationSession {
             .get("engine_process_id")
             .and_then(Value::as_u64)
             .and_then(|value| u32::try_from(value).ok());
+        self.active_engine = ready
+            .get("engine")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
         self.owns_excel_process = ready
             .get("engine_process_owned")
             .and_then(Value::as_bool)
@@ -370,6 +445,7 @@ impl S1RecalculationSession {
         self.stdin.take();
         self.responses.take();
         self.terminate_owned_excel();
+        self.active_engine = None;
     }
 
     fn terminate_owned_excel(&mut self) {
@@ -430,6 +506,7 @@ impl S1RecalculationSession {
         self.stdin.take();
         self.responses.take();
         self.excel_process_id = None;
+        self.active_engine = None;
         self.owns_excel_process = false;
     }
 
@@ -449,10 +526,28 @@ impl S1RecalculationSession {
 
         let attempt = (|| -> Result<Value> {
             self.ensure_started()?;
+            // WPS accepts these real S1 workbooks but can drop a source
+            // formula when asked to SaveAs another XLSX. Give WPS a fresh
+            // calculation-only copy and save that file in place instead.
+            // Excel keeps the existing SaveAs path, and the original Audit
+            // copy remains untouched in both cases.
+            let save_in_place = self.active_engine.as_deref().is_some_and(|engine| {
+                !engine.eq_ignore_ascii_case("Excel.Application")
+            });
+            if save_in_place {
+                fs::copy(&prepared, &engine_output)
+                    .context("准备 WPS 原位保存的独立重算副本")?;
+            }
+            let engine_input = if save_in_place {
+                &engine_output
+            } else {
+                &prepared
+            };
             let request = serde_json::json!({
                 "type": "recalculate",
-                "input": sidecar_io_path(&prepared).display().to_string(),
+                "input": sidecar_io_path(engine_input).display().to_string(),
                 "output": sidecar_io_path(&engine_output).display().to_string(),
+                "save_in_place": save_in_place,
             });
             let stdin = self.stdin.as_mut().context("原生 COM 会话输入不可用")?;
             serde_json::to_writer(&mut *stdin, &request)?;
@@ -468,6 +563,11 @@ impl S1RecalculationSession {
                     .and_then(Value::as_str)
                     .unwrap_or("未知错误")
             );
+            ensure!(
+                report.get("save_mode").and_then(Value::as_str)
+                    == Some(if save_in_place { "in_place" } else { "save_as" }),
+                "原生 COM 未按预期保存方式完成重算"
+            );
             ensure!(engine_output.is_file(), "原生 COM 没有生成重算工作簿");
             let normalized = crate::native_recalculation::normalize_engine_output(
                 &input,
@@ -481,11 +581,58 @@ impl S1RecalculationSession {
         let report = match attempt {
             Ok(report) => report,
             Err(error) => {
+                let should_retry_with_wps = self.engine_request == "auto"
+                    && self.native_office
+                    && self.active_engine.as_deref() == Some("Excel.Application")
+                    && format!("{error:#}")
+                        .contains("Office COM Workbooks.Open 调用失败");
                 self.stop_process();
-                return self.fallback_to_libreoffice(&input, &output, error);
+                let fallback = if should_retry_with_wps {
+                    self.fallback_to_wps(&input, &output, error)
+                } else {
+                    self.fallback_to_libreoffice(&input, &output, error)
+                };
+                return fallback.map(|mut report| {
+                    report.elapsed_ms = started.elapsed().as_millis();
+                    report
+                });
             }
         };
         finish_recalculation(&input, &output, &candidate, report, started)
+    }
+
+    fn fallback_to_wps(
+        &mut self,
+        input_path: &Path,
+        output_path: &Path,
+        excel_error: anyhow::Error,
+    ) -> Result<S1RecalculationReport> {
+        let excel_error = format!("{excel_error:#}");
+        self.engine_request = "wps".to_owned();
+        match self.recalculate_native(input_path, output_path) {
+            Ok(report) => {
+                // This WPS fallback is for the current workbook only. Leaving
+                // the session pinned to WPS would silently route every later
+                // workbook through an engine that can rewrite shared formulas
+                // in some templates. Close the WPS worker, then let the next
+                // workbook start a fresh `auto` (Excel-first) session.
+                self.resume_auto_after_wps_fallback();
+                Ok(report)
+            }
+            Err(wps_error) => {
+                self.stop_process();
+                self.engine_request = "auto".to_owned();
+                let combined_error = anyhow::anyhow!(
+                    "Excel 打开失败（{excel_error}）；WPS 表格回退也失败（{wps_error:#}）"
+                );
+                self.fallback_to_libreoffice(input_path, output_path, combined_error)
+            }
+        }
+    }
+
+    fn resume_auto_after_wps_fallback(&mut self) {
+        self.stop_process();
+        self.engine_request = "auto".to_owned();
     }
 
     fn recalculate_native_libreoffice(
@@ -620,7 +767,7 @@ pub fn validate_s1_formula_cache_mode(
 /// 复用）。每本的公式缓存清理、重算标记、规范化、验证与不覆盖发布均在
 /// sidecar 内完成；父级随后对本批成功项再执行 `validate_recalculated_copy`
 /// 复核，保证检查不因批量化而减少。返回与 pairs 等长的结果数组：成功项
-/// 为 Some(报告)，失败项为 None（由调用方决定逐本回退）。
+/// 为 Some(报告)，失败项为 None（GUI 将保留待人工重算副本）。
 pub fn recalculate_s1_formula_copy_batch(
     sidecar_path: impl AsRef<Path>,
     pairs: &[(PathBuf, PathBuf)],
@@ -669,12 +816,30 @@ pub fn recalculate_s1_formula_copy_batch(
         .get("books")
         .and_then(Value::as_array)
         .context("批次公式重算结果缺少 books 数组")?;
+    ensure!(
+        report
+            .get("soffice_conversion_invocations")
+            .and_then(Value::as_u64)
+            == Some(1),
+        "LibreOffice 批次报告未确认单次转换引擎调用"
+    );
+    ensure!(
+        report
+            .get("profile_processes_remaining")
+            .and_then(Value::as_u64)
+            == Some(0),
+        "LibreOffice 批次结束后仍有进程引用专用 profile"
+    );
     anyhow::ensure!(
         books.len() == pairs.len(),
         "批次公式重算返回的本数不一致：{} / {}",
         books.len(),
         pairs.len()
     );
+    // A single soffice invocation handles the whole batch. Allocate its wall
+    // time evenly for the existing per-workbook performance ledger so summing
+    // workbook entries does not multiply the same batch duration by N.
+    let elapsed_per_book_ms = started.elapsed().as_millis() / pairs.len() as u128;
     let mut outcomes = Vec::with_capacity(pairs.len());
     for (index, book) in books.iter().enumerate() {
         let (input, output) = &pairs[index];
@@ -693,7 +858,7 @@ pub fn recalculate_s1_formula_copy_batch(
             engine,
             input: input.clone(),
             output: output.clone(),
-            elapsed_ms: started.elapsed().as_millis(),
+            elapsed_ms: elapsed_per_book_ms,
         }));
     }
     Ok(outcomes)
@@ -1079,6 +1244,24 @@ mod tests {
         assert!(validate_s1_formula_cache_mode(false, true).is_ok());
         assert!(validate_s1_formula_cache_mode(true, false).is_ok());
         assert!(validate_s1_formula_cache_mode(true, true).is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn successful_wps_fallback_resets_session_to_auto_for_the_next_workbook() -> Result<()> {
+        let root = TestDirectory::create()?;
+        let executable = root.join("sidecar.exe");
+        fs::write(&executable, b"test executable")?;
+        let mut session = S1RecalculationSession::new(&executable, "auto")?;
+        session.engine_request = "wps".to_owned();
+        session.active_engine = Some("ket.Application".to_owned());
+
+        session.resume_auto_after_wps_fallback();
+
+        assert_eq!(session.engine_request, "auto");
+        assert!(session.child.is_none());
+        assert!(session.active_engine.is_none());
+        Ok(())
     }
 
     #[cfg(windows)]

@@ -1,0 +1,325 @@
+[
+  {
+    "business": "五篇大文章-互联网金融业务信息（月度）",
+    "file_count": 7,
+    "exit_code": 0,
+    "matched": true,
+    "confidence": 1.0,
+    "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！130.互联网金融业务信息（月度）202608.xlsx",
+    "template_name": "！130.互联网金融业务信息（月度）202608.xlsx",
+    "template_family": null,
+    "details": "自动匹配：！130.互联网金融业务信息（月度）202608.xlsx（7 个源文件；源文件工作表全部包含于模板；已忽略未能识别的非报送工作簿）",
+    "alternatives": [
+      [
+        "！130.互联网金融业务信息（月度）202608.xlsx",
+        1.0
+      ]
+    ]
+  },
+  {
+    "business": "五篇大文章-养老产业贷款信息",
+    "file_count": 7,
+    "exit_code": 0,
+    "matched": true,
+    "confidence": 1.0,
+    "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！140.养老产业贷款信息202608.xlsx",
+    "template_name": "！140.养老产业贷款信息202608.xlsx",
+    "template_family": null,
+    "details": "自动匹配：！140.养老产业贷款信息202608.xlsx（7 个源文件；源文件工作表全部包含于模板；已忽略未能识别的非报送工作簿）",
+    "alternatives": [
+      [
+        "！140.养老产业贷款信息202608.xlsx",
+        1.0
+      ]
+    ]
+  },
+  {
+    "business": "五篇大文章-数字经济产业贷款信息",
+    "file_count": 7,
+    "exit_code": 0,
+    "matched": true,
+    "confidence": 1.0,
+    "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！140.数字经济产业贷款信息202608.xlsx",
+    "template_name": "！140.数字经济产业贷款信息202608.xlsx",
+    "template_family": null,
+    "details": "自动匹配：！140.数字经济产业贷款信息202608.xlsx（7 个源文件；源文件工作表全部包含于模板；已忽略未能识别的非报送工作簿）",
+    "alternatives": [
+      [
+        "！140.数字经济产业贷款信息202608.xlsx",
+        1.0
+      ]
+    ]
+  },
+  {
+    "business": "五篇大文章-普惠贷款信息",
+    "file_count": 7,
+    "exit_code": 0,
+    "matched": true,
+    "confidence": 1.0,
+    "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！140.普惠贷款信息202608.xlsx",
+    "template_name": "！140.普惠贷款信息202608.xlsx",
+    "template_family": null,
+    "details": "自动匹配：！140.普惠贷款信息202608.xlsx（7 个源文件；源文件工作表全部包含于模板；已忽略未能识别的非报送工作簿）",
+    "alternatives": [
+      [
+        "！140.普惠贷款信息202608.xlsx",
+        1.0
+      ]
+    ]
+  },
+  {
+    "business": "五篇大文章-科技贷款信息",
+    "file_count": 7,
+    "exit_code": 0,
+    "matched": true,
+    "confidence": 1.0,
+    "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！140.科技贷款信息202608.xlsx",
+    "template_name": "！140.科技贷款信息202608.xlsx",
+    "template_family": null,
+    "details": "自动匹配：！140.科技贷款信息202608.xlsx（7 个源文件；源文件工作表全部包含于模板；已忽略未能识别的非报送工作簿）",
+    "alternatives": [
+      [
+        "！140.科技贷款信息202608.xlsx",
+        1.0
+      ]
+    ]
+  },
+  {
+    "business": "五篇大文章-绿色贷款信息",
+    "file_count": 7,
+    "exit_code": 0,
+    "matched": true,
+    "confidence": 1.0,
+    "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！140.绿色贷款信息202608.xlsx",
+    "template_name": "！140.绿色贷款信息202608.xlsx",
+    "template_family": null,
+    "details": "自动匹配：！140.绿色贷款信息202608.xlsx（7 个源文件；源文件工作表全部包含于模板；已忽略未能识别的非报送工作簿）",
+    "alternatives": [
+      [
+        "！140.绿色贷款信息202608.xlsx",
+        1.0
+      ]
+    ]
+  },
+  {
+    "business": "金融基础数据-个人贷款",
+    "file_count": 7,
+    "exit_code": 0,
+    "matched": true,
+    "confidence": 1.0,
+    "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！20.融基础数据-个人贷款202609.xlsx",
+    "template_name": "！20.融基础数据-个人贷款202609.xlsx",
+    "template_family": null,
+    "details": "自动匹配：！20.融基础数据-个人贷款202609.xlsx（7 个源文件；源文件工作表全部包含于模板；已忽略未能识别的非报送工作簿）",
+    "alternatives": [
+      [
+        "！20.融基础数据-个人贷款202609.xlsx",
+        1.0
+      ]
+    ]
+  },
+  {
+    "business": "金融基础数据-单位贷款",
+    "file_count": 7,
+    "exit_code": 0,
+    "matched": true,
+    "confidence": 1.0,
+    "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！10.基础数据-单位贷款202609.xlsx",
+    "template_name": "！10.基础数据-单位贷款202609.xlsx",
+    "template_family": null,
+    "details": "自动匹配：！10.基础数据-单位贷款202609.xlsx（7 个源文件；源文件工作表全部包含于模板；已忽略未能识别的非报送工作簿）",
+    "alternatives": [
+      [
+        "！10.基础数据-单位贷款202609.xlsx",
+        1.0
+      ]
+    ]
+  },
+  {
+    "business": "金融基础数据-存量专项贷款一批报文",
+    "file_count": 7,
+    "exit_code": 0,
+    "matched": true,
+    "confidence": 1.0,
+    "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！30.存量专项贷款一批报文202608.xlsx",
+    "template_name": "！30.存量专项贷款一批报文202608.xlsx",
+    "template_family": null,
+    "details": "自动匹配：！30.存量专项贷款一批报文202608.xlsx（7 个源文件；源文件工作表全部包含于模板；已忽略未能识别的非报送工作簿）",
+    "alternatives": [
+      [
+        "！30.存量专项贷款一批报文202608.xlsx",
+        1.0
+      ]
+    ]
+  },
+  {
+    "business": "金融基础数据-存量专项贷款二批报文",
+    "file_count": 7,
+    "exit_code": 0,
+    "matched": true,
+    "confidence": 1.0,
+    "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！61.存量专项贷款二批报文202608.xlsx",
+    "template_name": "！61.存量专项贷款二批报文202608.xlsx",
+    "template_family": null,
+    "details": "自动匹配：！61.存量专项贷款二批报文202608.xlsx（7 个源文件；源文件工作表全部包含于模板；已忽略未能识别的非报送工作簿）",
+    "alternatives": [
+      [
+        "！61.存量专项贷款二批报文202608.xlsx",
+        1.0
+      ]
+    ]
+  },
+  {
+    "business": "金融基础数据-存量个人存款",
+    "file_count": 6,
+    "exit_code": 0,
+    "matched": true,
+    "confidence": 1.0,
+    "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！110.金融基础数据-存量个人存款202608.xlsx",
+    "template_name": "！110.金融基础数据-存量个人存款202608.xlsx",
+    "template_family": null,
+    "details": "自动匹配：！110.金融基础数据-存量个人存款202608.xlsx（6 个源文件；源文件工作表全部包含于模板；已忽略未能识别的非报送工作簿）",
+    "alternatives": [
+      [
+        "！110.金融基础数据-存量个人存款202608.xlsx",
+        1.0
+      ]
+    ]
+  },
+  {
+    "business": "金融基础数据-票据业务",
+    "file_count": 7,
+    "exit_code": 0,
+    "matched": true,
+    "confidence": 1.0,
+    "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！50.金融基础数据-票据业务202608.xlsx",
+    "template_name": "！50.金融基础数据-票据业务202608.xlsx",
+    "template_family": null,
+    "details": "自动匹配：！50.金融基础数据-票据业务202608.xlsx（7 个源文件；源文件工作表全部包含于模板；已忽略未能识别的非报送工作簿）",
+    "alternatives": [
+      [
+        "！50.金融基础数据-票据业务202608.xlsx",
+        1.0
+      ]
+    ]
+  },
+  {
+    "business": "金融基础数据采集（代发工资）",
+    "file_count": 4,
+    "exit_code": 0,
+    "matched": true,
+    "confidence": 1.0,
+    "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！120.金融基础数据采集（代发工资）202608.xlsx",
+    "template_name": "！120.金融基础数据采集（代发工资）202608.xlsx",
+    "template_family": null,
+    "details": "自动匹配：！120.金融基础数据采集（代发工资）202608.xlsx（4 个源文件；源文件工作表全部包含于模板；已忽略未能识别的非报送工作簿）",
+    "alternatives": [
+      [
+        "！120.金融基础数据采集（代发工资）202608.xlsx",
+        1.0
+      ]
+    ]
+  },
+  {
+    "business": "金融基础数据采集（债券业务）",
+    "file_count": 7,
+    "exit_code": 0,
+    "matched": true,
+    "confidence": 1.0,
+    "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！70.金融基础数据采集（债券业务）202608.xlsx",
+    "template_name": "！70.金融基础数据采集（债券业务）202608.xlsx",
+    "template_family": null,
+    "details": "自动匹配：！70.金融基础数据采集（债券业务）202608.xlsx（7 个源文件；源文件工作表全部包含于模板；已忽略未能识别的非报送工作簿）",
+    "alternatives": [
+      [
+        "！70.金融基础数据采集（债券业务）202608.xlsx",
+        1.0
+      ]
+    ]
+  },
+  {
+    "business": "金融基础数据采集（单位存款）",
+    "file_count": 7,
+    "exit_code": 0,
+    "matched": true,
+    "confidence": 1.0,
+    "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！100.金融基础数据采集（单位存款）202608.xlsx",
+    "template_name": "！100.金融基础数据采集（单位存款）202608.xlsx",
+    "template_family": null,
+    "details": "自动匹配：！100.金融基础数据采集（单位存款）202608.xlsx（7 个源文件；源文件工作表全部包含于模板；已忽略未能识别的非报送工作簿）",
+    "alternatives": [
+      [
+        "！100.金融基础数据采集（单位存款）202608.xlsx",
+        1.0
+      ]
+    ]
+  },
+  {
+    "business": "金融基础数据采集（单位贷款置换旧债发生额）",
+    "file_count": 7,
+    "exit_code": 0,
+    "matched": true,
+    "confidence": 1.0,
+    "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！60.金融基础数据采集（单位贷款置换旧债发生额）202608.xlsx",
+    "template_name": "！60.金融基础数据采集（单位贷款置换旧债发生额）202608.xlsx",
+    "template_family": null,
+    "details": "自动匹配：！60.金融基础数据采集（单位贷款置换旧债发生额）202608.xlsx（7 个源文件；源文件工作表全部包含于模板；已忽略未能识别的非报送工作簿）",
+    "alternatives": [
+      [
+        "！60.金融基础数据采集（单位贷款置换旧债发生额）202608.xlsx",
+        1.0
+      ]
+    ]
+  },
+  {
+    "business": "金融基础数据采集（同业业务）",
+    "file_count": 7,
+    "exit_code": 0,
+    "matched": true,
+    "confidence": 1.0,
+    "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！90.金融基础数据采集（同业业务）202608.xlsx",
+    "template_name": "！90.金融基础数据采集（同业业务）202608.xlsx",
+    "template_family": null,
+    "details": "自动匹配：！90.金融基础数据采集（同业业务）202608.xlsx（7 个源文件；源文件工作表全部包含于模板；已忽略未能识别的非报送工作簿）",
+    "alternatives": [
+      [
+        "！90.金融基础数据采集（同业业务）202608.xlsx",
+        1.0
+      ]
+    ]
+  },
+  {
+    "business": "金融基础数据采集（委托贷款）",
+    "file_count": 7,
+    "exit_code": 0,
+    "matched": true,
+    "confidence": 1.0,
+    "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！40.金融基础数据采集（委托贷款）202608.xlsx",
+    "template_name": "！40.金融基础数据采集（委托贷款）202608.xlsx",
+    "template_family": null,
+    "details": "自动匹配：！40.金融基础数据采集（委托贷款）202608.xlsx（7 个源文件；源文件工作表全部包含于模板；已忽略未能识别的非报送工作簿）",
+    "alternatives": [
+      [
+        "！40.金融基础数据采集（委托贷款）202608.xlsx",
+        1.0
+      ]
+    ]
+  },
+  {
+    "business": "金融基础数据采集（股权和特定目的载体投资）",
+    "file_count": 7,
+    "exit_code": 0,
+    "matched": true,
+    "confidence": 1.0,
+    "template_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\测试数据\\S1F1_新旧对比_20261105_231620\\business_templates\\！80.金融基础数据采集（股权和特定目的载体投资）202608.xlsx",
+    "template_name": "！80.金融基础数据采集（股权和特定目的载体投资）202608.xlsx",
+    "template_family": null,
+    "details": "自动匹配：！80.金融基础数据采集（股权和特定目的载体投资）202608.xlsx（7 个源文件；源文件工作表全部包含于模板；已忽略未能识别的非报送工作簿）",
+    "alternatives": [
+      [
+        "！80.金融基础数据采集（股权和特定目的载体投资）202608.xlsx",
+        1.0
+      ]
+    ]
+  }
+]

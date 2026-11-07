@@ -65,18 +65,24 @@ pub fn resolve_default_config_path() -> Result<PathBuf> {
     }
 
     let current_directory = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    // 双击 exe 启动时工作目录可能是任意位置，因此优先查找可执行文件同级
-    // 的 config/默认配置（发行包布局），再回退到源码树的相对路径。
+    // 优先搜索发行包或源码树中的真实配置；只有找不到真实配置时才使用
+    // 公开占位配置。双击 exe 时不依赖工作目录。
     let mut directories = Vec::new();
-    if let Ok(executable) = std::env::current_exe() {
-        if let Some(exe_directory) = executable.parent() {
-            directories.push(exe_directory.join("config/默认配置"));
-        }
+    let executable_directory = std::env::current_exe()
+        .ok()
+        .and_then(|executable| executable.parent().map(Path::to_path_buf));
+    if let Some(exe_directory) = &executable_directory {
+        directories.push(exe_directory.join("config-real"));
     }
-    directories.extend(vec![
+    directories.extend([
         current_directory.join("audit-core/config-real"),
-        current_directory.join("audit-core/config/默认配置"),
         current_directory.join("config-real"),
+    ]);
+    if let Some(exe_directory) = executable_directory {
+        directories.push(exe_directory.join("config/默认配置"));
+    }
+    directories.extend([
+        current_directory.join("audit-core/config/默认配置"),
         current_directory.join("config/默认配置"),
     ]);
     #[cfg(target_os = "linux")]
@@ -1451,6 +1457,22 @@ mod tests {
                 find_s2_config_path(std::slice::from_ref(&root)).unwrap(),
                 exact
             );
+            fs::remove_dir_all(root).expect("remove temporary config directory");
+        }
+
+        #[test]
+        fn packaged_config_real_precedes_public_placeholder_config() {
+            let root = temporary_directory();
+            let real = root.join("config-real");
+            let placeholder = root.join("config/默认配置");
+            fs::create_dir_all(&real).expect("create packaged real config directory");
+            fs::create_dir_all(&placeholder).expect("create public placeholder directory");
+            let expected = real.join("2.报表采集系统_配置.xlsx");
+            fs::write(&expected, b"real").expect("write real config");
+            fs::write(placeholder.join("2.报表采集系统_配置.xlsx"), b"placeholder")
+            .expect("write placeholder config");
+
+            assert_eq!(find_s2_config_path(&[real, placeholder]).unwrap(), expected);
             fs::remove_dir_all(root).expect("remove temporary config directory");
         }
 
