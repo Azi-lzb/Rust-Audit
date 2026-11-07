@@ -1577,8 +1577,9 @@ fn decimal_mode_eval(tokens: &[ExpressionToken]) -> Option<i128> {
                 ExpressionToken::Number(number) => {
                     // 最短往返拼写 → 十进制数字 → 定点值
                     let text = format!("{number}");
-                    let (integer, fraction) =
-                        text.split_once('.').unwrap_or((text.trim_start_matches('-'), ""));
+                    let (integer, fraction) = text
+                        .split_once('.')
+                        .unwrap_or((text.trim_start_matches('-'), ""));
                     let negative_text = text.starts_with('-');
                     let mut fraction = fraction.to_owned();
                     while fraction.len() < 12 {
@@ -1588,7 +1589,11 @@ fn decimal_mode_eval(tokens: &[ExpressionToken]) -> Option<i128> {
                         return None;
                     }
                     let digits: i128 = format!("{integer}{fraction}").parse().ok()?;
-                    if negative_text { -digits } else { digits }
+                    if negative_text {
+                        -digits
+                    } else {
+                        digits
+                    }
                 }
                 ExpressionToken::LeftParen => {
                     let value = self.expr()?;
@@ -1602,7 +1607,10 @@ fn decimal_mode_eval(tokens: &[ExpressionToken]) -> Option<i128> {
             Some(if negative { -value } else { value })
         }
     }
-    let mut parser = Parser { tokens, position: 0 };
+    let mut parser = Parser {
+        tokens,
+        position: 0,
+    };
     let value = parser.expr()?;
     if parser.position != tokens.len() {
         return None;
