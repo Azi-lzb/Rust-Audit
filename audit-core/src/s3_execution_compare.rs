@@ -83,6 +83,9 @@ pub struct S3ExecutionCompareRow {
     pub change: CentralValue,
     pub ratio: CentralValue,
     pub remark: String,
+    /// 构建顺序号：等键稳定排序的最终 tie-break（复现 Python stable sort
+    /// 保留文件序的行为；在排序前统一赋值）。
+    pub build_order: u64,
     pub need_explanation: String,
     pub explanation_content: String,
     pub calculation_process: String,
@@ -458,12 +461,34 @@ pub fn build_base_comparison(
         rows.push(row);
     }
 
+    for (index, row) in rows.iter_mut().enumerate() {
+        row.build_order = index as u64;
+    }
+    // VBA EndCompare 排序（源生产 sort_comparison_rows）：机构类代码、地区
+    // 代码、顺序码三级键全部按不区分大小写比较；顺序码为空时回退指标代码。
     rows.sort_by(|left, right| {
+        let left_order = if left.order_code_out.is_empty() {
+            left.record.indicator.as_str()
+        } else {
+            left.order_code_out.as_str()
+        };
+        let right_order = if right.order_code_out.is_empty() {
+            right.record.indicator.as_str()
+        } else {
+            right.order_code_out.as_str()
+        };
         left.record
             .org_code
-            .cmp(&right.record.org_code)
-            .then_with(|| left.record.region_code.cmp(&right.record.region_code))
-            .then_with(|| left.order_code_out.cmp(&right.order_code_out))
+            .to_lowercase()
+            .cmp(&right.record.org_code.to_lowercase())
+            .then_with(|| {
+                left.record
+                    .region_code
+                    .to_lowercase()
+                    .cmp(&right.record.region_code.to_lowercase())
+            })
+            .then_with(|| left_order.to_lowercase().cmp(&right_order.to_lowercase()))
+            .then_with(|| left.build_order.cmp(&right.build_order))
     });
     rows
 }
@@ -2889,6 +2914,7 @@ fn base_row(record: CentralRecord, config: &S3ExecutionCompareConfig) -> S3Execu
         change: CentralValue::Empty,
         ratio: CentralValue::Empty,
         remark: String::new(),
+        build_order: 0,
         need_explanation: String::new(),
         explanation_content: String::new(),
         calculation_process: String::new(),
