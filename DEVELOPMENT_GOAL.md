@@ -1,5 +1,16 @@
 # Rust-Audit 独立开发目标与状态
 
+## 2026-11-07 对齐基线（da7b1c3）八功能真实数据对比：S1F1 逐条一致、S3F4 逐格一致、S3F1 收敛至 15 处
+
+- **对齐基线**：3.open-data-audit@da7b1c3 新增 rustaudit_alignment 基线 JSON（8 功能真实数据生产入口跑出）；驱动 `tests/compare/rustaudit_alignment_p1.py`（每功能两跑、367 输入 SHA-256 前后核验）。引擎口径：calc=auto(Excel COM)、S1 条件格式提取来源=source、空白格纳入、centralTolerance=100 元。
+- **S1F1 ✅ 完全对齐**：129/129 结构通过；公式 3345 + 条件格式 257 = 3602 条与基线逐条一致（Rust-only 0、Baseline-only 0、字段值差 0），两次运行一致。关键修复链：excel-open-repair 第三类缺陷——模板校验区域公式残留 `[1]表名!` 悬空外部引用（模板自带 12 处 [1] 外链，外部表导入为本地 sheet 后链接悬空），Excel COM 打开即拒绝（0x80020009）、WPS 忽略断链但重算丢公式（W152）→ 剥离 `[N]本地表!` 前缀后债券 7 本恢复真实重算、13 条 CF 归位。该修复已固化进 repair 模块（第三类缺陷，非本地表外链不动），RustTools 等自研 OOXML 副本管线同样需要此归一。
+- **S3F1 收敛至 15 处**：三项修复——排序三级键不区分大小写（VBA EndCompare/casefold）；表达式语法口径 legacy-eight-segment（源生产 run_comparison 默认 LEGACY_8）；「跨期核对」组规则从五段表借机构/地区 scope、机构列为空 → scope_missing 整条跳过。行数 3868 一致、两次运行一致。剩余 15 处：CX单0753（12N1G/12N1H 未分配利润跨期核对，`{上期}` 引用）Python 未触发/Rust 触发的执行环节差异（编译索引/变体匹配/频度门均已排除，探针测试 probe_minus_minus_comparison 已固化代入文本与 IEEE 尾差事实）；row 3094 说明拼接尾差。**注意**：剩余差异均为 Rust 多报（说明内容多写），不会漏报。
+- **S3F4 ✅ 逐格 0 差异**（33 行核对结果，两跑一致）。S3F2/F3 ✅（0 行/0 回写为该期真实业务结果）。S1F2/S2F1 ✅（首轮口径，505 行/1087 条）。S3F5 ❌ 未对齐：umya 对 DeleteColumn 的定义名称安全守卫拒绝执行（无其它合格后端），修复方向已定——给 ooxml-patch 实现 DeleteColumn（删列+左侧平移+dimension/mergeCells/sqref/定义名称/shared 公式列号同步改写）并走能力证据登记，不再依赖 Umya。
+- **S3F1 表达式语法口径更正**：源生产 `run_comparison` 未显式传 schema 时用 **LEGACY_8（八段兼容表）**；五段式为 GUI 设置中心可选（central_expression_schema 默认 FIVE_SEGMENT_V1 仅供配置检查）。对齐驱动已改为 legacy-eight-segment。
+- **高级设置中心（P2）**：五页签（新增组合设置空态）、updates 四子页（更新配置由 configUpdateSupported 门控，Windows 恒 false）、get/apply_config_update 桥接（备份+哈希校验+重启提示）、条件格式判定方式（PYTHON 默认/COM_DISPLAY/COM_EVALUATE 显式报错未实现）、空白格开关、大集中容差（元）、指标名去空格、完成自动打开、extra_files 手动追加后端（修复自死锁）、PREFERENCE_SPECS 新增 FilePathList/FloatRange。
+- **验证**：全量 lib 271/271；对齐驱动 s3f1/s1f1 两跑一致证据在 `probe/reports/rustaudit_alignment_report.json`；诊断取证 `probe/reports/bond_cacheless_excel_reject_diagnosis.md`。已推送 origin/main 至 090a7e2 及后续。
+- **遗留（下一轮）**：S3F1 15 处收口（Python 执行循环插桩定位 CX单0753 跳过机制 + 3094 拼接尾差）；S3F5 OOXML DeleteColumn 实现与能力证据；DEVELOPMENT_GOAL/矩阵口径同步；GUI 人工验收。
+
 ## 2026-11-07 高级设置对齐旧 Audit：手动追加文件、空白格开关、大集中容差/去空格/自动打开
 
 - **手动追加待处理文件（extra_files）补齐后端**：前端按钮此前调用的 `append_extra_files`/`remove_extra_file` 接口在 Rust 桥接层不存在（点击即报"尚未实现接口"）。现已实现：批量追加源目录外工作簿（存在性校验、规范化去重、跨会话持久化到设置 JSON 白名单 `extraFiles`）、单个移除；追加/移除后自动重建源文件清单并并入模板匹配（直接位于输入目录下的追加文件由目录扫描覆盖，不重复并入），清单行带 `extra` 标记。定向单测覆盖追加去重/不存在文件跳过/持久化/移除。
