@@ -4611,7 +4611,7 @@ fn s1_f1_conditional_scan_area_plan(
     conditional_workbook: &Path,
 ) -> Result<S1F1ConditionalScanAreaPlan> {
     let rule_areas = excel_reader::read_conditional_formatting_areas(conditional_workbook)
-        .map(|mut areas| {
+        .map(|areas| {
             if std::env::var_os("AUDIT_DEBUG_SCAN_PLAN").is_some() {
                 eprintln!(
                     "S1F01-SCAN-PLAN file={} areas={:?}",

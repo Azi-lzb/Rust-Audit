@@ -580,12 +580,14 @@ pub fn apply_expression_rules(
             if rule.legacy_scope_missing {
                 continue;
             }
-            if rule.legacy_org_pattern.as_ref().is_some_and(|pattern| {
-                !pattern.is_match(&row.record.org_code)
-            }) || rule
-                .legacy_region_pattern
+            if rule
+                .legacy_org_pattern
                 .as_ref()
-                .is_some_and(|pattern| !pattern.is_match(&row.record.region_code))
+                .is_some_and(|pattern| !pattern.is_match(&row.record.org_code))
+                || rule
+                    .legacy_region_pattern
+                    .as_ref()
+                    .is_some_and(|pattern| !pattern.is_match(&row.record.region_code))
             {
                 continue;
             }
@@ -1728,8 +1730,16 @@ fn compile_expression_rules(
             inverted_text.trim().to_ascii_lowercase().as_str(),
             "是" | "1" | "true" | "y"
         );
-        let (expression, variants, organization_scope, region_scope, legacy_scope_required, legacy_scope_missing, legacy_org_pattern, legacy_region_pattern) =
-            match schema {
+        let (
+            expression,
+            variants,
+            organization_scope,
+            region_scope,
+            legacy_scope_required,
+            legacy_scope_missing,
+            legacy_org_pattern,
+            legacy_region_pattern,
+        ) = match schema {
             S3ExpressionSchema::LegacyEightSegment => {
                 let references = expression_references(&normalized);
                 validate_reference_shapes(&references, 8, rule_id, true)?;
@@ -1758,8 +1768,8 @@ fn compile_expression_rules(
                 } else {
                     None
                 };
-                let (legacy_org_text, legacy_region_text) = borrowed
-                    .unwrap_or((String::new(), String::new()));
+                let (legacy_org_text, legacy_region_text) =
+                    borrowed.unwrap_or((String::new(), String::new()));
                 // 源生产：missing = 五段表无同编号行或机构类代码列为空
                 //（VBA 只加载机构列非空的跨期核对行；空 = missing 而非不限）。
                 let legacy_scope_missing =
@@ -1767,8 +1777,9 @@ fn compile_expression_rules(
                 let legacy_org_pattern = compile_scope(&legacy_org_text, rule_id, "机构类代码")
                     .ok()
                     .flatten();
-                let legacy_region_pattern =
-                    compile_scope(&legacy_region_text, rule_id, "地区代码").ok().flatten();
+                let legacy_region_pattern = compile_scope(&legacy_region_text, rule_id, "地区代码")
+                    .ok()
+                    .flatten();
                 (
                     normalized.clone(),
                     variants,

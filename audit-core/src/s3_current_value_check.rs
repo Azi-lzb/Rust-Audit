@@ -500,7 +500,11 @@ where
 
     on_progress(&format!(
         "读取本期数据文件：{}",
-        current_paths.iter().map(|path| path.display().to_string()).collect::<Vec<_>>().join("、")
+        current_paths
+            .iter()
+            .map(|path| path.display().to_string())
+            .collect::<Vec<_>>()
+            .join("、")
     ));
     let input_started = Instant::now();
     let current = load_central_dataset(current_paths, conversion_factor, &config.exempt_indicators)
@@ -576,7 +580,10 @@ where
         ],
     );
 
-    on_progress(&format!("写入并验证数值核对结果：{}", output_path.display()));
+    on_progress(&format!(
+        "写入并验证数值核对结果：{}",
+        output_path.display()
+    ));
     let workbook_started = Instant::now();
     write_check_workbook(&output_path, &result.rows)?;
     validate_check_workbook(&output_path, result.rows.len())?;
@@ -2401,5 +2408,29 @@ mod tests {
         assert!(!protected_output_path.exists());
         assert_eq!(fs::read(&existing_log_path).unwrap(), b"keep existing log");
         let _ = fs::remove_file(existing_log_path);
+    }
+}
+
+#[cfg(test)]
+mod probe_minus_minus_tests {
+    use super::*;
+
+    #[test]
+    fn probe_minus_minus_comparison() {
+        // CX单0753 代入后文本：两侧变化相等，<> 应为 False。
+        let value = evaluate_expression(
+            "(-105020879.61--102311726.56)<>(-26392724.12--23683571.07)",
+            &[],
+        );
+        eprintln!("PROBE result: {value:?}");
+        for text in [
+            "(-105020879.61--102311726.56)",
+            "(-105020879.61--102311726.56)=(-26392724.12--23683571.07)",
+            "-105020879.61--102311726.56",
+            "(-26392724.12--23683571.07)",
+        ] {
+            eprintln!("PROBE {text} => {:?}", evaluate_expression(text, &[]));
+        }
+        assert!(value.is_ok());
     }
 }
