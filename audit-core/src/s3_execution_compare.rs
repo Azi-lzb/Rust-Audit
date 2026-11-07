@@ -773,11 +773,20 @@ pub fn apply_action_rules(
             row.record.frequency.clone(),
         );
         if let Some(indices) = cumulative_by_key.get(&cumulative_key) {
-            let message = cumulative_action_message(
-                row,
-                current.record_date.as_str(),
-                previous.record_date.as_str(),
-            );
+            // 源生产 indicator_rule_engine 累计分支门控：同年且上期非 1 月 1 日
+            // 时 _accu_active=false，只按 change<0 报通用文案（不检查负值、
+            // 不走日期分支）；跨年或上期=1月1日才执行完整累计语义。
+            let message = if cumulative_active(current.record_date.as_str(), previous.record_date.as_str()) {
+                cumulative_action_message(
+                    row,
+                    current.record_date.as_str(),
+                    previous.record_date.as_str(),
+                )
+            } else if number_or_zero(&row.change) < 0.0 {
+                " 当年累计指标比上期不应减少，需说明。".to_owned()
+            } else {
+                String::new()
+            };
             if !message.is_empty() {
                 for index in indices {
                     let rule = &rules[*index];
@@ -2245,6 +2254,16 @@ fn number_or_zero(value: &CentralValue) -> f64 {
         CentralValue::Number(value) if value.is_finite() => *value,
         CentralValue::Number(_) | CentralValue::Text(_) | CentralValue::Empty => 0.0,
     }
+}
+
+/// 源生产 _accu_active：跨年或上期为 1 月 1 日时累计指标启用。
+fn cumulative_active(current_date: &str, previous_date: &str) -> bool {
+    let (Some(current), Some(previous)) =
+        (parse_iso_date(current_date), parse_iso_date(previous_date))
+    else {
+        return false;
+    };
+    current.year() != previous.year() || (previous.month() == 1 && previous.day() == 1)
 }
 
 fn cumulative_action_message(
