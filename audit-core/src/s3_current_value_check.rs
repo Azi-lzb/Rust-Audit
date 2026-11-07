@@ -1530,6 +1530,86 @@ pub(crate) fn evaluate_s3_business_expression(
     evaluate_expression(expression, &[("Thd", tolerance)])
 }
 
+/// 十进制精确比较：纯加减树的精确求值（scale=12 定点 i128）。
+/// 仅接受 Number/Plus/Minus/括号；含乘除/幂/函数/名称等返回 None 走浮点路径。
+/// Python 侧用 Decimal(str(float))——浮点数的最短往返拼写；这里用
+/// format!("{}", f)（同为最短往返拼写）取十进制数字，语义等价。
+fn decimal_mode_eval(tokens: &[ExpressionToken]) -> Option<i128> {
+    const SCALE: i128 = 1_000_000_000_000; // 12 位小数定点
+    struct Parser<'a> {
+        tokens: &'a [ExpressionToken],
+        position: usize,
+    }
+    impl<'a> Parser<'a> {
+        fn peek(&self) -> Option<&ExpressionToken> {
+            self.tokens.get(self.position)
+        }
+        fn next(&mut self) -> Option<&ExpressionToken> {
+            let token = self.tokens.get(self.position);
+            if token.is_some() {
+                self.position += 1;
+            }
+            token
+        }
+        fn expr(&mut self) -> Option<i128> {
+            let mut value = self.term()?;
+            while let Some(token) = self.peek() {
+                let operation = match token {
+                    ExpressionToken::Plus => 1,
+                    ExpressionToken::Minus => -1,
+                    _ => break,
+                };
+                self.next();
+                let right = self.term()?;
+                value = match operation {
+                    1 => value.checked_add(right)?,
+                    _ => value.checked_sub(right)?,
+                };
+            }
+            Some(value)
+        }
+        fn term(&mut self) -> Option<i128> {
+            let negative = matches!(self.peek()?, ExpressionToken::Minus);
+            if negative {
+                self.next();
+            }
+            let value = match self.next()? {
+                ExpressionToken::Number(number) => {
+                    // 最短往返拼写 → 十进制数字 → 定点值
+                    let text = format!("{number}");
+                    let (integer, fraction) =
+                        text.split_once('.').unwrap_or((text.trim_start_matches('-'), ""));
+                    let negative_text = text.starts_with('-');
+                    let mut fraction = fraction.to_owned();
+                    while fraction.len() < 12 {
+                        fraction.push('0');
+                    }
+                    if fraction.len() > 12 {
+                        return None;
+                    }
+                    let digits: i128 = format!("{integer}{fraction}").parse().ok()?;
+                    if negative_text { -digits } else { digits }
+                }
+                ExpressionToken::LeftParen => {
+                    let value = self.expr()?;
+                    if self.next()? != &ExpressionToken::RightParen {
+                        return None;
+                    }
+                    value
+                }
+                _ => return None,
+            };
+            Some(if negative { -value } else { value })
+        }
+    }
+    let mut parser = Parser { tokens, position: 0 };
+    let value = parser.expr()?;
+    if parser.position != tokens.len() {
+        return None;
+    }
+    Some(value * SCALE / SCALE)
+}
+
 fn tokenize_expression(expression: &str) -> Result<Vec<ExpressionToken>, String> {
     let characters = expression.char_indices().collect::<Vec<_>>();
     let mut tokens = Vec::new();
@@ -1705,7 +1785,13 @@ impl ExpressionParser<'_> {
     }
 
     fn parse_comparison(&mut self) -> Result<ExpressionValue, String> {
+        // 源生产 _compare/_decimal_comparison_value 口径：比较两侧为纯加减树
+        //（数字/括号/正负号，无函数/乘除/幂/变量）时，用各数字的最短十进制
+        // 拼写做 Decimal 精确比较，消除 IEEE 二进制尾差（如两个都等于
+        // -2709153.05 的差异）；含函数等复杂操作数保留浮点求值路径。
+        let left_start = self.position;
         let left = self.parse_additive()?;
+        let left_tokens = self.tokens[left_start..self.position].to_vec();
         let operator = self.peek().clone();
         let result = match operator {
             ExpressionToken::Equal
@@ -1715,7 +1801,24 @@ impl ExpressionParser<'_> {
             | ExpressionToken::Greater
             | ExpressionToken::GreaterEqual => {
                 self.next();
+                let right_start = self.position;
                 let right = self.parse_additive()?;
+                let right_tokens = self.tokens[right_start..self.position].to_vec();
+                if let (Some(dec_left), Some(dec_right)) = (
+                    decimal_mode_eval(&left_tokens),
+                    decimal_mode_eval(&right_tokens),
+                ) {
+                    let value = match operator {
+                        ExpressionToken::Equal => dec_left == dec_right,
+                        ExpressionToken::NotEqual => dec_left != dec_right,
+                        ExpressionToken::Less => dec_left < dec_right,
+                        ExpressionToken::LessEqual => dec_left <= dec_right,
+                        ExpressionToken::Greater => dec_left > dec_right,
+                        ExpressionToken::GreaterEqual => dec_left >= dec_right,
+                        _ => unreachable!(),
+                    };
+                    return Ok(ExpressionValue::Boolean(value));
+                }
                 let (left, right) = (left.as_number(), right.as_number());
                 let value = match operator {
                     ExpressionToken::Equal => left == right,
@@ -2423,14 +2526,14 @@ mod probe_minus_minus_tests {
             &[],
         );
         eprintln!("PROBE result: {value:?}");
-        for text in [
-            "(-105020879.61--102311726.56)",
-            "(-105020879.61--102311726.56)=(-26392724.12--23683571.07)",
-            "-105020879.61--102311726.56",
-            "(-26392724.12--23683571.07)",
-        ] {
-            eprintln!("PROBE {text} => {:?}", evaluate_expression(text, &[]));
-        }
-        assert!(value.is_ok());
+        // Decimal 精确比较：两侧变化均等于 -2709153.05，<> 应为 False、= 应为 true。
+        assert_eq!(value, Ok(ExpressionValue::Boolean(false)));
+        assert_eq!(
+            evaluate_expression(
+                "(-105020879.61--102311726.56)=(-26392724.12--23683571.07)",
+                &[],
+            ),
+            Ok(ExpressionValue::Boolean(true))
+        );
     }
 }
