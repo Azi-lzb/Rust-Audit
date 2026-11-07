@@ -1,0 +1,49 @@
+{
+  "poison_templates": [
+    "！70.金融基础数据采集（债券业务）202608.xlsx"
+  ],
+  "source_files": [
+    "TCL科技集团财务有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx",
+    "广东博罗农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx",
+    "广东惠东农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx",
+    "广东龙门农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx",
+    "惠东惠民村镇银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx",
+    "惠州农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx",
+    "惠州博罗长江村镇银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx"
+  ],
+  "copies": 7,
+  "batch_counts": {
+    "conditionalIssues": 13,
+    "filesTotal": 7,
+    "formulaIssues": 0,
+    "matched": true,
+    "skipped": 0,
+    "structurePassed": 7,
+    "totalIssues": 13
+  },
+  "dangling_external_refs": {
+    "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\poison_template_work\\out\\steps\\S1-F01\\S1-F1_审核结果_20261107_233428_903\\0001-TCL科技集团财务有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalculated.xlsx": 0,
+    "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\poison_template_work\\out\\steps\\S1-F01\\S1-F1_审核结果_20261107_233428_903\\0002-广东博罗农村商业银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalculated.xlsx": 0,
+    "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\poison_template_work\\out\\steps\\S1-F01\\S1-F1_审核结果_20261107_233428_903\\0003-广东惠东农村商业银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalculated.xlsx": 0,
+    "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\poison_template_work\\out\\steps\\S1-F01\\S1-F1_审核结果_20261107_233428_903\\0004-广东龙门农村商业银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalculated.xlsx": 0,
+    "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\poison_template_work\\out\\steps\\S1-F01\\S1-F1_审核结果_20261107_233428_903\\0005-惠东惠民村镇银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalculated.xlsx": 0,
+    "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\poison_template_work\\out\\steps\\S1-F01\\S1-F1_审核结果_20261107_233428_903\\0006-惠州农村商业银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalculated.xlsx": 0,
+    "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\poison_template_work\\out\\steps\\S1-F01\\S1-F1_审核结果_20261107_233428_903\\0007-惠州博罗长江村镇银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalculated.xlsx": 0
+  },
+  "dangling_external_refs_total": 0,
+  "excel_open": {
+    "opened": 7,
+    "total": 7,
+    "detail": {
+      "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\poison_template_work\\out\\steps\\S1-F01\\S1-F1_审核结果_20261107_233428_903\\0004-广东龙门农村商业银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalculated.xlsx": "OK sheets=7",
+      "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\poison_template_work\\out\\steps\\S1-F01\\S1-F1_审核结果_20261107_233428_903\\0002-广东博罗农村商业银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalculated.xlsx": "OK sheets=7",
+      "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\poison_template_work\\out\\steps\\S1-F01\\S1-F1_审核结果_20261107_233428_903\\0003-广东惠东农村商业银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalculated.xlsx": "OK sheets=7",
+      "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\poison_template_work\\out\\steps\\S1-F01\\S1-F1_审核结果_20261107_233428_903\\0007-惠州博罗长江村镇银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalculated.xlsx": "OK sheets=7",
+      "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\poison_template_work\\out\\steps\\S1-F01\\S1-F1_审核结果_20261107_233428_903\\0001-TCL科技集团财务有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalculated.xlsx": "OK sheets=7",
+      "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\poison_template_work\\out\\steps\\S1-F01\\S1-F1_审核结果_20261107_233428_903\\0005-惠东惠民村镇银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalculated.xlsx": "OK sheets=7",
+      "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\poison_template_work\\out\\steps\\S1-F01\\S1-F1_审核结果_20261107_233428_903\\0006-惠州农村商业银行股份有限公司_金融基础数据采集_债券业务__2026-08-31_数据核对表-recalculated.xlsx": "OK sheets=7"
+    }
+  },
+  "control_original_ref_fails": true,
+  "inputs_unchanged": true
+}
