@@ -1,0 +1,337 @@
+{
+  "generated_at": "2026-11-07 15:26:31",
+  "exe": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\dist\\open-data-audit.exe",
+  "exe_sha256": "228a8cdcb68d68fed440fba37e7245bfd2a0be5e4085458713b131d25bd1bb00",
+  "engine_settings": "calc=auto(Excel COM); s1ConditionalFormatSource=source; conditionalFormatEvaluator=PYTHON; conditionalFormatIncludeBlankCells=true; edit=auto",
+  "features": {
+    "s1f1": {
+      "baseline": {
+        "totals": {
+          "files": 129,
+          "successful": 129,
+          "failed": 0,
+          "issues": 3602
+        },
+        "issue_count": 3602
+      },
+      "run1": {
+        "exit": 2,
+        "key_counts": {
+          "conditionalIssues": 244,
+          "filesTotal": 129,
+          "formulaIssues": 3345,
+          "matched": true,
+          "skipped": 0,
+          "structurePassed": 129,
+          "totalIssues": 3589
+        },
+        "rust_issue_count": 3589,
+        "count_match": false,
+        "only_rust": [],
+        "only_baseline": [
+          "('广东博罗农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx', '存量债券投资', '条件格式触发', 'F19', '条件格式规则：AND(F19<>\"\",OR(F19<-30,F19>30))')",
+          "('广东博罗农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx', '存量债券投资', '条件格式触发', 'F88', '条件格式规则：AND(F88<>\"\",OR(F88<-30,F88>30))')",
+          "('广东惠东农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx', '存量债券投资', '条件格式触发', 'C144', '条件格式规则：AND(C144<>\"\",C144>=5)')",
+          "('广东惠东农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx', '存量债券投资', '条件格式触发', 'F8', '条件格式规则：AND(F8<>\"\",OR(F8<-30,F8>30))')",
+          "('惠州农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx', '存量债券投资', '条件格式触发', 'C139', '条件格式规则：AND(C139<>\"\",C139>=10)')",
+          "('惠州农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx', '存量债券投资', '条件格式触发', 'C144', '条件格式规则：AND(C144<>\"\",C144>=5)')",
+          "('惠州农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx', '存量债券投资', '条件格式触发', 'F101', '条件格式规则：AND(F101<>\"\",OR(F101<-30,F101>30))')",
+          "('惠州农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx', '存量债券投资', '条件格式触发', 'F139', '条件格式规则：AND(F139<>\"\",OR(F139<-30,F139>30))')",
+          "('惠州农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx', '存量债券投资', '条件格式触发', 'F144', '条件格式规则：AND(F144<>\"\",OR(F144<-30,F144>30))')",
+          "('惠州农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx', '存量债券投资', '条件格式触发', 'F50', '条件格式规则：AND(F50<>\"\",OR(F50<-30,F50>30))')",
+          "('惠州农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx', '存量债券投资', '条件格式触发', 'F8', '条件格式规则：AND(F8<>\"\",OR(F8<-30,F8>30))')",
+          "('惠州农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx', '存量债券投资', '条件格式触发', 'F88', '条件格式规则：AND(F88<>\"\",OR(F88<-30,F88>30))')",
+          "('惠州农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx', '存量债券投资', '条件格式触发', 'F95', '条件格式规则：AND(F95<>\"\",OR(F95<-30,F95>30))')"
+        ],
+        "only_rust_total": 0,
+        "only_baseline_total": 13,
+        "value_field_diffs": [],
+        "value_field_diff_total": 0,
+        "elapsed": 231.5
+      },
+      "run2": {
+        "exit": 2,
+        "key_counts": {
+          "conditionalIssues": 244,
+          "filesTotal": 129,
+          "formulaIssues": 3345,
+          "matched": true,
+          "skipped": 0,
+          "structurePassed": 129,
+          "totalIssues": 3589
+        },
+        "rust_issue_count": 3589,
+        "count_match": false,
+        "only_rust": [],
+        "only_baseline": [
+          "('广东博罗农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx', '存量债券投资', '条件格式触发', 'F19', '条件格式规则：AND(F19<>\"\",OR(F19<-30,F19>30))')",
+          "('广东博罗农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx', '存量债券投资', '条件格式触发', 'F88', '条件格式规则：AND(F88<>\"\",OR(F88<-30,F88>30))')",
+          "('广东惠东农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx', '存量债券投资', '条件格式触发', 'C144', '条件格式规则：AND(C144<>\"\",C144>=5)')",
+          "('广东惠东农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx', '存量债券投资', '条件格式触发', 'F8', '条件格式规则：AND(F8<>\"\",OR(F8<-30,F8>30))')",
+          "('惠州农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx', '存量债券投资', '条件格式触发', 'C139', '条件格式规则：AND(C139<>\"\",C139>=10)')",
+          "('惠州农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx', '存量债券投资', '条件格式触发', 'C144', '条件格式规则：AND(C144<>\"\",C144>=5)')",
+          "('惠州农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx', '存量债券投资', '条件格式触发', 'F101', '条件格式规则：AND(F101<>\"\",OR(F101<-30,F101>30))')",
+          "('惠州农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx', '存量债券投资', '条件格式触发', 'F139', '条件格式规则：AND(F139<>\"\",OR(F139<-30,F139>30))')",
+          "('惠州农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx', '存量债券投资', '条件格式触发', 'F144', '条件格式规则：AND(F144<>\"\",OR(F144<-30,F144>30))')",
+          "('惠州农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx', '存量债券投资', '条件格式触发', 'F50', '条件格式规则：AND(F50<>\"\",OR(F50<-30,F50>30))')",
+          "('惠州农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx', '存量债券投资', '条件格式触发', 'F8', '条件格式规则：AND(F8<>\"\",OR(F8<-30,F8>30))')",
+          "('惠州农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx', '存量债券投资', '条件格式触发', 'F88', '条件格式规则：AND(F88<>\"\",OR(F88<-30,F88>30))')",
+          "('惠州农村商业银行股份有限公司_金融基础数据采集（债券业务）_2026-08-31_数据核对表.xlsx', '存量债券投资', '条件格式触发', 'F95', '条件格式规则：AND(F95<>\"\",OR(F95<-30,F95>30))')"
+        ],
+        "only_rust_total": 0,
+        "only_baseline_total": 13,
+        "value_field_diffs": [],
+        "value_field_diff_total": 0,
+        "elapsed": 228.3
+      },
+      "two_runs_identical": true
+    },
+    "s3f1": {
+      "baseline": {
+        "feature": "S3F1",
+        "generated_at": "2026-11-07T14:13:21",
+        "config": "3.1大集中执行比较_配置.xlsx",
+        "comparison": {
+          "name": "比较结果.xlsx",
+          "sha256": "64c0bcdc7ddde0ab013fbaad75be66158bde49c86befb417dc79d5ffc5e876c2"
+        },
+        "rows_total": 3868,
+        "rows_by_fill_color": {
+          "10": 2880,
+          "None": 922,
+          "6": 30,
+          "3": 35,
+          "46": 1
+        },
+        "elapsed_seconds": 2.8
+      },
+      "run1": {
+        "fills": {
+          "FF008000": 51840,
+          "None": 32085,
+          "FFFFFF00": 540,
+          "FFFF0000": 630,
+          "FFFF6600": 1
+        },
+        "rows": 3868,
+        "elapsed": 2.5,
+        "sheets": {
+          "2026年10月对比结果": [
+            3869,
+            22
+          ]
+        },
+        "workbook_diff": {
+          "sheet_diffs": [
+            "S3F1｜2026年10月对比结果｜r472c7｜Rust='34R01' 基线='34q01'",
+            "S3F1｜2026年10月对比结果｜r472c8｜Rust='34R01' 基线='34q01'",
+            "S3F1｜2026年10月对比结果｜r472c9｜Rust='一、委托贷款' 基线='银行承兑汇票'",
+            "S3F1｜2026年10月对比结果｜r472c13｜Rust=1 基线=2",
+            "S3F1｜2026年10月对比结果｜r472c14｜Rust=4.247939 基线=0.256438",
+            "S3F1｜2026年10月对比结果｜r472c15｜Rust=4.31073 基线=0.320084",
+            "S3F1｜2026年10月对比结果｜r472c16｜Rust=-0.062791 基线=-0.063646",
+            "S3F1｜2026年10月对比结果｜r472c17｜Rust=-0.0145662103634419 基线=-0.198841554092051",
+            "S3F1｜2026年10月对比结果｜r473c7｜Rust='34R03' 基线='34q01'",
+            "S3F1｜2026年10月对比结果｜r473c8｜Rust='34R03' 基线='34q01'",
+            "S3F1｜2026年10月对比结果｜r473c9｜Rust='（二）一般委托贷款' 基线='银行承兑汇票'",
+            "S3F1｜2026年10月对比结果｜r473c10｜Rust='余额' 基线='发生额'",
+            "S3F1｜2026年10月对比结果｜r473c13｜Rust=1 基线=2",
+            "S3F1｜2026年10月对比结果｜r473c14｜Rust=4.247939 基线=0.052273",
+            "S3F1｜2026年10月对比结果｜r473c15｜Rust=4.31073 基线=0.067409",
+            "S3F1｜2026年10月对比结果｜r473c16｜Rust=-0.062791 基线=-0.015136",
+            "S3F1｜2026年10月对比结果｜r473c17｜Rust=-0.0145662103634419 基线=-0.22453974988503",
+            "S3F1｜2026年10月对比结果｜r474c7｜Rust='34R10' 基线='34q02'",
+            "S3F1｜2026年10月对比结果｜r474c8｜Rust='34R10' 基线='34q02'",
+            "S3F1｜2026年10月对比结果｜r474c9｜Rust='2.受非金融机构委托发放的委托贷款' 基线='其中：承兑境内企业签发商业汇票'",
+            "S3F1｜2026年10月对比结果｜r474c13｜Rust=1 基线=2",
+            "S3F1｜2026年10月对比结果｜r474c14｜Rust=4.247939 基线=0.256438",
+            "S3F1｜2026年10月对比结果｜r474c15｜Rust=4.31073 基线=0.320084",
+            "S3F1｜2026年10月对比结果｜r474c16｜Rust=-0.062791 基线=-0.063646",
+            "S3F1｜2026年10月对比结果｜r474c17｜Rust=-0.0145662103634419 基线=-0.198841554092051",
+            "S3F1｜2026年10月对比结果｜r475c7｜Rust='34R15' 基线='34q02'",
+            "S3F1｜2026年10月对比结果｜r475c8｜Rust='34R15' 基线='34q02'",
+            "S3F1｜2026年10月对比结果｜r475c9｜Rust='（4）发放给个人的委托贷款' 基线='其中：承兑境内企业签发商业汇票'",
+            "S3F1｜2026年10月对比结果｜r475c10｜Rust='余额' 基线='发生额'",
+            "S3F1｜2026年10月对比结果｜r475c13｜Rust=1 基线=2",
+            "…（明细超限截断）"
+          ],
+          "cell_diff_total": -1
+        }
+      },
+      "run2": {
+        "fills": {
+          "FF008000": 51840,
+          "None": 32085,
+          "FFFFFF00": 540,
+          "FFFF0000": 630,
+          "FFFF6600": 1
+        },
+        "rows": 3868,
+        "elapsed": 2.3,
+        "sheets": {
+          "2026年10月对比结果": [
+            3869,
+            22
+          ]
+        },
+        "workbook_diff": {
+          "sheet_diffs": [
+            "S3F1｜2026年10月对比结果｜r472c7｜Rust='34R01' 基线='34q01'",
+            "S3F1｜2026年10月对比结果｜r472c8｜Rust='34R01' 基线='34q01'",
+            "S3F1｜2026年10月对比结果｜r472c9｜Rust='一、委托贷款' 基线='银行承兑汇票'",
+            "S3F1｜2026年10月对比结果｜r472c13｜Rust=1 基线=2",
+            "S3F1｜2026年10月对比结果｜r472c14｜Rust=4.247939 基线=0.256438",
+            "S3F1｜2026年10月对比结果｜r472c15｜Rust=4.31073 基线=0.320084",
+            "S3F1｜2026年10月对比结果｜r472c16｜Rust=-0.062791 基线=-0.063646",
+            "S3F1｜2026年10月对比结果｜r472c17｜Rust=-0.0145662103634419 基线=-0.198841554092051",
+            "S3F1｜2026年10月对比结果｜r473c7｜Rust='34R03' 基线='34q01'",
+            "S3F1｜2026年10月对比结果｜r473c8｜Rust='34R03' 基线='34q01'",
+            "S3F1｜2026年10月对比结果｜r473c9｜Rust='（二）一般委托贷款' 基线='银行承兑汇票'",
+            "S3F1｜2026年10月对比结果｜r473c10｜Rust='余额' 基线='发生额'",
+            "S3F1｜2026年10月对比结果｜r473c13｜Rust=1 基线=2",
+            "S3F1｜2026年10月对比结果｜r473c14｜Rust=4.247939 基线=0.052273",
+            "S3F1｜2026年10月对比结果｜r473c15｜Rust=4.31073 基线=0.067409",
+            "S3F1｜2026年10月对比结果｜r473c16｜Rust=-0.062791 基线=-0.015136",
+            "S3F1｜2026年10月对比结果｜r473c17｜Rust=-0.0145662103634419 基线=-0.22453974988503",
+            "S3F1｜2026年10月对比结果｜r474c7｜Rust='34R10' 基线='34q02'",
+            "S3F1｜2026年10月对比结果｜r474c8｜Rust='34R10' 基线='34q02'",
+            "S3F1｜2026年10月对比结果｜r474c9｜Rust='2.受非金融机构委托发放的委托贷款' 基线='其中：承兑境内企业签发商业汇票'",
+            "S3F1｜2026年10月对比结果｜r474c13｜Rust=1 基线=2",
+            "S3F1｜2026年10月对比结果｜r474c14｜Rust=4.247939 基线=0.256438",
+            "S3F1｜2026年10月对比结果｜r474c15｜Rust=4.31073 基线=0.320084",
+            "S3F1｜2026年10月对比结果｜r474c16｜Rust=-0.062791 基线=-0.063646",
+            "S3F1｜2026年10月对比结果｜r474c17｜Rust=-0.0145662103634419 基线=-0.198841554092051",
+            "S3F1｜2026年10月对比结果｜r475c7｜Rust='34R15' 基线='34q02'",
+            "S3F1｜2026年10月对比结果｜r475c8｜Rust='34R15' 基线='34q02'",
+            "S3F1｜2026年10月对比结果｜r475c9｜Rust='（4）发放给个人的委托贷款' 基线='其中：承兑境内企业签发商业汇票'",
+            "S3F1｜2026年10月对比结果｜r475c10｜Rust='余额' 基线='发生额'",
+            "S3F1｜2026年10月对比结果｜r475c13｜Rust=1 基线=2",
+            "…（明细超限截断）"
+          ],
+          "cell_diff_total": -1
+        }
+      },
+      "two_runs_identical": true
+    },
+    "s3f4": {
+      "baseline": {
+        "feature": "S3F4",
+        "generated_at": "2026-11-07T14:13:30",
+        "config": "3.2大集中本期数值核对_配置.xlsx",
+        "check": {
+          "name": "核对结果.xlsx",
+          "sha256": "af07dc469049e28c394f4103414bf689b7b207ca57af468fdda7cd22f5de62f3"
+        },
+        "rows_total": 33,
+        "elapsed_seconds": 0.5
+      },
+      "run1": {
+        "elapsed": 1.0,
+        "sheets": {
+          "对比结果": [
+            34,
+            17
+          ]
+        },
+        "workbook_diff": {
+          "sheet_diffs": [],
+          "cell_diff_total": 0
+        }
+      },
+      "run2": {
+        "elapsed": 1.0,
+        "sheets": {
+          "对比结果": [
+            34,
+            17
+          ]
+        },
+        "workbook_diff": {
+          "sheet_diffs": [],
+          "cell_diff_total": 0
+        }
+      },
+      "two_runs_identical": true
+    },
+    "s3f2": {
+      "baseline": {
+        "feature": "S3F2",
+        "generated_at": "2026-11-07T14:13:22",
+        "comparison": "比较结果.xlsx",
+        "config": "3.0大集中通用配置.xlsx",
+        "exported_rows": 0,
+        "output": {
+          "name": "说明文件.xlsx",
+          "sha256": "fa7cfbcb428e2ae0c631a0d819d36547fb044bbd5c3ec87bce6aee24bcb30fd2"
+        },
+        "elapsed_seconds": 0.6
+      },
+      "run1": {
+        "elapsed": 1.0,
+        "sheets": {
+          "说明文件": [
+            2,
+            8
+          ],
+          "生成信息": [
+            5,
+            2
+          ]
+        },
+        "workbook_diff": {
+          "sheet_diffs": [
+            "S3F2｜工作表仅一侧存在：(说明)2026.10 说明文件",
+            "S3F2｜工作表仅一侧存在：生成信息",
+            "S3F2｜工作表仅一侧存在：说明文件"
+          ],
+          "cell_diff_total": 3
+        }
+      },
+      "run2": {
+        "elapsed": 1.0,
+        "sheets": {
+          "说明文件": [
+            2,
+            8
+          ],
+          "生成信息": [
+            5,
+            2
+          ]
+        },
+        "workbook_diff": {
+          "sheet_diffs": [
+            "S3F2｜工作表仅一侧存在：(说明)2026.10 说明文件",
+            "S3F2｜工作表仅一侧存在：生成信息",
+            "S3F2｜工作表仅一侧存在：说明文件"
+          ],
+          "cell_diff_total": 3
+        }
+      },
+      "two_runs_identical": false
+    },
+    "s3f3": {
+      "baseline": {
+        "imported": 0,
+        "unmatched": 0,
+        "conflicts": 0,
+        "backup_path": "C:\\Users\\AZI\\Desktop\\VibeCode\\3.open-data-audit\\test-output\\rustaudit_alignment\\_work\\s3f2\\说明文件_导入前备份_20261107_141329.xlsx",
+        "conflict_report_path": null
+      },
+      "run1": {
+        "exit": 0,
+        "stdout_tail": "\\\\reports\\\\rustaudit_alignment_work\\\\s3f3_run1\\\\s3f2_for_f3\\\\s3f2\\\\说明文件.xlsx\",\n  \"backup_workbook\": \"C:\\\\Users\\\\AZI\\\\Desktop\\\\VibeCode\\\\Rust-Audit\\\\probe\\\\reports\\\\rustaudit_alignment_work\\\\s3f3_run1\\\\s3f2_for_f3\\\\s3f2\\\\说明文件_导入前备份_20261107_153413_530_0.xlsx\",\n  \"rollback_cleanup_warning\": null,\n  \"imported\": 0,\n  \"unmatched\": 0,\n  \"conflicts\": 0,\n  \"planned_cell_updates\": 0,\n  \"conflict_report_path\": null,\n  \"edit\": null,\n  \"copied_without_edits\": true,\n  \"target_read_time_ms\": 0,\n  \"feedback_read_time_ms\": 151,\n  \"conflict_write_time_ms\": 0,\n  \"writeback_time_ms\": 3,\n  \"total_time_ms\": 186\n}\n",
+        "stderr_tail": "S3-F03 已原地更新 C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\rustaudit_alignment_work\\s3f3_run1\\s3f2_for_f3\\s3f2\\说明文件.xlsx；写入 0 条、未匹配 0 条、冲突 0 条；更新前备份 C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\rustaudit_alignment_work\\s3f3_run1\\s3f2_for_f3\\s3f2\\说明文件_导入前备份_20261107_153413_530_0.xlsx；耗时 186 ms。\n",
+        "elapsed": 0.2
+      },
+      "run2": {
+        "exit": 0,
+        "stdout_tail": "\\\\reports\\\\rustaudit_alignment_work\\\\s3f3_run2\\\\s3f2_for_f3\\\\s3f2\\\\说明文件.xlsx\",\n  \"backup_workbook\": \"C:\\\\Users\\\\AZI\\\\Desktop\\\\VibeCode\\\\Rust-Audit\\\\probe\\\\reports\\\\rustaudit_alignment_work\\\\s3f3_run2\\\\s3f2_for_f3\\\\s3f2\\\\说明文件_导入前备份_20261107_153414_755_0.xlsx\",\n  \"rollback_cleanup_warning\": null,\n  \"imported\": 0,\n  \"unmatched\": 0,\n  \"conflicts\": 0,\n  \"planned_cell_updates\": 0,\n  \"conflict_report_path\": null,\n  \"edit\": null,\n  \"copied_without_edits\": true,\n  \"target_read_time_ms\": 0,\n  \"feedback_read_time_ms\": 160,\n  \"conflict_write_time_ms\": 0,\n  \"writeback_time_ms\": 3,\n  \"total_time_ms\": 200\n}\n",
+        "stderr_tail": "S3-F03 已原地更新 C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\rustaudit_alignment_work\\s3f3_run2\\s3f2_for_f3\\s3f2\\说明文件.xlsx；写入 0 条、未匹配 0 条、冲突 0 条；更新前备份 C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\rustaudit_alignment_work\\s3f3_run2\\s3f2_for_f3\\s3f2\\说明文件_导入前备份_20261107_153414_755_0.xlsx；耗时 201 ms。\n",
+        "elapsed": 0.2
+      }
+    }
+  },
+  "sources_unchanged": true,
+  "changed_sources": []
+}
