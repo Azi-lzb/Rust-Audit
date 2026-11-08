@@ -40,6 +40,10 @@ pub struct ExcelOpenRepairReport {
     /// 剥离后确认无残留时移除的外链相关部件数（externalLink 等）。
     pub external_link_parts_removed: usize,
     pub pane_fixed: usize,
+    /// shared formula 的 `ref` 起点不在主格上时归一到主格（Excel 打开保存
+    /// 本来就会这么做；不归一会让 calamine 按 ref 起点换算从属格，公式文本
+    /// 与 Excel 重算结果差一行/列，触发"重算改变公式"误判）。
+    pub shared_formula_ref_fixed: usize,
     pub reason: String,
 }
 
@@ -375,6 +379,35 @@ fn contradictory_pane_attribute(tag: &str) -> Option<(String, String)> {
     Some((original, corrected))
 }
 
+/// 把 shared formula 的 `ref` 起点归一到主格自身（Excel 打开保存的既有行为）。
+///
+/// 模板里存在 `ref="C13:C48"` 而主格是 C14 的写法（主格落在 ref 起点之后）。
+/// Excel 打开时会改成 `C14:C48`；calamine 则按 ref 起点换算从属格相对引用，
+/// 于是源副本上 C15 被读成 `$D16`、COM 输出的 C15 是 `$D15`——重算守卫据此
+/// 误判「重算改变公式」。归一后两边口径一致，公式语义不变（主格位置没动）。
+fn normalize_shared_formula_refs(xml: &str, fixed: &mut usize) -> String {
+    static SHARED_REF_RE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(
+            r#"<c r="([A-Z]+)(\d+)"[^>]*><f t="shared" ref="([A-Z]+\d+):([A-Z]+\d+)" si="(\d+)""#,
+        )
+        .unwrap()
+    });
+    SHARED_REF_RE
+        .replace_all(xml, |caps: &Captures| {
+            let (master_col, master_row) = (&caps[1], &caps[2]);
+            let ref_start = &caps[3];
+            let ref_start_cell = format!("{master_col}{master_row}");
+            if ref_start == &ref_start_cell {
+                return caps[0].to_owned();
+            }
+            *fixed += 1;
+            let original = format!(r#"<f t="shared" ref="{ref_start}:"#);
+            let corrected = format!(r#"<f t="shared" ref="{ref_start_cell}:"#);
+            caps[0].replace(&original, &corrected)
+        })
+        .into_owned()
+}
+
 /// 处理一个可修复部件；文本不是有效 UTF-8 时保持原始字节不动。
 fn repair_part_bytes(
     data: &[u8],
@@ -383,6 +416,7 @@ fn repair_part_bytes(
     quoted: &mut usize,
     external_ref_fixed: &mut usize,
     pane_fixed: &mut usize,
+    shared_ref_fixed: &mut usize,
 ) -> Vec<u8> {
     let Ok(text) = std::str::from_utf8(data) else {
         return data.to_vec();
@@ -431,7 +465,12 @@ fn repair_part_bytes(
                 None => caps[0].to_owned(),
             },
         );
-    replaced.into_owned().into_bytes()
+    let current = replaced.into_owned();
+    // shared formula 的 ref 必须从主格开始：否则 calamine 按 ref 起点换算
+    // 从属格的相对引用会整体错位（实测！40 模板 ref="C13:C48" 而主格在 C14，
+    // C15 被算成 $D16），导致重算守卫误判「重算改变公式」。
+    let current = normalize_shared_formula_refs(&current, shared_ref_fixed);
+    current.into_bytes()
 }
 
 fn needs_repair(
@@ -462,6 +501,14 @@ fn needs_repair(
                 .any(|pane| contradictory_pane_attribute(pane.as_str()).is_some())
         {
             return Ok(true);
+        }
+        // 第四类：shared formula 的 ref 起点不在主格上（会让 calamine 与
+        // Excel 的从属格相对引用错位，重算守卫误判"重算改变公式"）。
+        if entry.name().starts_with("xl/worksheets/") && text.contains(r#"t="shared" ref=""#) {
+            let mut probe = 0usize;
+            if normalize_shared_formula_refs(&text, &mut probe) != text {
+                return Ok(true);
+            }
         }
     }
     Ok(false)
@@ -532,6 +579,7 @@ fn repair_audit_copy_inner(path: &Path, report: &mut ExcelOpenRepairReport) -> R
                 &mut 0,
                 &mut scratch_total,
                 &mut 0,
+                &mut 0,
             );
             if has_any_external_ref(&String::from_utf8_lossy(&stripped)) {
                 if std::env::var_os("AUDIT_DEBUG_RESIDUAL").is_some() {
@@ -567,6 +615,7 @@ fn repair_audit_copy_inner(path: &Path, report: &mut ExcelOpenRepairReport) -> R
                     &mut report.quoted,
                     &mut report.external_ref_fixed,
                     &mut report.pane_fixed,
+                    &mut report.shared_formula_ref_fixed,
                 );
                 if has_any_external_ref(&String::from_utf8_lossy(&repaired)) {
                     residual_external_ref = true;
@@ -964,6 +1013,44 @@ mod tests {
         let text = strip_external_refs("SUM([3]其他簿!A1)+[9]未知表!B2", &locals, &mut n);
         assert_eq!(n, 2, "{text}");
         assert_eq!(text, "SUM(其他簿!A1)+未知表!B2");
+    }
+
+    /// ！40 模板实测：`ref="C13:C48"` 而主格在 C14（ref 起点落在主格之前）。
+    /// 不归一 → calamine 按 ref 起点换算从属格相对引用，C15 读成 $D16，
+    /// 重算守卫误判「重算改变公式」。归一后主格/从属两边口径一致。
+    #[test]
+    fn shared_formula_ref_start_is_normalized_to_the_master_cell() {
+        let xml = concat!(
+            r#"<worksheet><sheetData><row r="13">"#,
+            r#"<c r="C14" s="14" t="str"><f t="shared" ref="C13:C48" si="7">IF(OR(ISBLANK($D14),ISBLANK($D$205)),"",$D14/$D$205*100)</f><v></v></c>"#,
+            r#"<c r="C15" s="14" t="str"><f t="shared" si="7"/><v></v></c>"#,
+            r#"<c r="C16" s="14" t="str"><f t="shared" si="7"/><v></v></c>"#,
+            r#"</row></sheetData></worksheet>"#,
+        );
+        let mut fixed = 0usize;
+        let normalized = super::normalize_shared_formula_refs(xml, &mut fixed);
+        assert_eq!(fixed, 1, "只改主格那一处");
+        assert!(
+            normalized.contains(r#"ref="C14:C48""#),
+            "ref 起点归一为主格: {normalized}"
+        );
+        assert!(
+            !normalized.contains(r#"ref="C13:C48""#),
+            "旧起点必须消失: {normalized}"
+        );
+        // 从属格与公式本体不受影响
+        assert!(normalized.contains(r#"<c r="C15" s="14" t="str"><f t="shared" si="7"/>"#));
+        assert!(normalized.contains("IF(OR(ISBLANK($D14)"));
+    }
+
+    #[test]
+    fn shared_formula_ref_already_at_master_is_untouched() {
+        let xml =
+            r#"<c r="C14" s="14" t="str"><f t="shared" ref="C14:C48" si="7">A14</f><v></v></c>"#;
+        let mut fixed = 0usize;
+        let normalized = super::normalize_shared_formula_refs(xml, &mut fixed);
+        assert_eq!(fixed, 0);
+        assert_eq!(normalized, xml);
     }
 
     #[test]
