@@ -13,6 +13,7 @@ ooxml-patch = { path = "../ooxml-patch" }
 excel-reader = { path = "../excel-reader" }
 zip.workspace = true
 roxmltree.workspace = true
+regex.workspace = true
 
 [dev-dependencies]
 rust_xlsxwriter.workspace = true

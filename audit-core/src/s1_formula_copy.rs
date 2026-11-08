@@ -2174,6 +2174,7 @@ mod tests {
             operations: [
                 EditOperationKind::CreateSheet,
                 EditOperationKind::DeleteSheet,
+                EditOperationKind::DeleteColumn,
                 EditOperationKind::ImportRange,
                 EditOperationKind::ImportRangeWithFormulaTranslation,
                 EditOperationKind::SetWorkbookCalculationProperties,

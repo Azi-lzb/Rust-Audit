@@ -1,7 +1,7 @@
 {
   "generated_at": "2026-11-07 15:26:31",
   "exe": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\dist\\open-data-audit.exe",
-  "exe_sha256": "87ee64c4e9cee0c4cc9178f62a11a32a761ad7a8879bfdbf8f8f8515c5575b76",
+  "exe_sha256": "7526a34f72cfaaf539dbb84859bcfe537c0bd5af022d25a9a5539a713672716e",
   "engine_settings": "calc=auto(Excel COM); s1ConditionalFormatSource=source; conditionalFormatEvaluator=PYTHON; conditionalFormatIncludeBlankCells=true; edit=auto",
   "features": {
     "s1f1": {
@@ -418,7 +418,7 @@
           "2026.10 村镇银行 惠州市博罗县乡1.xlsx"
         ],
         "names_match": true,
-        "elapsed": 152.2,
+        "elapsed": 150.0,
         "content_diffs": [
           "缺少：2026.10 TCL财务公司 广东省.xlsx",
           "缺少：2026.10 博罗农村商业银行 广东省.xlsx",
@@ -443,7 +443,7 @@
           "2026.10 村镇银行 惠州市博罗县乡1.xlsx"
         ],
         "names_match": true,
-        "elapsed": 151.0,
+        "elapsed": 149.9,
         "content_diffs": [
           "缺少：2026.10 TCL财务公司 广东省.xlsx",
           "缺少：2026.10 博罗农村商业银行 广东省.xlsx",

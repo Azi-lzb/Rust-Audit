@@ -30,6 +30,7 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter, write::SimpleFileOptions};
 pub const SUPPORTED_OPERATIONS: &[EditOperationKind] = &[
     EditOperationKind::CreateSheet,
     EditOperationKind::DeleteSheet,
+    EditOperationKind::DeleteColumn,
     EditOperationKind::ImportRange,
     EditOperationKind::ImportRangeWithFormulaTranslation,
     EditOperationKind::SetWorkbookCalculationProperties,
@@ -173,6 +174,12 @@ fn apply_plan(plan: &ExcelEditPlan) -> Result<()> {
             }
             EditOperation::DeleteSheet { name } => {
                 sheet_parts.delete_sheet(&mut package, &mut workbook_xml, name)?;
+            }
+            EditOperation::DeleteColumn { sheet, column_index } => {
+                let part = sheet_parts.part_for(sheet)?;
+                let sheet_xml = package.text(part)?;
+                let updated = delete_column_in_sheet_xml(&sheet_xml, *column_index)?;
+                package.set_text(part, updated);
             }
             EditOperation::ImportRange {
                 source_workbook,
@@ -1118,6 +1125,192 @@ fn try_shift_reference(
     // cursor 是字节偏移；换算成字符数（引用只含 ASCII，前缀可能含多字节）。
     let consumed_chars = rest[..cursor].chars().count();
     Ok(Some((consumed_chars, replacement)))
+}
+
+
+
+/// 从工作表 XML 删除一列：移除该列单元格、左移其后单元格地址，并同步
+/// dimension / mergeCells / autoFilter / conditionalFormatting sqref 区域。
+/// 单元格公式文本不做翻译（对齐 openpyxl delete_cols 口径，供后续重算修正）。
+fn delete_column_in_sheet_xml(sheet_xml: &str, deleted: u32) -> Result<String> {
+    use regex::Regex;
+
+    let cell_re = Regex::new(r#"<c r="([A-Z]+)(\d+)""#)
+        .context("编译单元格正则失败")?;
+    let row_re = Regex::new(r#"<row [^>]*r="(\d+)"[^>]*>(?:(?!</row>).)*</row>"#)
+        .context("编译行正则失败")?;
+
+    // ---- 行内单元格：删除/左移 ----
+    let mut output = String::with_capacity(sheet_xml.len() + 4096);
+    let mut last = 0usize;
+    for row_match in row_re.find_iter(sheet_xml) {
+        let block = row_match.as_str();
+        output.push_str(&sheet_xml[last..row_match.start()]);
+        let open_end = block.find('>').map(|index| index + 1).unwrap_or(0);
+        let close_start = block.rfind("</row>").unwrap_or(block.len());
+        let prefix = &block[..open_end];
+        let body = &block[open_end..close_start];
+        let suffix = &block[close_start..];
+        let row_number = regex::Regex::new(r#"r="(\d+)""#)
+            .context("编译行号正则失败")?
+            .captures(prefix)
+            .and_then(|caps| caps.get(1))
+            .and_then(|value| value.as_str().parse::<u32>().ok())
+            .unwrap_or(0);
+
+        let mut rebuilt = String::with_capacity(body.len());
+        let mut cell_last = 0usize;
+        for cell_match in cell_re.captures_iter(body) {
+            let whole = cell_match.get(0).unwrap();
+            let letters = cell_match[1].to_owned();
+            let column = column_index(&letters);
+            rebuilt.push_str(&body[cell_last..whole.start()]);
+            cell_last = whole.end();
+            if column == deleted {
+                continue;
+            }
+            if column > deleted {
+                // r 属性改为左移后的列字母；属性其余部分原样保留
+                let attribute_len = format!(r#"<c r="{}{}""#, letters, row_number).len();
+                let cell_tail = &body[whole.start() + attribute_len..];
+                rebuilt.push_str(&format!(
+                    r#"<c r="{}{}""#,
+                    column_letters(column - 1),
+                    row_number
+                ));
+                rebuilt.push_str(cell_tail);
+                continue;
+            }
+            rebuilt.push_str(whole.as_str());
+        }
+        rebuilt.push_str(&body[cell_last..]);
+        output.push_str(prefix);
+        output.push_str(&rebuilt);
+        output.push_str(suffix);
+        last = row_match.end();
+    }
+    output.push_str(&sheet_xml[last..]);
+
+    // ---- 区域类属性：dimension / mergeCells / autoFilter / sqref ----
+    // 每个范围按删列规则收缩或左移；完全失效的范围保留原值（交由 Excel 容错）。
+    let range_re = Regex::new(r#"((?:ref|sqref)=")([^"]+)(")"#).context("编译范围正则失败")?;
+    let output = range_re
+        .replace_all(&output, |caps: &regex::Captures| {
+            let mut areas: Vec<String> = Vec::new();
+            let mut dropped_all = true;
+            for area in caps[2].split(' ') {
+                if let Some(new_area) = shift_range_after_delete(area, deleted) {
+                    areas.push(new_area);
+                    dropped_all = false;
+                } else {
+                    dropped_all = true;
+                }
+            }
+            if areas.is_empty() || dropped_all && areas.is_empty() {
+                caps[0].to_owned()
+            } else {
+                let joined = areas.join(" ");
+                if joined.is_empty() {
+                    caps[0].to_owned()
+                } else {
+                    format!("{}{}{}", &caps[1], joined, &caps[3])
+                }
+            }
+        })
+        .into_owned();
+
+    Ok(output)
+}
+
+/// 单个区域（`A1` / `A1:C5`）删列调整；None 表示区域失效。
+fn shift_range_after_delete(range: &str, deleted: u32) -> Option<String> {
+    use regex::Regex;
+    let token_re = Regex::new(r"(\$?)([A-Za-z]+)(\$?)(\d+)").ok()?;
+    let tokens: Vec<(bool, u32, bool, u32)> = token_re
+        .captures_iter(range)
+        .map(|caps| {
+            (
+                caps[1].eq("$"),
+                column_index(&caps[2].to_ascii_uppercase()),
+                caps[3].eq("$"),
+                caps[4].parse().unwrap_or(0),
+            )
+        })
+        .collect();
+    if tokens.is_empty() {
+        return None;
+    }
+    if tokens.len() == 1 {
+        let (d1, column, d2, row) = tokens[0];
+        if column == deleted {
+            return None;
+        }
+        if column > deleted {
+            return Some(format!(
+                "{}{}{}{}",
+                if d1 { "$" } else { "" },
+                column_letters(column - 1),
+                if d2 { "$" } else { "" },
+                row
+            ));
+        }
+        return Some(range.to_owned());
+    }
+    let mut c1 = tokens[0].1;
+    let mut c2 = tokens[1].1;
+    if c1 > c2 {
+        std::mem::swap(&mut c1, &mut c2);
+    }
+    if c2 < deleted {
+        return Some(range.to_owned());
+    }
+    if c1 > deleted {
+        let mut rebuilt = range.to_owned();
+        for token in &tokens {
+            let old = format!(
+                "{}{}{}{}",
+                if token.0 { "$" } else { "" },
+                column_letters(token.1),
+                if token.2 { "$" } else { "" },
+                token.3
+            );
+            let new = format!(
+                "{}{}{}{}",
+                if token.0 { "$" } else { "" },
+                column_letters(token.1 - 1),
+                if token.2 { "$" } else { "" },
+                token.3
+            );
+            rebuilt = rebuilt.replacen(&old, &new, 1);
+        }
+        return Some(rebuilt);
+    }
+    // 覆盖删除列：收缩
+    let new_min = if c1 == deleted { c1 + 1 } else { c1 };
+    let new_max = c2 - 1;
+    if new_max < new_min {
+        return None;
+    }
+    let mut rebuilt = range.to_owned();
+    for token in &tokens {
+        let old = format!(
+            "{}{}{}{}",
+            if token.0 { "$" } else { "" },
+            column_letters(token.1),
+            if token.2 { "$" } else { "" },
+            token.3
+        );
+        let new_column = if token.1 < deleted { token.1 } else { token.1 - 1 };
+        let new = format!(
+            "{}{}{}{}",
+            if token.0 { "$" } else { "" },
+            column_letters(new_column),
+            if token.2 { "$" } else { "" },
+            token.3
+        );
+        rebuilt = rebuilt.replacen(&old, &new, 1);
+    }
+    Some(rebuilt)
 }
 
 fn column_index(letters: &str) -> u32 {
@@ -3105,10 +3298,13 @@ mod tests {
             preserve: Default::default(),
             drop_allowed: Default::default(),
         };
+        // DeleteColumn 已实现（删列+左移+dimension/mergeCells 调整），
+        // 对不存在的工作表应报明确错误而非 UnsupportedBeforeWrite。
         let failure = backend.apply(&plan).unwrap_err();
         assert_eq!(
             failure.kind,
-            crate::BackendErrorKind::UnsupportedBeforeWrite
+            crate::BackendErrorKind::Failed,
+            "DeleteColumn 已注册为支持操作，失败应来自执行而非写前拒绝: {:?}", failure.kind
         );
         assert!(
             !plan.output.exists(),

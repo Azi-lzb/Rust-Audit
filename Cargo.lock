@@ -856,6 +856,7 @@ dependencies = [
  "anyhow",
  "excel-reader",
  "ooxml-patch",
+ "regex",
  "roxmltree",
  "rust_xlsxwriter",
  "serde",
@@ -1488,6 +1489,7 @@ name = "ooxml-patch"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "regex",
  "roxmltree",
  "zip 6.0.0",
 ]
