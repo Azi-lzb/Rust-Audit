@@ -61,10 +61,7 @@ fn main() -> anyhow::Result<()> {
                 before.sheets.len() == after.sheets.len(),
                 "重算改变了工作表数量"
             );
-            anyhow::ensure!(
-                before_formulas == after_formulas,
-                "重算改变了公式数量"
-            );
+            anyhow::ensure!(before_formulas == after_formulas, "重算改变了公式数量");
         }
         Err(error) => {
             println!("REFUSED {error:#}");

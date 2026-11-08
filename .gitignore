@@ -92,3 +92,12 @@ probe/reports/rustaudit_alignment_work/
 probe/reports/poison_template_work/
 probe/reports/s3f5_engine_solo_work/
 probe/patch_*.py
+# betteroffice 验证产物（可复跑，不入库）
+probe/reports/bo_linux/
+probe/reports/resave_test/
+probe/reports/bo_edge/
+probe/reports/s1f1_bo_parity/gui_
+probe/reports/s1f1_bo_parity/br
+probe/reports/s1f1_bo_parity/guard_test/
+probe/reports/s1f1_bo_parity/final_com/
+probe/reports/s1f1_bo_parity/v2_com/
