@@ -853,6 +853,42 @@ pub fn recalculate_s1_formula_copy_batch(
         "S1 批次重算仅支持 auto/lo（LibreOffice）：{engine_request}"
     );
     ensure!(!pairs.is_empty(), "S1 批次重算没有输入工作簿");
+    // betteroffice 优先（Windows / Linux 同一路由）：逐本先试 betteroffice，
+    // 只有被拒绝的才进入 LibreOffice 批处理——批量语义（一次 soffice 调用）
+    // 保持不变，本函数只负责收窄待转换集合。
+    let bo_config = crate::bo_calc::BoCalcConfig::from_env();
+    let mut betteroffice_outcomes: Vec<Option<S1RecalculationReport>> =
+        (0..pairs.len()).map(|_| None).collect();
+    let mut betteroffice_reasons: Vec<Option<String>> = (0..pairs.len()).map(|_| None).collect();
+    let mut pending_pairs: Vec<(usize, PathBuf, PathBuf)> = Vec::new();
+    if bo_config.enabled && engine_request == "auto" {
+        for (index, (input, output)) in pairs.iter().enumerate() {
+            match recalculate_with_betteroffice(input, output, &bo_config) {
+                Ok(report) => betteroffice_outcomes[index] = Some(report),
+                Err(error) => {
+                    let reason = format!("{error:#}");
+                    if !bo_config.fallback_available() {
+                        return Err(anyhow::anyhow!(
+                            "betteroffice 校验区域重算不可采用且未配置可用回退：{reason}"
+                        ));
+                    }
+                    betteroffice_reasons[index] = Some(format!("betteroffice 回退（{reason}）"));
+                    pending_pairs.push((index, input.clone(), output.clone()));
+                }
+            }
+            if pending_pairs.is_empty() && betteroffice_outcomes.iter().all(Option::is_some) {
+                break;
+            }
+        }
+        if pending_pairs.is_empty() {
+            // 全部由 betteroffice 完成：无需启动 LibreOffice。
+            return Ok(betteroffice_outcomes);
+        }
+    } else {
+        for (index, (input, output)) in pairs.iter().enumerate() {
+            pending_pairs.push((index, input.clone(), output.clone()));
+        }
+    }
     let sidecar_path = fs::canonicalize(sidecar_path.as_ref())
         .with_context(|| format!("读取公式重算 sidecar：{}", sidecar_path.as_ref().display()))?;
     ensure!(sidecar_path.is_file(), "公式重算 sidecar 不是文件");
@@ -871,7 +907,11 @@ pub fn recalculate_s1_formula_copy_batch(
         );
     }
     let started = Instant::now();
-    let pairs_file = unique_pairs_file(pairs)?;
+    let pending: Vec<(PathBuf, PathBuf)> = pending_pairs
+        .iter()
+        .map(|(_, input, output)| (input.clone(), output.clone()))
+        .collect();
+    let pairs_file = unique_pairs_file(&pending)?;
     let command = Command::new(&sidecar_path)
         .arg("recalculate-batch")
         .arg("--pairs")
@@ -910,20 +950,23 @@ pub fn recalculate_s1_formula_copy_batch(
         "LibreOffice 批次结束后仍有进程引用专用 profile"
     );
     anyhow::ensure!(
-        books.len() == pairs.len(),
+        books.len() == pending.len(),
         "批次公式重算返回的本数不一致：{} / {}",
         books.len(),
-        pairs.len()
+        pending.len()
     );
     // A single soffice invocation handles the whole batch. Allocate its wall
     // time evenly for the existing per-workbook performance ledger so summing
     // workbook entries does not multiply the same batch duration by N.
-    let elapsed_per_book_ms = started.elapsed().as_millis() / pairs.len() as u128;
-    let mut outcomes = Vec::with_capacity(pairs.len());
-    for (index, book) in books.iter().enumerate() {
-        let (input, output) = &pairs[index];
+    let elapsed_per_book_ms = started.elapsed().as_millis() / pending.len() as u128;
+    let mut outcomes = betteroffice_outcomes;
+    for (pending_index, book) in books.iter().enumerate() {
+        let original_index = pending_pairs[pending_index].0;
+        let (input, output) = (
+            &pending_pairs[pending_index].1,
+            &pending_pairs[pending_index].2,
+        );
         if book.get("status").and_then(Value::as_str) != Some("recalculated") {
-            outcomes.push(None);
             continue;
         }
         let engine = book
@@ -933,12 +976,16 @@ pub fn recalculate_s1_formula_copy_batch(
             .to_owned();
         validate_s1_engine(&engine)?;
         validate_recalculated_copy(input, output)?;
-        outcomes.push(Some(S1RecalculationReport {
+        let engine = match betteroffice_reasons[original_index].as_ref() {
+            Some(reason) => format!("{engine}；{reason}"),
+            None => engine,
+        };
+        outcomes[original_index] = Some(S1RecalculationReport {
             engine,
             input: input.clone(),
             output: output.clone(),
             elapsed_ms: elapsed_per_book_ms,
-        }));
+        });
     }
     Ok(outcomes)
 }
@@ -989,6 +1036,22 @@ pub fn recalculate_s1_formula_copy(
         S1_CALC_ENGINES.contains(&engine_request),
         "S1 公式重算引擎必须是 auto、excel、wps 或 lo：{engine_request}"
     );
+    // betteroffice（纯 Rust）优先——Windows 与 Linux 同一路由：
+    // betteroffice → 本函数既有 sidecar（Windows COM / Linux LibreOffice）。
+    let bo_config = crate::bo_calc::BoCalcConfig::from_env();
+    let mut bo_fallback_reason: Option<String> = None;
+    if bo_config.enabled && engine_request == "auto" {
+        match recalculate_with_betteroffice(input_path.as_ref(), output_path.as_ref(), &bo_config) {
+            Ok(report) => return Ok(report),
+            Err(error) => {
+                let reason = format!("{error:#}");
+                if !bo_config.fallback_available() {
+                    bail!("betteroffice 校验区域重算不可采用且未配置可用回退：{reason}");
+                }
+                bo_fallback_reason = Some(format!("betteroffice 回退（{reason}）"));
+            }
+        }
+    }
     let sidecar_path = fs::canonicalize(sidecar_path.as_ref())
         .with_context(|| format!("读取公式重算 sidecar：{}", sidecar_path.as_ref().display()))?;
     ensure!(sidecar_path.is_file(), "公式重算 sidecar 不是文件");
@@ -1019,7 +1082,33 @@ pub fn recalculate_s1_formula_copy(
 
     let report: Value =
         serde_json::from_slice(&command.stdout).context("解析公式重算 sidecar 的 JSON 结果")?;
-    finish_recalculation(&input_path, &output_path, &candidate, report, started)
+    let mut report = finish_recalculation(&input_path, &output_path, &candidate, report, started)?;
+    if let Some(reason) = bo_fallback_reason {
+        report.engine = format!("{}；{}", report.engine, reason);
+    }
+    Ok(report)
+}
+
+/// betteroffice 独立重算入口（Windows / Linux 共用同一实现）。
+fn recalculate_with_betteroffice(
+    input_path: &Path,
+    output_path: &Path,
+    config: &crate::bo_calc::BoCalcConfig,
+) -> Result<S1RecalculationReport> {
+    let started = Instant::now();
+    let (input, output, destination_staging) =
+        prepare_recalculation_paths(input_path, output_path)?;
+    let candidate = destination_staging.path().join("recalculated.xlsx");
+    std::fs::copy(&input, &candidate)
+        .with_context(|| format!("为 betteroffice 重算准备工作副本：{}", candidate.display()))?;
+    let outcome = crate::bo_calc::recalculate(&candidate, config)?;
+    let report = serde_json::json!({
+        "status": "recalculated",
+        "engine": outcome.application,
+    });
+    let mut report = finish_recalculation(&input, &output, &candidate, report, started)?;
+    report.elapsed_ms = started.elapsed().as_millis();
+    Ok(report)
 }
 
 fn prepare_recalculation_paths(
