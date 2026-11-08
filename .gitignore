@@ -90,4 +90,5 @@ secrets.json
 *.csv
 probe/reports/rustaudit_alignment_work/
 probe/reports/poison_template_work/
+probe/reports/s3f5_engine_solo_work/
 probe/patch_*.py
