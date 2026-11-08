@@ -19,12 +19,12 @@ use crate::{
     BackendCapability, BackendFailure, EditBackend, EditOperation, EditOperationKind,
     ExcelEditPlan, RangeStyleMode, WorkbookFormat,
 };
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{bail, ensure, Context, Result};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{Read, Write};
 use std::path::Path;
-use zip::{CompressionMethod, ZipArchive, ZipWriter, write::SimpleFileOptions};
+use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
 
 /// 本后端支持的操作集合。
 pub const SUPPORTED_OPERATIONS: &[EditOperationKind] = &[
@@ -33,6 +33,11 @@ pub const SUPPORTED_OPERATIONS: &[EditOperationKind] = &[
     EditOperationKind::DeleteColumn,
     EditOperationKind::ImportRange,
     EditOperationKind::ImportRangeWithFormulaTranslation,
+    EditOperationKind::SetCellValue,
+    EditOperationKind::SetCellNumberFormat,
+    EditOperationKind::SetCellFillColor,
+    EditOperationKind::SetRowHidden,
+    EditOperationKind::SetSheetVisibility,
     EditOperationKind::SetWorkbookCalculationProperties,
 ];
 
@@ -175,7 +180,10 @@ fn apply_plan(plan: &ExcelEditPlan) -> Result<()> {
             EditOperation::DeleteSheet { name } => {
                 sheet_parts.delete_sheet(&mut package, &mut workbook_xml, name)?;
             }
-            EditOperation::DeleteColumn { sheet, column_index } => {
+            EditOperation::DeleteColumn {
+                sheet,
+                column_index,
+            } => {
                 let part = sheet_parts.part_for(sheet)?;
                 let sheet_xml = package.text(part)?;
                 let updated = delete_column_in_sheet_xml(&sheet_xml, *column_index)?;
@@ -223,6 +231,57 @@ fn apply_plan(plan: &ExcelEditPlan) -> Result<()> {
                         materialize_blank_cells: *materialize_blank_cells,
                     },
                 )?;
+            }
+            EditOperation::SetCellValue { sheet, cell, value } => {
+                let part = sheet_parts.part_for(sheet)?.to_owned();
+                let sheet_xml = package.text(&part)?;
+                let updated = set_cell_value_in_sheet_xml(&sheet_xml, cell, value)?;
+                package.set_text(&part, updated);
+            }
+            EditOperation::SetCellNumberFormat {
+                sheet,
+                cell,
+                format_code,
+            } => {
+                let part = sheet_parts.part_for(sheet)?.to_owned();
+                let sheet_xml = package.text(&part)?;
+                let styles_xml = package
+                    .text("xl/styles.xml")
+                    .context("OOXML 副本缺少 xl/styles.xml")?;
+                let (styles_xml, style_index) =
+                    ensure_number_format_style(&styles_xml, format_code)?;
+                package.set_text("xl/styles.xml", styles_xml);
+                let updated = set_cell_style_index(&sheet_xml, cell, style_index)?;
+                package.set_text(&part, updated);
+            }
+            EditOperation::SetCellFillColor { sheet, cell, argb } => {
+                let part = sheet_parts.part_for(sheet)?.to_owned();
+                let sheet_xml = package.text(&part)?;
+                let styles_xml = package
+                    .text("xl/styles.xml")
+                    .context("OOXML 副本缺少 xl/styles.xml")?;
+                let (styles_xml, style_index) = ensure_fill_style(&styles_xml, argb)?;
+                package.set_text("xl/styles.xml", styles_xml);
+                let updated = set_cell_style_index(&sheet_xml, cell, style_index)?;
+                package.set_text(&part, updated);
+            }
+            EditOperation::SetRowHidden {
+                sheet,
+                row_index,
+                hidden,
+            } => {
+                let part = sheet_parts.part_for(sheet)?.to_owned();
+                let sheet_xml = package.text(&part)?;
+                let updated = set_row_hidden_in_sheet_xml(&sheet_xml, *row_index, *hidden)?;
+                package.set_text(&part, updated);
+            }
+            EditOperation::SetSheetVisibility { sheet, visibility } => {
+                let state = match visibility {
+                    crate::SheetVisibility::Visible => "visible",
+                    crate::SheetVisibility::Hidden => "hidden",
+                    crate::SheetVisibility::VeryHidden => "veryHidden",
+                };
+                workbook_xml = set_sheet_state_in_workbook_xml(&workbook_xml, sheet, state)?;
             }
             EditOperation::SetWorkbookCalculationProperties {
                 full_calc_on_load,
@@ -454,7 +513,19 @@ impl SheetParts {
         let part = self.part_for(name)?.to_owned();
         let rel_id = sheet_rel_id(workbook_xml, name)?
             .with_context(|| format!("workbook.xml 缺少工作表 {name} 的关系 ID"))?;
+        let old_order: Vec<String> = worksheet_entries(workbook_xml)?
+            .into_iter()
+            .map(|(sheet_name, _)| sheet_name)
+            .collect();
         *workbook_xml = remove_sheet_entry(workbook_xml, name)?;
+        let new_order: Vec<String> = worksheet_entries(workbook_xml)?
+            .into_iter()
+            .map(|(sheet_name, _)| sheet_name)
+            .collect();
+        // 表级 definedName 归一（对齐 openpyxl worksheet-scope normalization）：
+        // 指向被删表的名称随表移除，其余 localSheetId 按新表序重编
+        *workbook_xml =
+            normalize_defined_names_after_delete(workbook_xml, &old_order, &new_order, name);
         remove_relationship(package, &rel_id)?;
         strip_part_from_content_types(package, &format!("/{part}"))?;
         package.remove(&part);
@@ -542,6 +613,86 @@ fn worksheet_entries(workbook_xml: &str) -> Result<Vec<(String, String)>> {
         result.push((name.to_owned(), rel_id.to_owned()));
     }
     Ok(result)
+}
+
+/// 删表后的表级 definedName 归一（对齐 openpyxl worksheet-scope
+/// normalization）：指向被删工作表的名称随表移除，其余 `localSheetId`
+/// 按删除后的工作表顺序重新编号；全部移除时整个块一并去掉。
+/// `old_order`/`new_order` 分别是删除前后的工作表名序列。
+fn normalize_defined_names_after_delete(
+    workbook_xml: &str,
+    old_order: &[String],
+    new_order: &[String],
+    deleted_name: &str,
+) -> String {
+    let Some(names_open_start) = workbook_xml.find("<definedNames") else {
+        return workbook_xml.to_owned();
+    };
+    let Some(names_open_len) = workbook_xml[names_open_start..].find('>') else {
+        return workbook_xml.to_owned();
+    };
+    let names_open_end = names_open_start + names_open_len + 1;
+    let Some(names_close) = workbook_xml[names_open_end..]
+        .find("</definedNames>")
+        .map(|offset| offset + names_open_end)
+    else {
+        return workbook_xml.to_owned();
+    };
+    let entries_text = &workbook_xml[names_open_end..names_close];
+    let Ok(entry_re) = regex::Regex::new(r#"<definedName\b[^>]*?(?:/>|>.*?</definedName>)"#) else {
+        return workbook_xml.to_owned();
+    };
+    let Ok(id_re) = regex::Regex::new(r#"localSheetId="(\d+)""#) else {
+        return workbook_xml.to_owned();
+    };
+    let Ok(count_re) = regex::Regex::new(r#"count="\d+""#) else {
+        return workbook_xml.to_owned();
+    };
+    let mut kept: Vec<String> = Vec::new();
+    for caps in entry_re.captures_iter(entries_text) {
+        let whole = caps.get(0).unwrap().as_str();
+        let Some(id_caps) = id_re.captures(whole) else {
+            // 工作簿级名称（无 localSheetId）原样保留
+            kept.push(whole.to_owned());
+            continue;
+        };
+        let old_index: usize = id_caps[1].parse().unwrap_or(usize::MAX);
+        let Some(scope_name) = old_order.get(old_index) else {
+            continue;
+        };
+        if scope_name == deleted_name {
+            continue;
+        }
+        let Some(new_index) = new_order.iter().position(|name| name == scope_name) else {
+            continue;
+        };
+        kept.push(
+            id_re
+                .replace(whole, &format!(r#"localSheetId="{new_index}""#))
+                .into_owned(),
+        );
+    }
+    let tail = &workbook_xml[names_close + "</definedNames>".len()..];
+    let mut output = String::with_capacity(workbook_xml.len());
+    output.push_str(&workbook_xml[..names_open_start]);
+    if kept.is_empty() {
+        // 名称全部随表移除：整个 definedNames 块一并去掉（openpyxl 同口径）
+        output.push_str(tail);
+        return output;
+    }
+    let open_tag = count_re
+        .replace(
+            &workbook_xml[names_open_start..names_open_end],
+            &format!(r#"count="{}""#, kept.len()),
+        )
+        .into_owned();
+    output.push_str(&open_tag);
+    for entry in &kept {
+        output.push_str(entry);
+    }
+    output.push_str("</definedNames>");
+    output.push_str(tail);
+    output
 }
 
 fn relationship_id<'a>(sheet: roxmltree::Node<'a, 'a>) -> Option<&'a str> {
@@ -1127,7 +1278,561 @@ fn try_shift_reference(
     Ok(Some((consumed_chars, replacement)))
 }
 
+// ---------------------------------------------------------------------------
+// S3-F05 表单编辑：单元格值 / 数字格式 / 填充色 / 行隐藏 / 工作表可见性
+// ---------------------------------------------------------------------------
 
+/// 把 `<c>` 节点替换为指定 inner（不含外层 `<c r=...>` 前缀）或整段新节点文本。
+/// `replacement_prefix` 是新的 `<c r="A1"...>` 开标签，`inner` 是 `</c>` 前的内容。
+fn replace_cell_node(
+    sheet_xml: &str,
+    row_number: u32,
+    column_index_1based: u32,
+    build_replacement: impl FnOnce(&str, &str) -> String,
+) -> Result<String> {
+    let address = format!("{}{}", column_letters(column_index_1based), row_number);
+    // 自闭合 `<c r="A1"/>` 必须由第一个分支优先命中：若落入第二分支，
+    // `inner` 会越过本单元格一直吞到下一个 `</c>`，连带改写邻居。
+    let cell_re = regex::Regex::new(&format!(
+        r#"<c r="{}"(?P<scattrs>[^>]*)/>|<c r="{}"(?P<attrs>[^>]*)>(?P<inner>.*?)</c>"#,
+        regex::escape(&address),
+        regex::escape(&address)
+    ))
+    .context("编译单元格定位正则失败")?;
+    if let Some(caps) = cell_re.captures(sheet_xml) {
+        let whole = caps.get(0).unwrap();
+        let attrs = caps
+            .name("attrs")
+            .or_else(|| caps.name("scattrs"))
+            .map(|m| m.as_str())
+            .unwrap_or("");
+        let inner = caps.name("inner").map(|m| m.as_str()).unwrap_or("");
+        let replacement = build_replacement(attrs, inner);
+        let mut output = String::with_capacity(sheet_xml.len() + 256);
+        output.push_str(&sheet_xml[..whole.start()]);
+        output.push_str(&replacement);
+        output.push_str(&sheet_xml[whole.end()..]);
+        return Ok(output);
+    }
+    bail!("工作表中找不到目标单元格 {address}")
+}
+
+/// 定位或创建行块，在 `<sheetData>` 内按行号升序插入；返回 (新 sheetData, 该行块文本)。
+/// `existing_row` 为 Some 时表示行已存在（返回原文本与起止偏移，由调用方改写）。
+fn locate_row_block(sheet_xml: &str, row_number: u32) -> Result<RowBlock> {
+    // 自闭合行 `<row r="5"/>` 由第一分支命中，避免第二分支越过本行吞到下一个
+    // `</row>`；rust regex 不支持 look-ahead，用分支顺序替代。
+    let row_re = regex::Regex::new(&format!(
+        r#"(?P<empty><row [^>]*?r="{}"[^>]*?/>)|(?P<open><row [^>]*?r="{}"[^>]*?>(?P<body>.*?)</row>)"#,
+        row_number, row_number
+    ))
+    .context("编译行定位正则失败")?;
+    if let Some(caps) = row_re.captures(sheet_xml) {
+        let whole = caps.get(0).unwrap();
+        return Ok(RowBlock {
+            kind: RowBlockKind::Existing {
+                start: whole.start(),
+                end: whole.end(),
+                text: whole.as_str().to_owned(),
+            },
+        });
+    }
+    Ok(RowBlock {
+        kind: RowBlockKind::Missing,
+    })
+}
+
+struct RowBlock {
+    kind: RowBlockKind,
+}
+
+enum RowBlockKind {
+    Existing {
+        start: usize,
+        end: usize,
+        text: String,
+    },
+    Missing,
+}
+
+/// 按 A1 坐标写入单元格值。文本走 inlineStr（`t="inlineStr"` + `<is><t>`），
+/// 数值走 `<v>`（`t` 省略即数值），布尔走 `t="b"`，空值清空内容。
+/// 单元格不存在时：行存在则插入该行；行不存在则在 `<sheetData>` 按行序插入新行。
+fn set_cell_value_in_sheet_xml(
+    sheet_xml: &str,
+    cell: &str,
+    value: &crate::CellValue,
+) -> Result<String> {
+    let (row_number, column) = parse_cell(cell)?;
+    let address = format!("{}{}", column_letters(column), row_number);
+
+    // 单元格已存在：直接替换内容
+    let exists = regex::Regex::new(&format!(r#"<c r="{}""#, regex::escape(&address)))
+        .context("编译存在性正则失败")?
+        .is_match(sheet_xml);
+    if exists {
+        let cell_content = match value {
+            crate::CellValue::Text(text) => format!(
+                r#"><is><t xml:space="preserve">{}</t></is></c>"#,
+                escape_xml(text)
+            ),
+            crate::CellValue::Decimal(number) => format!("><v>{}</v></c>", number),
+            crate::CellValue::DateTime { serial, .. } => format!("><v>{}</v></c>", serial),
+            crate::CellValue::Boolean(flag) => {
+                format!("><v>{}</v></c>", if *flag { 1 } else { 0 })
+            }
+            crate::CellValue::Error(token) => format!(r#"><v>{}</v></c>"#, escape_xml(token)),
+            crate::CellValue::Blank => ">/>".to_owned(),
+        };
+        let type_attribute = match value {
+            crate::CellValue::Text(_) => " t=\"inlineStr\"",
+            crate::CellValue::Boolean(_) => " t=\"b\"",
+            crate::CellValue::Error(_) => " t=\"e\"",
+            _ => "",
+        };
+        return replace_cell_node(sheet_xml, row_number, column, |attrs, _| {
+            // 保留 s= 样式属性；清掉旧 t= 由新 type_attribute 提供
+            let kept_style = attrs
+                .split_whitespace()
+                .find(|part| part.starts_with("s="))
+                .map(str::to_owned)
+                .unwrap_or_default();
+            let kept_space = if kept_style.is_empty() { "" } else { " " };
+            format!(
+                "<c r=\"{}\"{}{}{}{}",
+                address, kept_space, kept_style, type_attribute, cell_content
+            )
+        })
+        .map(|updated| expand_dimension_ref(&updated, row_number, column));
+    }
+
+    // 单元格不存在：行内插入（保持行内列序）
+    let block = locate_row_block(sheet_xml, row_number)?;
+    let new_cell = match value {
+        crate::CellValue::Text(text) => format!(
+            r#"<c r="{}" t="inlineStr"><is><t xml:space="preserve">{}</t></is></c>"#,
+            address,
+            escape_xml(text)
+        ),
+        crate::CellValue::Decimal(number) => {
+            format!(r#"<c r="{}"><v>{}</v></c>"#, address, number)
+        }
+        crate::CellValue::DateTime { serial, .. } => {
+            format!(r#"<c r="{}"><v>{}</v></c>"#, address, serial)
+        }
+        crate::CellValue::Boolean(flag) => format!(
+            r#"<c r="{}" t="b"><v>{}</v></c>"#,
+            address,
+            if *flag { 1 } else { 0 }
+        ),
+        crate::CellValue::Error(token) => format!(
+            r#"<c r="{}" t="e"><v>{}</v></c>"#,
+            address,
+            escape_xml(token)
+        ),
+        crate::CellValue::Blank => format!(r#"<c r="{}"/>"#, address),
+    };
+    match block.kind {
+        RowBlockKind::Existing { start, end, text } => {
+            let updated_row = insert_cell_into_row(&text, column, &new_cell)?;
+            let mut output = String::with_capacity(sheet_xml.len() + new_cell.len() + 32);
+            output.push_str(&sheet_xml[..start]);
+            output.push_str(&updated_row);
+            output.push_str(&sheet_xml[end..]);
+            Ok(expand_dimension_ref(&output, row_number, column))
+        }
+        RowBlockKind::Missing => {
+            // 找到 sheetData 内第一个行号大于目标的 <row>，插到它前面
+            let row_tag_re =
+                regex::Regex::new(r#"<row [^>]*?r="(\d+)""#).context("编译行扫描正则失败")?;
+            let sheet_data_open = sheet_xml
+                .find("<sheetData")
+                .and_then(|index| sheet_xml[index..].find('>').map(|end| index + end + 1))
+                .context("工作表缺少 sheetData 元素")?;
+            let mut insert_at = None;
+            for caps in row_tag_re.captures_iter(&sheet_xml[sheet_data_open..]) {
+                let existing: u32 = caps[1].parse().unwrap_or(0);
+                if existing > row_number {
+                    insert_at = Some(sheet_data_open + caps.get(0).unwrap().start());
+                    break;
+                }
+            }
+            let new_row = format!(r#"<row r="{}">{}</row>"#, row_number, new_cell);
+            let insert_at = insert_at.unwrap_or_else(|| {
+                // 空表或行号最大：插到 </sheetData> 前
+                sheet_xml.rfind("</sheetData>").unwrap_or(sheet_xml.len())
+            });
+            let mut output = String::with_capacity(sheet_xml.len() + new_row.len() + 32);
+            output.push_str(&sheet_xml[..insert_at]);
+            output.push_str(&new_row);
+            output.push_str(&sheet_xml[insert_at..]);
+            Ok(expand_dimension_ref(&output, row_number, column))
+        }
+    }
+}
+
+/// 把 `<dimension ref="..."/>` 扩展到覆盖 (row, column)；只扩不缩。
+/// openpyxl 的 `iter_rows` 等读取器按 dimension 截取范围——插入超界单元格后
+/// 不同步 dimension 会让后续读取丢列（真实 A1411 表单复现）。
+fn expand_dimension_ref(sheet_xml: &str, row_number: u32, column: u32) -> String {
+    let Ok(re) = regex::Regex::new(r#"<dimension ref="([A-Za-z]+)(\d+):([A-Za-z]+)(\d+)""#) else {
+        return sheet_xml.to_owned();
+    };
+    let Some(caps) = re.captures(sheet_xml) else {
+        return sheet_xml.to_owned();
+    };
+    let min_row: u32 = caps[2].parse().unwrap_or(1);
+    let max_row: u32 = caps[4].parse().unwrap_or(row_number);
+    let min_col = column_index(&caps[1].to_ascii_uppercase());
+    let max_col = column_index(&caps[3].to_ascii_uppercase());
+    let new_min_row = min_row.min(row_number);
+    let new_min_col = min_col.min(column);
+    let new_max_row = max_row.max(row_number);
+    let new_max_col = max_col.max(column);
+    if (new_min_row, new_min_col, new_max_row, new_max_col) == (min_row, min_col, max_row, max_col)
+    {
+        return sheet_xml.to_owned();
+    }
+    let whole = caps.get(0).unwrap();
+    let replacement = format!(
+        r#"<dimension ref="{}{}:{}{}""#,
+        column_letters(new_min_col),
+        new_min_row,
+        column_letters(new_max_col),
+        new_max_row
+    );
+    let mut output = String::with_capacity(sheet_xml.len() + 16);
+    output.push_str(&sheet_xml[..whole.start()]);
+    output.push_str(&replacement);
+    output.push_str(&sheet_xml[whole.end()..]);
+    output
+}
+
+/// 在既有行块内按列序插入单元格节点。
+fn insert_cell_into_row(row_text: &str, column: u32, new_cell: &str) -> Result<String> {
+    let cell_re = regex::Regex::new(r#"<c r="([A-Z]+)\d+"#).context("编译列扫描正则失败")?;
+    let open_end = row_text.find('>').map(|index| index + 1).unwrap_or(0);
+    let close_start = row_text.rfind("</row>").unwrap_or(row_text.len());
+    let body = &row_text[open_end..close_start];
+    let mut insert_at = body.len();
+    for caps in cell_re.captures_iter(body) {
+        let existing_column = column_index(&caps[1]);
+        if existing_column > column {
+            insert_at = caps.get(0).unwrap().start();
+            break;
+        }
+    }
+    let prefix = &row_text[..open_end];
+    let suffix = &row_text[close_start..];
+    Ok(format!(
+        "{}{}{}{}{}",
+        prefix,
+        &body[..insert_at],
+        new_cell,
+        &body[insert_at..],
+        suffix
+    ))
+}
+
+/// styles.xml：确保存在指定数字格式的 cellXfs 项，返回 (新 styles.xml, xf 索引)。
+fn ensure_number_format_style(styles_xml: &str, format_code: &str) -> Result<(String, u32)> {
+    // 内置格式直接使用（常用映射；未列出的按自定义处理）
+    let builtin: Option<u32> = match format_code {
+        "General" => Some(0),
+        "0" => Some(1),
+        "0.00" => Some(2),
+        "yyyy-mm-dd" => Some(14),
+        _ => None,
+    };
+    let format_id = match builtin {
+        Some(id) => id,
+        None => {
+            // 自定义 numFmt：复用已有或追加
+            let numfmt_re = regex::Regex::new(r#"<numFmt numFmtId="(\d+)" formatCode="([^"]*)""#)
+                .context("编译 numFmt 正则失败")?;
+            for caps in numfmt_re.captures_iter(styles_xml) {
+                if unescape_xml(&caps[2]) == format_code {
+                    return append_xf_with_numfmt(styles_xml, caps[1].parse().unwrap_or(0));
+                }
+            }
+            let next_id = numfmt_re
+                .captures_iter(styles_xml)
+                .map(|caps| caps[1].parse::<u32>().unwrap_or(164).max(164))
+                .max()
+                .unwrap_or(163)
+                + 1;
+            let styles_xml = append_numfmt(styles_xml, next_id, format_code)?;
+            return append_xf_with_numfmt(&styles_xml, next_id);
+        }
+    };
+    append_xf_with_numfmt(styles_xml, format_id)
+}
+
+fn append_numfmt(styles_xml: &str, format_id: u32, format_code: &str) -> Result<String> {
+    let entry = format!(
+        r#"<numFmt numFmtId="{}" formatCode="{}"/>"#,
+        format_id,
+        escape_xml(format_code)
+    );
+    if let Some(index) = styles_xml.find("</numFmts>") {
+        let mut output = String::with_capacity(styles_xml.len() + entry.len());
+        output.push_str(&styles_xml[..index]);
+        output.push_str(&entry);
+        output.push_str(&styles_xml[index..]);
+        return Ok(output);
+    }
+    // 无 numFmts 块：插入到 <styleSheet ...> 开标签之后（numFmts 必须是
+    // styleSheet 的第一个子元素；不能从文档首个 '>' 定位——那是 XML 声明）
+    let anchor = styles_xml
+        .find("<styleSheet")
+        .and_then(|start| {
+            styles_xml[start..]
+                .find('>')
+                .map(|offset| start + offset + 1)
+        })
+        .context("styles.xml 缺少 styleSheet 元素")?;
+    let block = format!("<numFmts count=\"1\">{entry}</numFmts>");
+    let mut output = String::with_capacity(styles_xml.len() + block.len());
+    output.push_str(&styles_xml[..anchor]);
+    output.push_str(&block);
+    output.push_str(&styles_xml[anchor..]);
+    Ok(output)
+}
+
+fn append_xf_with_numfmt(styles_xml: &str, numfmt_id: u32) -> Result<(String, u32)> {
+    let cellxfs_caps = regex::Regex::new(r#"<cellXfs count="(\d+)">"#)
+        .context("编译 cellXfs 正则失败")?
+        .captures(styles_xml)
+        .context("styles.xml 缺少 cellXfs")?;
+    let count: u32 = cellxfs_caps[1].parse().unwrap_or(0);
+    let new_index = count; // 新 xf 的 0 基索引
+    let entry = format!(
+        r#"<xf numFmtId="{}" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>"#,
+        numfmt_id
+    );
+    let insert_at = styles_xml
+        .rfind("</cellXfs>")
+        .context("styles.xml 缺少 cellXfs 结束标签")?;
+    let mut output = String::with_capacity(styles_xml.len() + entry.len() + 16);
+    output.push_str(&styles_xml[..insert_at]);
+    output.push_str(&entry);
+    output.push_str(&styles_xml[insert_at..]);
+    // count+1
+    let old_head = format!(r#"<cellXfs count="{}">"#, count);
+    let new_head = format!(r#"<cellXfs count="{}">"#, count + 1);
+    let output = output.replacen(&old_head, &new_head, 1);
+    Ok((output, new_index))
+}
+
+/// styles.xml：确保存在指定 ARGB 填充色的 cellXfs 项，返回 (新 styles.xml, xf 索引)。
+fn ensure_fill_style(styles_xml: &str, argb: &str) -> Result<(String, u32)> {
+    let normalized = normalize_argb(argb)?;
+    // 复用已有 fill
+    let fill_re = regex::Regex::new(
+        r#"<fill><patternFill patternType="solid"><fgColor rgb="([0-9A-Fa-f]{8})"/></patternFill></fill>"#,
+    )
+    .context("编译 fill 正则失败")?;
+    let mut existing_fill_id: Option<u32> = None;
+    if let Some(caps) = fill_re.captures(styles_xml) {
+        if caps[1].eq_ignore_ascii_case(&normalized) {
+            // 该 fill 的索引 = fills 内第几个 <fill>
+            let fills_open = styles_xml.find("<fills").context("styles.xml 缺少 fills")?;
+            let fill_start = caps.get(0).unwrap().start();
+            existing_fill_id =
+                Some(styles_xml[fills_open..fill_start].matches("<fill>").count() as u32);
+        }
+    }
+    let (styles_xml, fill_id) = match existing_fill_id {
+        Some(id) => (styles_xml.to_owned(), id),
+        None => append_fill(styles_xml, &normalized)?,
+    };
+    append_xf_with_fill(&styles_xml, fill_id)
+}
+
+fn normalize_argb(argb: &str) -> Result<String> {
+    let text = argb.trim().trim_start_matches('#');
+    let normalized = match text.len() {
+        6 => format!("FF{}", text.to_ascii_uppercase()),
+        8 => text.to_ascii_uppercase(),
+        _ => bail!("填充色必须是 RGB 或 ARGB 十六进制：{argb}"),
+    };
+    ensure!(
+        normalized.bytes().all(|byte| byte.is_ascii_hexdigit()),
+        "填充色含非十六进制字符：{argb}"
+    );
+    Ok(normalized)
+}
+
+fn append_fill(styles_xml: &str, argb: &str) -> Result<(String, u32)> {
+    let fills_caps = regex::Regex::new(r#"<fills count="(\d+)">"#)
+        .context("编译 fills 正则失败")?
+        .captures(styles_xml)
+        .context("styles.xml 缺少 fills")?;
+    let count: u32 = fills_caps[1].parse().unwrap_or(0);
+    let new_fill_id = count;
+    let entry = format!(
+        r#"<fill><patternFill patternType="solid"><fgColor rgb="{}"/></patternFill></fill>"#,
+        argb
+    );
+    let insert_at = styles_xml
+        .rfind("</fills>")
+        .context("styles.xml 缺少 fills 结束标签")?;
+    let mut output = String::with_capacity(styles_xml.len() + entry.len() + 16);
+    output.push_str(&styles_xml[..insert_at]);
+    output.push_str(&entry);
+    output.push_str(&styles_xml[insert_at..]);
+    let old_head = format!(r#"<fills count="{}">"#, count);
+    let new_head = format!(r#"<fills count="{}">"#, count + 1);
+    let output = output.replacen(&old_head, &new_head, 1);
+    Ok((output, new_fill_id))
+}
+
+fn append_xf_with_fill(styles_xml: &str, fill_id: u32) -> Result<(String, u32)> {
+    let cellxfs_caps = regex::Regex::new(r#"<cellXfs count="(\d+)">"#)
+        .context("编译 cellXfs 正则失败")?
+        .captures(styles_xml)
+        .context("styles.xml 缺少 cellXfs")?;
+    let count: u32 = cellxfs_caps[1].parse().unwrap_or(0);
+    let new_index = count;
+    let entry = format!(
+        r#"<xf numFmtId="0" fontId="0" fillId="{}" borderId="0" xfId="0" applyFill="1"/>"#,
+        fill_id
+    );
+    let insert_at = styles_xml
+        .rfind("</cellXfs>")
+        .context("styles.xml 缺少 cellXfs 结束标签")?;
+    let mut output = String::with_capacity(styles_xml.len() + entry.len() + 16);
+    output.push_str(&styles_xml[..insert_at]);
+    output.push_str(&entry);
+    output.push_str(&styles_xml[insert_at..]);
+    let old_head = format!(r#"<cellXfs count="{}">"#, count);
+    let new_head = format!(r#"<cellXfs count="{}">"#, count + 1);
+    let output = output.replacen(&old_head, &new_head, 1);
+    Ok((output, new_index))
+}
+
+/// 设置单元格的 s= 样式索引（保留其它属性与内容）。单元格不存在时创建空单元格再设样式。
+fn set_cell_style_index(sheet_xml: &str, cell: &str, style_index: u32) -> Result<String> {
+    let (row_number, column) = parse_cell(cell)?;
+    let address = format!("{}{}", column_letters(column), row_number);
+    let style_attribute = format!("s=\"{}\"", style_index);
+
+    if regex::Regex::new(&format!(r#"<c r="{}""#, regex::escape(&address)))
+        .context("编译存在性正则失败")?
+        .is_match(sheet_xml)
+    {
+        return replace_cell_node(sheet_xml, row_number, column, |attrs, inner| {
+            let mut kept: Vec<&str> = attrs
+                .split_whitespace()
+                .filter(|part| !part.starts_with("s="))
+                .collect();
+            kept.insert(0, &style_attribute);
+            // 保留原单元格内容并补全闭合标签，否则副本 XML 不闭合
+            format!("<c r=\"{}\" {}>{}</c>", address, kept.join(" "), inner)
+        })
+        .map_err(|error| anyhow::anyhow!("设置单元格样式失败 {address}: {error:#}"));
+    }
+    // 单元格不存在：先写入空值创建
+    let created = set_cell_value_in_sheet_xml(sheet_xml, cell, &crate::CellValue::Blank)?;
+    set_cell_style_index(&created, cell, style_index)
+}
+
+/// 行块设置/清除 hidden 属性；行不存在时创建空行。
+fn set_row_hidden_in_sheet_xml(sheet_xml: &str, row_number: u32, hidden: bool) -> Result<String> {
+    let block = locate_row_block(sheet_xml, row_number)?;
+    match block.kind {
+        RowBlockKind::Existing { start, end, text } => {
+            // 按开标签位置改写，避免依赖属性间空格形态
+            let open_end = text.find('>').map(|index| index + 1).unwrap_or(text.len());
+            let head = &text[..open_end];
+            let self_closed = head.trim_end().ends_with("/>");
+            let attr_region = head
+                .strip_prefix("<row")
+                .and_then(|rest| rest.strip_suffix('>'))
+                .unwrap_or("")
+                .trim_end()
+                .trim_end_matches('/')
+                .trim_end();
+            let mut kept: Vec<String> = attr_region
+                .split_whitespace()
+                .filter(|part| !part.starts_with("hidden="))
+                .map(str::to_owned)
+                .collect();
+            if hidden {
+                kept.push("hidden=\"1\"".to_owned());
+            }
+            let updated_row = if self_closed {
+                format!("<row {}/>", kept.join(" "))
+            } else {
+                format!("<row {}>{}", kept.join(" "), &text[open_end..])
+            };
+            let mut output = String::with_capacity(sheet_xml.len() + 16);
+            output.push_str(&sheet_xml[..start]);
+            output.push_str(&updated_row);
+            output.push_str(&sheet_xml[end..]);
+            Ok(output)
+        }
+        RowBlockKind::Missing => {
+            let new_row = if hidden {
+                format!(r#"<row r="{}" hidden="1"/>"#, row_number)
+            } else {
+                format!(r#"<row r="{}"/>"#, row_number)
+            };
+            let insert_at = sheet_xml
+                .rfind("</sheetData>")
+                .context("工作表缺少 sheetData 结束标签")?;
+            let mut output = String::with_capacity(sheet_xml.len() + new_row.len() + 16);
+            output.push_str(&sheet_xml[..insert_at]);
+            output.push_str(&new_row);
+            output.push_str(&sheet_xml[insert_at..]);
+            Ok(output)
+        }
+    }
+}
+
+/// workbook.xml：给目标工作表的 <sheet> 节点设置 state 属性。
+fn set_sheet_state_in_workbook_xml(
+    workbook_xml: &str,
+    sheet_name: &str,
+    state: &str,
+) -> Result<String> {
+    let sheet_re = regex::Regex::new(&format!(
+        r#"(?P<whole><sheet ([^>]*?)name="{}"([^>]*?)(?P<sc>/)?>)"#,
+        regex::escape(&escape_xml(sheet_name))
+    ))
+    .context("编译工作表定位正则失败")?;
+    let caps = sheet_re
+        .captures(workbook_xml)
+        .with_context(|| format!("workbook.xml 中找不到工作表：{sheet_name}"))?;
+    let whole = caps.name("whole").unwrap();
+    let before_attrs = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+    let after_attrs = caps.get(3).map(|m| m.as_str()).unwrap_or("");
+    let mut kept: Vec<String> = before_attrs
+        .split_whitespace()
+        .filter(|part| !part.starts_with("state="))
+        .map(str::to_owned)
+        .collect();
+    kept.extend(
+        after_attrs
+            .split_whitespace()
+            .filter(|part| !part.starts_with("state="))
+            .map(str::to_owned),
+    );
+    kept.push(format!("state=\"{}\"", state));
+    // `name=` 被模式字面消费，重建时必须显式带回；保持自闭合形态，
+    // 否则 workbook.xml 出现未闭合的 <sheet> 标签
+    let escaped_name = escape_xml(sheet_name);
+    let replacement = if caps.name("sc").is_some() {
+        format!("<sheet name=\"{}\" {}/>", escaped_name, kept.join(" "))
+    } else {
+        format!("<sheet name=\"{}\" {}>", escaped_name, kept.join(" "))
+    };
+    let mut output = String::with_capacity(workbook_xml.len() + 32);
+    output.push_str(&workbook_xml[..whole.start()]);
+    output.push_str(&replacement);
+    output.push_str(&workbook_xml[whole.end()..]);
+    Ok(output)
+}
 
 /// 从工作表 XML 删除一列：移除该列单元格、左移其后单元格地址，并同步
 /// dimension / mergeCells / autoFilter / conditionalFormatting sqref 区域。
@@ -1135,10 +1840,20 @@ fn try_shift_reference(
 fn delete_column_in_sheet_xml(sheet_xml: &str, deleted: u32) -> Result<String> {
     use regex::Regex;
 
-    let cell_re = Regex::new(r#"<c r="([A-Z]+)(\d+)""#)
-        .context("编译单元格正则失败")?;
-    let row_re = Regex::new(r#"<row [^>]*r="(\d+)"[^>]*>(?:(?!</row>).)*</row>"#)
-        .context("编译行正则失败")?;
+    // 整个开标签（含属性与自闭合 `/`）纳入匹配：删除项整节点消失、左移项只重写
+    // `r=` 与属性区，单元格内容与 `>` 之间的文本全部经间隙原样流动。若只匹配
+    // `<c r="XXnn"` 前缀，删除项会把属性+内容漏进尾部输出、左移项会把行内后续
+    // 文本重复复制（真实 3.3 模板 sheet6 上复现过）。
+    let cell_re =
+        Regex::new(r#"<c r="([A-Z]+)(\d+)"([^>]*?)(/?)>"#).context("编译单元格正则失败")?;
+    // rust regex 不支持 look-ahead，用三分支替代：① 自闭合空行整块原样处理
+    // （不含单元格，改写为空）；② 带额外属性、非自闭合行块；③ 仅 r 属性的
+    // 行块。`.*?` 在首个 `</row>` 处停住。分支①必须在前，否则 `[^>]*?` 会把
+    // `/` 吞进属性、越过本行一直吃到下一个 `</row>`。
+    let row_re = Regex::new(
+        r#"<row [^>]*?r="\d+"[^>]*?/>|<row [^>]*?r="\d+"[^>]*[^>/]>.*?</row>|<row [^>]*?r="\d+">.*?</row>"#,
+    )
+    .context("编译行正则失败")?;
 
     // ---- 行内单元格：删除/左移 ----
     let mut output = String::with_capacity(sheet_xml.len() + 4096);
@@ -1160,30 +1875,41 @@ fn delete_column_in_sheet_xml(sheet_xml: &str, deleted: u32) -> Result<String> {
 
         let mut rebuilt = String::with_capacity(body.len());
         let mut cell_last = 0usize;
+        // 上一单元格被删除：其开标签到下一单元格之间的内容随节点一起消失
+        let mut skip_gap = false;
         for cell_match in cell_re.captures_iter(body) {
             let whole = cell_match.get(0).unwrap();
             let letters = cell_match[1].to_owned();
             let column = column_index(&letters);
-            rebuilt.push_str(&body[cell_last..whole.start()]);
+            let attrs = cell_match.get(3).map(|m| m.as_str()).unwrap_or("");
+            // `(/?)` 空匹配也会 Some("")，必须按内容判断自闭合
+            let self_closed = cell_match.get(4).is_some_and(|m| !m.as_str().is_empty());
+            if !skip_gap {
+                rebuilt.push_str(&body[cell_last..whole.start()]);
+            }
             cell_last = whole.end();
+            skip_gap = false;
             if column == deleted {
+                // 整节点删除：开标签已消费，内容经 skip_gap 随之丢弃
+                skip_gap = true;
                 continue;
             }
             if column > deleted {
-                // r 属性改为左移后的列字母；属性其余部分原样保留
-                let attribute_len = format!(r#"<c r="{}{}""#, letters, row_number).len();
-                let cell_tail = &body[whole.start() + attribute_len..];
+                // r 属性改为左移后的列字母；其余属性与自闭合形态原样保留
                 rebuilt.push_str(&format!(
-                    r#"<c r="{}{}""#,
+                    "<c r=\"{}{}\"{}{}>",
                     column_letters(column - 1),
-                    row_number
+                    row_number,
+                    attrs,
+                    if self_closed { "/" } else { "" }
                 ));
-                rebuilt.push_str(cell_tail);
                 continue;
             }
             rebuilt.push_str(whole.as_str());
         }
-        rebuilt.push_str(&body[cell_last..]);
+        if !skip_gap {
+            rebuilt.push_str(&body[cell_last..]);
+        }
         output.push_str(prefix);
         output.push_str(&rebuilt);
         output.push_str(suffix);
@@ -1300,7 +2026,11 @@ fn shift_range_after_delete(range: &str, deleted: u32) -> Option<String> {
             if token.2 { "$" } else { "" },
             token.3
         );
-        let new_column = if token.1 < deleted { token.1 } else { token.1 - 1 };
+        let new_column = if token.1 < deleted {
+            token.1
+        } else {
+            token.1 - 1
+        };
         let new = format!(
             "{}{}{}{}",
             if token.0 { "$" } else { "" },
@@ -3118,24 +3848,18 @@ mod tests {
                 .expect("new VML relationship");
         assert!(target.parts.contains_key(&comments_part));
         assert!(target.parts.contains_key(&vml_part));
-        assert!(
-            target
-                .text("xl/worksheets/sheet1.xml")
-                .unwrap()
-                .contains("legacyDrawing")
-        );
-        assert!(
-            target
-                .text("xl/worksheets/sheet1.xml")
-                .unwrap()
-                .contains("xmlns:r=")
-        );
-        assert!(
-            target
-                .text("[Content_Types].xml")
-                .unwrap()
-                .contains("Extension=\"vml\"")
-        );
+        assert!(target
+            .text("xl/worksheets/sheet1.xml")
+            .unwrap()
+            .contains("legacyDrawing"));
+        assert!(target
+            .text("xl/worksheets/sheet1.xml")
+            .unwrap()
+            .contains("xmlns:r="));
+        assert!(target
+            .text("[Content_Types].xml")
+            .unwrap()
+            .contains("Extension=\"vml\""));
         assert_eq!(
             parse_vml_note_shapes(&target.text(&vml_part).unwrap())
                 .unwrap()
@@ -3304,11 +4028,240 @@ mod tests {
         assert_eq!(
             failure.kind,
             crate::BackendErrorKind::Failed,
-            "DeleteColumn 已注册为支持操作，失败应来自执行而非写前拒绝: {:?}", failure.kind
+            "DeleteColumn 已注册为支持操作，失败应来自执行而非写前拒绝: {:?}",
+            failure.kind
         );
         assert!(
             !plan.output.exists(),
             "rejected plan must not create an output"
         );
+    }
+
+    // ---- S3-F05 五操作 + DeleteColumn：XML 级单元测试 ----
+
+    fn sample_sheet(rows: &[&str]) -> String {
+        format!(
+            r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>{}</sheetData></worksheet>"#,
+            rows.concat()
+        )
+    }
+
+    #[test]
+    fn set_cell_value_replaces_existing_cell_and_keeps_style() {
+        let sheet = sample_sheet(&[r#"<row r="2"><c r="A2" s="3" t="s"><v>9</v></c></row>"#]);
+        let updated =
+            set_cell_value_in_sheet_xml(&sheet, "A2", &crate::CellValue::Text("甲".to_owned()))
+                .unwrap();
+        assert!(
+            updated.contains(
+                r#"<c r="A2" s="3" t="inlineStr"><is><t xml:space="preserve">甲</t></is></c>"#
+            ),
+            "保留 s= 并替换为 inlineStr: {updated}"
+        );
+    }
+
+    #[test]
+    fn set_cell_value_on_self_closed_cell_does_not_swallow_neighbor() {
+        let sheet = sample_sheet(&[r#"<row r="1"><c r="A1"/><c r="B1"><v>1</v></c></row>"#]);
+        let updated =
+            set_cell_value_in_sheet_xml(&sheet, "A1", &crate::CellValue::Decimal("42".to_owned()))
+                .unwrap();
+        assert!(updated.contains(r#"<c r="A1"><v>42</v></c>"#), "{updated}");
+        assert!(
+            updated.contains(r#"<c r="B1"><v>1</v></c>"#),
+            "邻居单元格必须原样保留: {updated}"
+        );
+    }
+
+    #[test]
+    fn set_cell_value_inserts_into_row_and_creates_missing_row() {
+        // 行存在但缺该单元格：按列序插入
+        let sheet =
+            sample_sheet(&[r#"<row r="1"><c r="A1"><v>1</v></c><c r="C1"><v>3</v></c></row>"#]);
+        let updated =
+            set_cell_value_in_sheet_xml(&sheet, "B1", &crate::CellValue::Decimal("2".to_owned()))
+                .unwrap();
+        let a = updated.find(r#"<c r="A1""#).unwrap();
+        let b = updated.find(r#"<c r="B1"><v>2</v></c>"#).unwrap();
+        let c = updated.find(r#"<c r="C1""#).unwrap();
+        assert!(a < b && b < c, "新单元格必须按列序插入: {updated}");
+
+        // 行不存在：新建行并入 sheetData
+        let updated = set_cell_value_in_sheet_xml(&sheet, "F9", &crate::CellValue::Blank).unwrap();
+        assert!(
+            updated.contains(r#"<row r="9"><c r="F9"/></row>"#),
+            "缺失行按行序新建: {updated}"
+        );
+    }
+
+    #[test]
+    fn set_cell_style_index_preserves_value_and_closes_cell() {
+        let sheet = sample_sheet(&[r#"<row r="5"><c r="B5" t="s"><v>7</v></c></row>"#]);
+        let updated = set_cell_style_index(&sheet, "B5", 12).unwrap();
+        assert!(
+            updated.contains(r#"<c r="B5" s="12" t="s"><v>7</v></c>"#),
+            "样式写入必须保留内容并闭合标签: {updated}"
+        );
+    }
+
+    #[test]
+    fn set_row_hidden_updates_self_closed_open_and_missing_rows() {
+        let sheet = sample_sheet(&[
+            r#"<row r="1"><c r="A1"><v>1</v></c></row>"#,
+            r#"<row r="3"/>"#,
+        ]);
+        let updated = set_row_hidden_in_sheet_xml(&sheet, 3, true).unwrap();
+        assert!(updated.contains(r#"<row r="3" hidden="1"/>"#), "{updated}");
+        assert!(
+            updated.contains(r#"<row r="1"><c r="A1"><v>1</v></c></row>"#),
+            "其它行不受影响: {updated}"
+        );
+
+        // 行不存在：创建隐藏行
+        let updated = set_row_hidden_in_sheet_xml(&sheet, 8, true).unwrap();
+        assert!(updated.contains(r#"<row r="8" hidden="1"/>"#), "{updated}");
+
+        // 取消隐藏：移除 hidden 属性、保留其它属性
+        let hidden_sheet = sample_sheet(&[r#"<row r="2" hidden="1" ht="10"/>"#]);
+        let updated = set_row_hidden_in_sheet_xml(&hidden_sheet, 2, false).unwrap();
+        assert!(!updated.contains("hidden="), "{updated}");
+        assert!(updated.contains(r#"ht="10""#), "其它属性保留: {updated}");
+    }
+
+    #[test]
+    fn set_sheet_state_updates_visibility_and_keeps_self_closed_form() {
+        let workbook = r#"<workbook><sheets><sheet name="S1" sheetId="1" r:id="rId1"/><sheet name="S2" sheetId="2" r:id="rId2"/></sheets></workbook>"#;
+        let updated = set_sheet_state_in_workbook_xml(workbook, "S2", "hidden").unwrap();
+        assert!(
+            updated.contains(r#"<sheet name="S2" sheetId="2" r:id="rId2" state="hidden"/>"#),
+            "自闭合形态保持: {updated}"
+        );
+        assert!(
+            updated.contains(r#"<sheet name="S1" sheetId="1" r:id="rId1"/>"#),
+            "其它工作表不受影响: {updated}"
+        );
+    }
+
+    #[test]
+    fn delete_column_shifts_cells_and_shrinks_ranges() {
+        let sheet = sample_sheet(&[
+            r#"<row r="1"><c r="A1"><v>1</v></c><c r="B1"><v>2</v></c><c r="C1"><v>3</v></c></row>"#,
+            r#"<row r="2"/>"#,
+            r#"<row r="3"><c r="A3"><v>7</v></c><c r="B3"><v>8</v></c></row>"#,
+        ]);
+        let updated = delete_column_in_sheet_xml(&sheet, 2).unwrap(); // 删除 B 列
+        assert!(
+            !updated.contains(r#"<c r="B1"><v>2</v></c>"#),
+            "被删列单元格移除: {updated}"
+        );
+        assert!(
+            updated.contains(r#"<c r="B1"><v>3</v></c>"#),
+            "C1 左移为 B1: {updated}"
+        );
+        assert!(
+            updated.contains(r#"<c r="A3"><v>7</v></c>"#),
+            "删除列之前的单元格不动: {updated}"
+        );
+        assert!(
+            !updated.contains(r#"<c r="B3""#),
+            "B3 原单元格已删: {updated}"
+        );
+        assert!(
+            updated.contains(r#"<row r="2"/>"#),
+            "自闭合空行原样保留: {updated}"
+        );
+    }
+
+    #[test]
+    fn delete_column_handles_mid_row_shift_and_self_closed_cells() {
+        // 回归：旧实现只匹配 `<c r="XXnn"` 前缀——删除单元格会把属性+内容漏进
+        // 尾部输出，左移单元格会把行内后续文本重复复制（真实 3.3 模板复现）。
+        let sheet = sample_sheet(&[
+            r#"<row r="1"><c r="A1" s="6" t="s"><v>167</v></c><c r="B1" s="6" t="s"><v>168</v></c><c r="C1" s="6" t="s"><v>169</v></c><c r="D1" s="6" t="s"><v>170</v></c><c r="E1" s="6" t="s"><v>2355</v></c></row>"#,
+            r#"<row r="2"><c r="A2" s="1"/><c r="B2"/></row>"#,
+        ]);
+        let updated = delete_column_in_sheet_xml(&sheet, 3).unwrap(); // 删除 C 列
+        let expected = "<c r=\"A1\" s=\"6\" t=\"s\"><v>167</v></c><c r=\"B1\" s=\"6\" t=\"s\"><v>168</v></c><c r=\"C1\" s=\"6\" t=\"s\"><v>170</v></c><c r=\"D1\" s=\"6\" t=\"s\"><v>2355</v></c>";
+        assert!(
+            updated.contains(expected),
+            "D1/E1 依序左移为 C1/D1: {updated}"
+        );
+        assert_eq!(
+            updated.matches("<c r=").count(),
+            4 + 2,
+            "无重复无残留（行1 四格 + 行2 两格，均不在删除列）: {updated}"
+        );
+        assert!(
+            updated.contains(r#"<row r="2"><c r="A2" s="1"/><c r="B2"/></row>"#),
+            "删除列之外的行原样保留: {updated}"
+        );
+
+        // 自闭合单元格处于删除列：整节点消失且无 `/`/`>` 残渣
+        let sheet =
+            sample_sheet(&[r#"<row r="4"><c r="A4" s="1"/><c r="B4"/><c r="C4" s="2"/></row>"#]);
+        let updated = delete_column_in_sheet_xml(&sheet, 2).unwrap(); // 删除 B 列
+        assert!(
+            updated.contains(r#"<row r="4"><c r="A4" s="1"/><c r="B4" s="2"/></row>"#),
+            "C4 左移为 B4 且保持自闭合: {updated}"
+        );
+        assert_eq!(updated.matches("<c r=").count(), 2, "{updated}");
+    }
+
+    #[test]
+    fn delete_column_shifts_dimension_ref_by_delete_arithmetic() {
+        // dimension 的 ref 由区域改写器按删列规则收缩（与 mergeCells/sqref 同路）
+        let sheet = r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:C811"/><sheetData><row r="1"><c r="A1"><v>1</v></c><c r="B1"><v>2</v></c><c r="C1"><v>3</v></c></row></sheetData></worksheet>"#;
+        let updated = delete_column_in_sheet_xml(sheet, 2).unwrap();
+        assert!(
+            updated.contains(r#"<dimension ref="A1:B811"/>"#),
+            "删 B 列后 dimension 随区域规则收缩: {updated}"
+        );
+        // 删除列在范围之外：dimension 不变
+        let updated = delete_column_in_sheet_xml(sheet, 9).unwrap();
+        assert!(
+            updated.contains(r#"<dimension ref="A1:C811"/>"#),
+            "范围外删列不动 dimension: {updated}"
+        );
+    }
+
+    #[test]
+    fn set_cell_value_expands_dimension_beyond_original_range() {
+        let sheet = r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:B2"/><sheetData><row r="1"><c r="A1"><v>1</v></c><c r="B1"><v>2</v></c></row></sheetData></worksheet>"#;
+        // 行内插入超界单元格
+        let updated =
+            set_cell_value_in_sheet_xml(&sheet, "E1", &crate::CellValue::Decimal("9".to_owned()))
+                .unwrap();
+        assert!(updated.contains(r#"<dimension ref="A1:E2"/>"#), "{updated}");
+        // 新建行同样扩展
+        let updated =
+            set_cell_value_in_sheet_xml(&sheet, "B5", &crate::CellValue::Decimal("7".to_owned()))
+                .unwrap();
+        assert!(updated.contains(r#"<dimension ref="A1:B5"/>"#), "{updated}");
+        // 范围内写入不改变 dimension
+        let updated =
+            set_cell_value_in_sheet_xml(&sheet, "A1", &crate::CellValue::Decimal("3".to_owned()))
+                .unwrap();
+        assert!(updated.contains(r#"<dimension ref="A1:B2"/>"#), "{updated}");
+    }
+
+    #[test]
+    fn delete_sheet_normalizes_sheet_scoped_defined_names() {
+        let workbook = r#"<workbook><sheets><sheet name="A" sheetId="1" r:id="rId1"/><sheet name="B" sheetId="2" r:id="rId2"/><sheet name="C" sheetId="3" r:id="rId3"/></sheets><definedNames count="3"><definedName name="全局">A1</definedName><definedName name="表B名" localSheetId="1">B1</definedName><definedName name="表C名" localSheetId="2">C1</definedName></definedNames></workbook>"#;
+        let old: Vec<String> = ["A", "B", "C"].iter().map(|s| s.to_string()).collect();
+        let new: Vec<String> = ["A", "C"].iter().map(|s| s.to_string()).collect();
+        let updated = normalize_defined_names_after_delete(workbook, &old, &new, "B");
+        assert!(
+            updated.contains(r#"<definedName name="表C名" localSheetId="1">C1</definedName>"#),
+            "C 的作用域从 2 重编为 1: {updated}"
+        );
+        assert!(
+            !updated.contains("表B名"),
+            "被删表的名称随表移除: {updated}"
+        );
+        assert!(
+            updated.contains(r#"<definedName name="全局">A1</definedName>"#),
+            "工作簿级名称原样保留: {updated}"
+        );
+        assert!(updated.contains(r#"count="2""#), "计数同步: {updated}");
     }
 }

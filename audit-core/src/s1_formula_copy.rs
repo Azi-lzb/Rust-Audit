@@ -4,13 +4,13 @@
 //! then requires a real calculation sidecar before publishing formula results.
 
 use crate::models::CopyRange;
-use crate::s1_template_rules::{S1TemplateRuleSummary, load_s1_template_rule_plan};
-use anyhow::{Context, Result, ensure};
+use crate::s1_template_rules::{load_s1_template_rule_plan, S1TemplateRuleSummary};
+use anyhow::{ensure, Context, Result};
 use excel_editor::{
-    EditExecutionReport, EditOperation, ExcelEditPlan, ExcelModifier, PreservationRequirement,
-    RangeStyleMode, WorkbookProfile, inspect_xlsx_profile,
+    inspect_xlsx_profile, EditExecutionReport, EditOperation, ExcelEditPlan, ExcelModifier,
+    PreservationRequirement, RangeStyleMode, WorkbookProfile,
 };
-use excel_reader::{SheetDump, WorkbookDump, read_workbook};
+use excel_reader::{read_workbook, SheetDump, WorkbookDump};
 use regex::Regex;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -1647,8 +1647,8 @@ mod tests {
         fs,
         path::PathBuf,
         sync::{
-            Arc,
             atomic::{AtomicU64, Ordering},
+            Arc,
         },
         time::{SystemTime, UNIX_EPOCH},
     };
@@ -2177,6 +2177,11 @@ mod tests {
                 EditOperationKind::DeleteColumn,
                 EditOperationKind::ImportRange,
                 EditOperationKind::ImportRangeWithFormulaTranslation,
+                EditOperationKind::SetCellValue,
+                EditOperationKind::SetCellNumberFormat,
+                EditOperationKind::SetCellFillColor,
+                EditOperationKind::SetRowHidden,
+                EditOperationKind::SetSheetVisibility,
                 EditOperationKind::SetWorkbookCalculationProperties,
             ]
             .into_iter()
