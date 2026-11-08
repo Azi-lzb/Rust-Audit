@@ -1665,19 +1665,185 @@ fn apply_cell_targets_batch(
     }
     output.push_str(&sheet_xml[last..]);
 
-    // 缺失格：复用既有单格路径（行内按列序插入 / 建行 + dimension 扩展）
+    // 缺失格按行合并插补（逐格全表扫描在数千格时是主要热点）：
+    // 行存在 → 该行一次重写并入全部缺失格；行不存在 → 新行块按序一次性建段。
+    let mut missing_by_row: std::collections::BTreeMap<u32, Vec<(u32, &CellTargets)>> =
+        Default::default();
+    let mut max_missing_row = 0u32;
+    let mut max_missing_col = 0u32;
     for ((row_number, column), target) in targets.iter() {
         if matched.contains(&(*row_number, *column)) {
             continue;
         }
-        let address = format!("{}{}", column_letters(*column), row_number);
-        let value = target.value.clone().unwrap_or(crate::CellValue::Blank);
-        let updated = set_cell_value_in_sheet_xml(&output, &address, &value)?;
-        output = match style_xf.get(&(*row_number, *column)) {
-            Some(index) => set_cell_style_index(&updated, &address, *index)?,
-            None => updated,
-        };
+        missing_by_row
+            .entry(*row_number)
+            .or_default()
+            .push((*column, target));
+        max_missing_row = max_missing_row.max(*row_number);
+        max_missing_col = max_missing_col.max(*column);
     }
+    if missing_by_row.is_empty() {
+        return Ok(output);
+    }
+
+    let new_cell_node = |column: u32,
+                         row: u32,
+                         target: &CellTargets,
+                         style: Option<u32>|
+     -> String {
+        let address = format!("{}{}", column_letters(column), row);
+        let style_attribute = match style {
+            Some(index) => format!(" s=\"{index}\""),
+            None => String::new(),
+        };
+        match &target.value {
+            Some(crate::CellValue::Text(text)) => format!(
+                r#"<c r="{address}"{style_attribute} t="inlineStr"><is><t xml:space="preserve">{}</t></is></c>"#,
+                escape_xml(text)
+            ),
+            Some(crate::CellValue::Decimal(number)) => {
+                format!(r#"<c r="{address}"{style_attribute}><v>{number}</v></c>"#)
+            }
+            Some(crate::CellValue::DateTime { serial, .. }) => {
+                format!(r#"<c r="{address}"{style_attribute}><v>{serial}</v></c>"#)
+            }
+            Some(crate::CellValue::Boolean(flag)) => format!(
+                r#"<c r="{address}"{style_attribute} t="b"><v>{}</v></c>"#,
+                if *flag { 1 } else { 0 }
+            ),
+            Some(crate::CellValue::Error(token)) => format!(
+                r#"<c r="{address}"{style_attribute} t="e"><v>{}</v></c>"#,
+                escape_xml(token)
+            ),
+            Some(crate::CellValue::Blank) | None => {
+                format!(r#"<c r="{address}"{style_attribute}/>"#)
+            }
+        }
+    };
+
+    let row_re = regex::Regex::new(
+        r#"(?P<empty><row [^>]*?r="(?P<erow>\d+)"[^>]*?/>)|(?P<full><row [^>]*?r="(?P<frow>\d+)"[^>]*?>)(?P<body>.*?)</row>"#,
+    )
+    .context("编译缺失行扫描正则失败")?;
+    let cell_token_re =
+        regex::Regex::new(r#"<c r="[A-Za-z]+\d+"#).context("编译缺失格扫描正则失败")?;
+
+    let mut pending = &mut missing_by_row;
+    let mut built = String::with_capacity(output.len() + 4096);
+    let mut cursor = 0usize;
+    let mut last_existing_row = 0u32;
+    for caps in row_re.captures_iter(&output) {
+        let whole = caps.get(0).unwrap();
+        let (row_number, self_closed) = if caps.name("empty").is_some() {
+            (
+                caps.name("erow")
+                    .expect("erow")
+                    .as_str()
+                    .parse()
+                    .unwrap_or(0),
+                true,
+            )
+        } else {
+            (
+                caps.name("frow")
+                    .expect("frow")
+                    .as_str()
+                    .parse()
+                    .unwrap_or(0),
+                false,
+            )
+        };
+        // 推进间隙；重建行时下方会跳过原行块（否则输出重复行块，读取端取前者丢新格）
+        built.push_str(&output[cursor..whole.start()]);
+        cursor = whole.end();
+
+        // 在本行块之前落位所有更小行号的缺失行
+        let earlier: Vec<u32> = pending
+            .keys()
+            .copied()
+            .filter(|row| *row < row_number)
+            .collect();
+        for row in &earlier {
+            let cells: String = pending[row]
+                .iter()
+                .map(|(column, target)| {
+                    new_cell_node(
+                        *column,
+                        *row,
+                        target,
+                        style_xf.get(&(*row, *column)).copied(),
+                    )
+                })
+                .collect();
+            built.push_str(&format!("<row r=\"{row}\">{cells}</row>"));
+        }
+        for row in &earlier {
+            pending.remove(row);
+        }
+        last_existing_row = last_existing_row.max(row_number);
+
+        if let Some(entries) = pending.get(&row_number) {
+            // 该行存在：把缺失格并入行体（行文本很小，逐格插入开销可忽略）
+            let head_end = whole.as_str().find('>').map(|i| i + 1).unwrap_or(0);
+            let close = whole
+                .as_str()
+                .rfind("</row>")
+                .unwrap_or(whole.as_str().len());
+            let head = if self_closed {
+                format!("<row r=\"{row_number}\">")
+            } else {
+                whole.as_str()[..head_end].to_owned()
+            };
+            let body = if self_closed {
+                String::new()
+            } else {
+                whole.as_str()[head_end..close].to_owned()
+            };
+            let mut row_text = format!("{head}{body}</row>");
+            for (column, target) in entries.iter() {
+                let node = new_cell_node(
+                    *column,
+                    row_number,
+                    target,
+                    style_xf.get(&(row_number, *column)).copied(),
+                );
+                row_text = insert_cell_into_row(&row_text, *column, &node)?;
+            }
+            built.push_str(&row_text);
+            pending.remove(&row_number);
+        } else {
+            built.push_str(whole.as_str());
+        }
+    }
+    // 剩余缺失行：行号大于全部既有行 → 一次性插到 </sheetData> 前
+    if !pending.is_empty() {
+        let tail: String = pending
+            .iter()
+            .map(|(row, entries)| {
+                let cells: String = entries
+                    .iter()
+                    .map(|(column, target)| {
+                        new_cell_node(
+                            *column,
+                            *row,
+                            target,
+                            style_xf.get(&(*row, *column)).copied(),
+                        )
+                    })
+                    .collect();
+                format!("<row r=\"{row}\">{cells}</row>")
+            })
+            .collect();
+        let insert_at = output.rfind("</sheetData>").unwrap_or(output.len());
+        built.push_str(&output[cursor..insert_at]);
+        built.push_str(&tail);
+        cursor = insert_at;
+    }
+    built.push_str(&output[cursor..]);
+    output = built;
+
+    // 一次性扩展 dimension（只扩不缩）
+    output = expand_dimension_ref(&output, max_missing_row, max_missing_col);
     Ok(output)
 }
 

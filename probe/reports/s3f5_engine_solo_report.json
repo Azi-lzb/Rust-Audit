@@ -1,11 +1,11 @@
 {
   "exe": "C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\dist\\open-data-audit.exe",
-  "exe_sha256": "b57105a9b4aac634706f520aaf3bedfd0576b31caaa1aca454dcaf36b67f765d",
+  "exe_sha256": "ec8036a10f5997b14deacb05591657bd9440bcd23cb7bcaa6716c8a2c9844103",
   "runs": {
     "ooxml_run1": {
       "exit": 0,
-      "stderr_tail": "正在生成 S3-F05 金融表单…\nS3-F05 完成：8 家机构、3842 个匹配指标、8 个输出文件；输出目录：\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\s3f5_engine_solo_work\\ooxml_run1\\指标比较拆分_20261108_132117_916；耗时 144023 ms。\n",
-      "elapsed": 144.1,
+      "stderr_tail": "正在生成 S3-F05 金融表单…\nS3-F05 完成：8 家机构、3842 个匹配指标、8 个输出文件；输出目录：\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\s3f5_engine_solo_work\\ooxml_run1\\指标比较拆分_20261108_142256_629；耗时 160992 ms。\n",
+      "elapsed": 161.0,
       "files": [
         "2026.10 TCL财务公司 广东省.xlsx",
         "2026.10 博罗农村商业银行 广东省.xlsx",
@@ -20,8 +20,8 @@
     },
     "ooxml_run2": {
       "exit": 0,
-      "stderr_tail": "正在生成 S3-F05 金融表单…\nS3-F05 完成：8 家机构、3842 个匹配指标、8 个输出文件；输出目录：\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\s3f5_engine_solo_work\\ooxml_run2\\指标比较拆分_20261108_132341_962；耗时 140919 ms。\n",
-      "elapsed": 141.0,
+      "stderr_tail": "正在生成 S3-F05 金融表单…\nS3-F05 完成：8 家机构、3842 个匹配指标、8 个输出文件；输出目录：\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\s3f5_engine_solo_work\\ooxml_run2\\指标比较拆分_20261108_142537_658；耗时 166787 ms。\n",
+      "elapsed": 166.8,
       "files": [
         "2026.10 TCL财务公司 广东省.xlsx",
         "2026.10 博罗农村商业银行 广东省.xlsx",
@@ -36,8 +36,8 @@
     },
     "openpyxl_run1": {
       "exit": 0,
-      "stderr_tail": "正在生成 S3-F05 金融表单…\nS3-F05 完成：8 家机构、3842 个匹配指标、8 个输出文件；输出目录：\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\s3f5_engine_solo_work\\openpyxl_run1\\指标比较拆分_20261108_132602_910；耗时 37548 ms。\n",
-      "elapsed": 37.6,
+      "stderr_tail": "正在生成 S3-F05 金融表单…\nS3-F05 完成：8 家机构、3842 个匹配指标、8 个输出文件；输出目录：\\\\?\\C:\\Users\\AZI\\Desktop\\VibeCode\\Rust-Audit\\probe\\reports\\s3f5_engine_solo_work\\openpyxl_run1\\指标比较拆分_20261108_142824_532；耗时 44821 ms。\n",
+      "elapsed": 44.9,
       "files": [
         "2026.10 TCL财务公司 广东省.xlsx",
         "2026.10 博罗农村商业银行 广东省.xlsx",
