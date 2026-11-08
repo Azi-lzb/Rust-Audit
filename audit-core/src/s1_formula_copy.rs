@@ -258,16 +258,22 @@ where
         external_workbook,
         modifier,
     )?;
-    // Excel COM 对报送文件中两类非规范内容拒绝打开：含强制引号字符的表名
-    // 裸引用、冻结窗格 topLeftCell 落在冻结区内。重算前在审核副本上做无害
-    // 规范化（公式语义不变），让 Excel 优先的 auto/excel 引擎不再被迫回退；
-    // 修复失败或无需修复时保持副本原样，绝不打断审核流程。
-    if excel_open_repair_requested {
-        let repair =
-            crate::excel_open_repair::repair_audit_copy_for_excel(&prepared.cacheless_formula_copy);
-        if repair.changed {
-            prepared.excel_open_repair = Some(repair);
-        }
+    // 审核副本的 OOXML 规范化必须与计算引擎无关地执行（与 Rust-Tools
+    // prepare_named_validation_copy 同一位置：公式复制完成后、任何引擎打开之前）。
+    //
+    // 历史教训：曾经只在 Excel COM 分支调用，导致 betteroffice 侧副本仍带
+    // 错位的 shared formula ref（ref="C13:C48" 而主格在 C14），COM 侧却已归一
+    // 为 "C14:C48"——两侧 calamine 展开从属格得到不同文本，跨路由对拍出现
+    // 假阳性。现在两条路由的副本统一归一。
+    //
+    // 修复内容（均为公式语义不变的规范化）：表名裸引用补引号、外部引用剥离、
+    // 冻结窗格矛盾修正、shared formula ref 起点归一到主格。
+    // 失败或无需修复时保持副本原样，绝不打断审核流程。
+    let _ = excel_open_repair_requested;
+    let repair =
+        crate::excel_open_repair::repair_audit_copy_for_excel(&prepared.cacheless_formula_copy);
+    if repair.changed {
+        prepared.excel_open_repair = Some(repair);
     }
 
     if !sidecar_available && !betteroffice_standalone_available() {

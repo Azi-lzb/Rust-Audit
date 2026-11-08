@@ -17,6 +17,24 @@
 
 
 
+
+**OOXML 规范化与计算引擎解耦（2026-11-09，Rust-Tools ③ 对齐）**
+
+Rust-Tools 指出：若只在 COM 分支做 shared formula ref 归一，betteroffice 侧副本
+仍带错位 ref，两侧口径不一致 → 跨路由对拍照样假阳性。本项目实测确认此判断：
+修复前 betteroffice 副本 `ref="C13:C48"`、COM 副本 `ref="C14:C48"`；虽然
+公式文本守卫没报错（betteroffice 不改 `<f>`），但**两侧副本字节不同**，任何
+后续跨路由比较都会受影响。
+
+改为「与引擎无关」：`excel_open_repair` 在**任何引擎打开副本之前**执行，
+三处入口全部去门控——
+- `s1_formula_copy::execute_s1_formula_copy_with_recalculator`（公式复制后）
+- `S1RecalculationSession::recalculate_betteroffice`（新增，此前缺失）
+- `S1RecalculationSession::recalculate_native` / `recalculate_s1_formula_copy`
+
+实测：修复后两路由副本均 `ref="C14:C48"`，完全一致；betteroffice 路由日志
+打印 `shared_ref=1` 留痕。20 模板双路由仍 20/20、实质差异 0。
+
 **重算公式文本守卫可配置（2026-11-09）**
 
 新增高级设置项「重算公式文本守卫」（`recalcFormulaGuard`，默认开启）。

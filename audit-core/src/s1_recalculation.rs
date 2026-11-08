@@ -193,10 +193,22 @@ impl S1RecalculationSession {
         let started = Instant::now();
         let (input, output, destination_staging) =
             prepare_recalculation_paths(input_path, output_path)?;
+        // 与 COM 分支同一口径：**任何引擎打开之前**先做 OOXML 规范化。
+        // 曾经只有 recalculate_native 调用，导致 betteroffice 侧副本仍带
+        // 错位的 shared formula ref（ref="C13:C48" 而主格在 C14），COM 侧却
+        // 已归一为 "C14:C48"——跨路由对拍时两侧从属格展开不同，产生假阳性。
+        let repair = crate::excel_open_repair::repair_audit_copy_for_excel(&input);
         let candidate = destination_staging.path().join("recalculated.xlsx");
         std::fs::copy(&input, &candidate).with_context(|| {
             format!("为 betteroffice 重算准备工作副本：{}", candidate.display())
         })?;
+        if repair.changed {
+            eprintln!(
+                "S1-F01 审核副本 OOXML 规范化（betteroffice 路由）：shared_ref={} quoted={} external={} pane={}",
+                repair.shared_formula_ref_fixed, repair.quoted,
+                repair.external_ref_fixed, repair.pane_fixed
+            );
+        }
         let outcome = crate::bo_calc::recalculate(&candidate, config)?;
         let report = serde_json::json!({
             "status": "recalculated",
@@ -596,9 +608,8 @@ impl S1RecalculationSession {
         let (input, output, destination_staging) = prepare_recalculation_paths(input, output)?;
         // 与 GUI 主路径同一口径：COM 打开前先做 Excel 打开修复（shared formula
         // 的 ref 归一等）。诊断/CLI 入口绕过 s1_formula_copy 时同样生效。
-        if crate::excel_open_repair::excel_com_engine_requested(&self.engine_request) {
-            let _ = crate::excel_open_repair::repair_audit_copy_for_excel(&input);
-        }
+        // 与计算引擎无关（见 s1_formula_copy 同处说明）。
+        let _ = crate::excel_open_repair::repair_audit_copy_for_excel(&input);
         // Excel receives short temporary paths; the final candidate is staged
         // beside the destination so publication remains atomic and no-overwrite.
         let engine_staging = StagingDirectory::create(&std::env::temp_dir())?;
@@ -1056,9 +1067,9 @@ pub fn recalculate_s1_formula_copy(
     // Excel COM 打开修复：与 GUI 主路径（execute_s1_formula_copy_*）同一口径。
     // 本函数也被 CLI/诊断入口直接调用，若不在此修复，shared formula 的 ref
     // 错位会让重算守卫误判「重算改变公式」。
-    if crate::excel_open_repair::excel_com_engine_requested(engine_request) {
-        let _ = crate::excel_open_repair::repair_audit_copy_for_excel(input_path.as_ref());
-    }
+    // 与计算引擎无关：任何引擎打开副本前都先做 OOXML 规范化
+    // （shared formula ref 归一等），保证两条路由口径一致。
+    let _ = crate::excel_open_repair::repair_audit_copy_for_excel(input_path.as_ref());
     // betteroffice（纯 Rust）优先——Windows 与 Linux 同一路由：
     // betteroffice → 本函数既有 sidecar（Windows COM / Linux LibreOffice）。
     let bo_config = crate::bo_calc::BoCalcConfig::from_app();
