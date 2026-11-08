@@ -221,19 +221,21 @@ fn s3_f05_modifier(
     let platform = runtime_platform();
     let mut backends: Vec<Arc<dyn EditBackend>> = Vec::new();
     match selection {
+        // 用户确认（2026-11-08）：auto 时 **OOXML 优先**（ZIP 级直改最快），
+        // openpyxl worker 作为备选；两种后端都在写前拒绝不支持的批次。
         "auto" | "" => {
-            if crate::app_settings::openpyxl_selection_status().0 {
-                backends.push(s1_f01_openpyxl_backend(&platform, feature)?);
-            }
             backends.push(Arc::new(OoxmlImportBackend::new(
                 ooxml_import_capability(&platform),
             )?));
+            if crate::app_settings::openpyxl_selection_status().0 {
+                backends.push(s1_f01_openpyxl_backend(&platform, feature)?);
+            }
         }
-        "openpyxl" => backends.push(s1_f01_openpyxl_backend(&platform, feature)?),
         "ooxml" => backends.push(Arc::new(OoxmlImportBackend::new(
             ooxml_import_capability(&platform),
         )?)),
-        other => anyhow::bail!("S3-F05 修改引擎不支持：{other}（可用 auto/openpyxl/ooxml）"),
+        "openpyxl" => backends.push(s1_f01_openpyxl_backend(&platform, feature)?),
+        other => anyhow::bail!("S3-F05 修改引擎不支持：{other}（可用 auto/ooxml/openpyxl）"),
     }
     anyhow::ensure!(
         !backends.is_empty(),
