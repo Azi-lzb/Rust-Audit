@@ -1,0 +1,209 @@
+[
+  {
+    "template": "！10.基础数据-单位贷款202609.xlsx",
+    "ok": true,
+    "engine": "betteroffice (pure Rust)",
+    "recalc_elapsed_ms": 632,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！100.金融基础数据采集（单位存款）202608.xlsx",
+    "ok": true,
+    "engine": "betteroffice (pure Rust)",
+    "recalc_elapsed_ms": 1132,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！110.金融基础数据-存量个人存款202608.xlsx",
+    "ok": true,
+    "engine": "betteroffice (pure Rust)",
+    "recalc_elapsed_ms": 491,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！120.金融基础数据采集（代发工资）202608.xlsx",
+    "ok": true,
+    "engine": "betteroffice (pure Rust)",
+    "recalc_elapsed_ms": 330,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！130.互联网金融业务信息（季度）202608.xlsx",
+    "ok": true,
+    "engine": "betteroffice (pure Rust)",
+    "recalc_elapsed_ms": 251,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！130.互联网金融业务信息（月度）202608.xlsx",
+    "ok": true,
+    "engine": "betteroffice (pure Rust)",
+    "recalc_elapsed_ms": 182,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！140.养老产业贷款信息202608.xlsx",
+    "ok": true,
+    "engine": "betteroffice (pure Rust)",
+    "recalc_elapsed_ms": 893,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！140.数字经济产业贷款信息202608.xlsx",
+    "ok": true,
+    "engine": "betteroffice (pure Rust)",
+    "recalc_elapsed_ms": 336,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！140.普惠贷款信息202608.xlsx",
+    "ok": true,
+    "engine": "betteroffice (pure Rust)",
+    "recalc_elapsed_ms": 382,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！140.科技贷款信息202608.xlsx",
+    "ok": true,
+    "engine": "betteroffice (pure Rust)",
+    "recalc_elapsed_ms": 474,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！140.绿色贷款信息202608.xlsx",
+    "ok": true,
+    "engine": "betteroffice (pure Rust)",
+    "recalc_elapsed_ms": 269,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！20.融基础数据-个人贷款202609.xlsx",
+    "ok": true,
+    "engine": "betteroffice (pure Rust)",
+    "recalc_elapsed_ms": 739,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！30.存量专项贷款一批报文202608.xlsx",
+    "ok": true,
+    "engine": "betteroffice (pure Rust)",
+    "recalc_elapsed_ms": 193,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！40.金融基础数据采集（委托贷款）202608.xlsx",
+    "ok": true,
+    "engine": "betteroffice (pure Rust)",
+    "recalc_elapsed_ms": 482,
+    "scan_status": "COMPLETED",
+    "hits": 1,
+    "cells": [
+      {
+        "sheet": "存量委托贷款",
+        "cell": "W7",
+        "value": "#DIV/0!",
+        "formula": "=+G7/D7"
+      }
+    ],
+    "error": null
+  },
+  {
+    "template": "！50.金融基础数据-票据业务202608.xlsx",
+    "ok": true,
+    "engine": "betteroffice (pure Rust)",
+    "recalc_elapsed_ms": 750,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！60.金融基础数据采集（单位贷款置换旧债发生额）202608.xlsx",
+    "ok": true,
+    "engine": "betteroffice (pure Rust)",
+    "recalc_elapsed_ms": 195,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！61.存量专项贷款二批报文202608.xlsx",
+    "ok": true,
+    "engine": "betteroffice (pure Rust)",
+    "recalc_elapsed_ms": 166,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！70.金融基础数据采集（债券业务）202608.xlsx",
+    "ok": true,
+    "engine": "betteroffice (pure Rust)",
+    "recalc_elapsed_ms": 1028,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！80.金融基础数据采集（股权和特定目的载体投资）202608.xlsx",
+    "ok": true,
+    "engine": "betteroffice (pure Rust)",
+    "recalc_elapsed_ms": 1009,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！90.金融基础数据采集（同业业务）202608.xlsx",
+    "ok": true,
+    "engine": "betteroffice (pure Rust)",
+    "recalc_elapsed_ms": 1167,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  }
+]

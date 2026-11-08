@@ -77,12 +77,18 @@ fn run(templates_dir: PathBuf, work_dir: PathBuf, route: String) -> Result<()> {
     // 一个会话复用于整批（COM 路径的既有语义）；betteroffice 是进程内的。
     // COM 会话 worker 是主程序的私有子命令（__audit-native-com-session）；
     // 本 example 自身没有该入口，显式指定产品 exe（AUDIT_EXE 覆盖）。
-    let audit_exe = std::env::var_os("AUDIT_EXE")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("dist/open-data-audit.exe"));
-    let audit_exe = std::fs::canonicalize(&audit_exe)
-        .with_context(|| format!("定位 Audit 主程序（COM worker）：{}", audit_exe.display()))?;
-    let mut session = S1RecalculationSession::new_native_with_executable(&audit_exe, "auto")?;
+    // Linux 没有原生 COM：不构造会话，走 recalculate_s1_formula_copy（LO sidecar）。
+    #[cfg(windows)]
+    let mut session = {
+        let audit_exe = std::env::var_os("AUDIT_EXE")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("dist/open-data-audit.exe"));
+        let audit_exe = std::fs::canonicalize(&audit_exe)
+            .with_context(|| format!("定位 Audit 主程序（COM worker）：{}", audit_exe.display()))?;
+        Some(S1RecalculationSession::new_native_with_executable(&audit_exe, "auto")?)
+    };
+    #[cfg(not(windows))]
+    let mut session: Option<S1RecalculationSession> = None;
 
     let mut results = Vec::new();
     for template in &templates {
@@ -125,7 +131,7 @@ fn run(templates_dir: PathBuf, work_dir: PathBuf, route: String) -> Result<()> {
 }
 
 fn run_one(
-    session: &mut S1RecalculationSession,
+    session: &mut Option<S1RecalculationSession>,
     template: &Path,
     work_dir: &Path,
     name: &str,
@@ -138,7 +144,15 @@ fn run_one(
         .with_context(|| format!("复制模板为工作副本：{}", source_copy.display()))?;
 
     let started = Instant::now();
-    let report = session.recalculate(&source_copy, &output_copy)?;
+    let report = match session {
+        Some(session) => session.recalculate(&source_copy, &output_copy)?,
+        None => audit_core::s1_recalculation::recalculate_s1_formula_copy(
+            std::env::var_os("AUDIT_SIDECAR").map(PathBuf::from).as_deref(),
+            &source_copy,
+            &output_copy,
+            "auto",
+        )?,
+    };
     let recalc_elapsed_ms = started.elapsed().as_millis();
 
     let plan = S1ValidationFormulaScanPlan::load(&[template.to_path_buf()])?;
