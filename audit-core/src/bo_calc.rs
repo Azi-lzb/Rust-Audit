@@ -72,6 +72,61 @@ pub struct BoCalcConfig {
 }
 
 impl BoCalcConfig {
+    /// 配置优先级：GUI 高级设置（AppSettings 持久化）> 环境变量 > 内置默认，
+    /// 与 Rust-Tools 的「config > env > default」完全一致。
+    pub fn from_app() -> Self {
+        // 基座 = env（未设则内置默认）；GUI 设置逐项覆盖——但只有 GUI
+        // 「显式设置过」的键才覆盖，未设置的键让 env/默认继续生效。
+        let mut config = Self::from_env();
+        let settings = crate::app_settings::AppSettings::load();
+        // 先应用回退策略，再应用引擎选择——「com=直接用 Excel/WPS」对回退
+        // 方向有最终决定权（锁定 COM-only）。
+        if let Some(fallback) = settings.bo_calc_fallback() {
+            match fallback {
+                "none" => {
+                    config.fallback_com = false;
+                    config.fallback_libreoffice = false;
+                }
+                "com" => {
+                    config.fallback_com = true;
+                    config.fallback_libreoffice = false;
+                }
+                "libreoffice" => {
+                    config.fallback_com = false;
+                    config.fallback_libreoffice = true;
+                }
+                _ => {
+                    config.fallback_com = true;
+                    config.fallback_libreoffice = true;
+                }
+            }
+        }
+        if let Some(engine) = settings.bo_calc_engine() {
+            match engine {
+                // 直接用 Excel/WPS：跳过 betteroffice，回退锁定 COM。
+                "com" => {
+                    config.enabled = false;
+                    config.fallback_com = true;
+                    config.fallback_libreoffice = false;
+                }
+                // 完全回到 COM/LibreOffice 旧路由（回退按平台 auto）。
+                "off" => config.enabled = false,
+                // betteroffice：启用。
+                _ => config.enabled = true,
+            }
+        }
+        if let Some(max_visits) = settings.bo_calc_max_visits() {
+            config.max_visits = Some(max_visits);
+        }
+        if let Some(rounds) = settings.bo_calc_rounds() {
+            config.rounds = rounds;
+        }
+        if let Some(strip) = settings.bo_calc_strip_style() {
+            config.strip_style_cells = strip;
+        }
+        config
+    }
+
     pub fn from_env() -> Self {
         let mode = std::env::var("PYTOOLS_BO_CALC").unwrap_or_default();
         let enabled = !mode.eq_ignore_ascii_case("off");
@@ -188,6 +243,17 @@ pub fn recalculate(source_copy: &Path, config: &BoCalcConfig) -> Result<BoCalcOu
     let saved = workbook
         .save()
         .map_err(|error| anyhow::anyhow!("betteroffice 保存工作副本失败：{}", error))?;
+    // betteroffice 会把求值错误写成 <v>#ERROR!</v>，而 OOXML 只允许 7 种
+    // 标准错误码——Excel 会以 0x80020009 拒开整个文件。任何 #ERROR! 字面
+    // 都视为不可采用并回退，绝不把打不开的文件交给下游。
+    let error_literal_cells = count_error_literal_cells(&saved);
+    if error_literal_cells > 0 {
+        return Err(anyhow::anyhow!(BoCalcRefusal::Unusable {
+            reason: format!(
+                "{error_literal_cells} 个公式格求值为非标准错误字面 #ERROR!（写入会让 Excel 拒开整个文件）"
+            )
+        }));
+    }
     std::fs::write(source_copy, &saved)
         .with_context(|| format!("写回工作副本失败（{}）", source_copy.display()))?;
     let save_elapsed = save_started.elapsed();
@@ -227,6 +293,15 @@ pub fn recalculate(source_copy: &Path, config: &BoCalcConfig) -> Result<BoCalcOu
 /// 设置 betteroffice 的重算预算上限（vendor 修改版提供的运行时接口）。
 fn fasteroffice_set_max_visits(max_visits: u64) {
     xlsx_calc::eval::set_max_recalculation_visits(max_visits);
+}
+
+/// betteroffice 会把求值错误写成 `<v>#ERROR!</v>`，而 OOXML 只允许 7 种
+/// 标准错误码——Excel 会以 0x80020009 拒开整个文件。
+fn count_error_literal_cells(bytes: &[u8]) -> usize {
+    bytes
+        .windows(b"<v>#ERROR!</v>".len())
+        .filter(|window| window == b"<v>#ERROR!</v>")
+        .count()
 }
 
 /// the local clock as an Excel 1900-system serial (days since 1899-12-30).
@@ -331,6 +406,117 @@ mod tests {
         };
         assert!(!config.fallback_available());
         assert_eq!(config.rounds, 1);
+    }
+
+    #[test]
+    fn error_literal_detection() {
+        use super::count_error_literal_cells;
+        assert_eq!(count_error_literal_cells(b"<v>#DIV/0!</v>"), 0);
+        assert_eq!(count_error_literal_cells(b"<v>#ERROR!</v>"), 1);
+        assert_eq!(
+            count_error_literal_cells(b"<c r=\"A1\" t=\"e\"><f>1/0</f><v>#ERROR!</v></c>"),
+            1
+        );
+        assert_eq!(
+            count_error_literal_cells(b"<v>#ERROR!</v><v>#ERROR!</v>"),
+            2
+        );
+    }
+
+    /// GUI/配置存储 > 环境变量 > 内置默认。AppSettings::load 读
+    /// AUDIT_STATE_DIR 下的 settings.json，本测试用自己的临时状态目录。
+    #[test]
+    fn settings_take_priority_over_env_and_defaults() {
+        // AUDIT_STATE_DIR / PYTOOLS_BO_CALC 是进程级环境：与并行测试串行化。
+        let _env_guard = crate::app_settings::AUDIT_STATE_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        use crate::app_settings::AppSettings;
+        let state = std::env::temp_dir().join(format!(
+            "audit_bo_cfg_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::env::set_var("AUDIT_STATE_DIR", &state);
+
+        // 默认（无设置、无 env）：启用、2 轮、auto 回退。
+        std::env::remove_var("PYTOOLS_BO_CALC");
+        std::env::remove_var("PYTOOLS_BO_CALC_ROUNDS");
+        std::env::remove_var("PYTOOLS_BO_CALC_FALLBACK");
+        let config = BoCalcConfig::from_app();
+        assert!(config.enabled);
+        assert_eq!(config.rounds, 2);
+        assert!(config.fallback_com && config.fallback_libreoffice);
+
+        // GUI 设置 com：enabled=false 且回退锁定 COM（覆盖 env 的 auto）。
+        AppSettings::store_preferences(
+            "auto",
+            "auto",
+            [
+                ("boCalcEngine".to_owned(), serde_json::json!("com")),
+                ("boCalcFallback".to_owned(), serde_json::json!("auto")),
+            ]
+            .into_iter()
+            .collect(),
+        )
+        .expect("store com preference");
+        let config = BoCalcConfig::from_app();
+        assert!(!config.enabled, "GUI com 必须跳过 betteroffice");
+        assert!(config.fallback_com && !config.fallback_libreoffice);
+
+        // GUI 设置 betteroffice + none 回退 + 3 轮 + 预算：GUI 覆盖 env。
+        std::env::set_var("PYTOOLS_BO_CALC_ROUNDS", "5");
+        std::env::set_var("PYTOOLS_BO_CALC_FALLBACK", "auto");
+        AppSettings::store_preferences(
+            "auto",
+            "auto",
+            [
+                ("boCalcEngine".to_owned(), serde_json::json!("betteroffice")),
+                ("boCalcFallback".to_owned(), serde_json::json!("none")),
+                ("boCalcRounds".to_owned(), serde_json::json!(3)),
+                ("boCalcMaxVisits".to_owned(), serde_json::json!(12345)),
+                ("boCalcStripStyle".to_owned(), serde_json::json!(true)),
+            ]
+            .into_iter()
+            .collect(),
+        )
+        .expect("store betteroffice preferences");
+        let config = BoCalcConfig::from_app();
+        assert!(config.enabled);
+        assert!(
+            !config.fallback_com && !config.fallback_libreoffice,
+            "FALLBACK=none"
+        );
+        assert_eq!(config.rounds, 3, "GUI 3 轮覆盖 env 的 5");
+        assert_eq!(config.max_visits, Some(12345));
+        assert!(config.strip_style_cells);
+
+        // env 只在 GUI 未设置时生效：清掉 GUI 的轮数后 env=5 生效。
+        let settings_path = state.join("settings.json");
+        let mut raw: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&settings_path).expect("read settings json"),
+        )
+        .expect("settings json parse");
+        if let Some(preferences) = raw.get_mut("preferences").and_then(|v| v.as_object_mut()) {
+            preferences.remove("boCalcRounds");
+        }
+        std::fs::write(
+            &settings_path,
+            serde_json::to_vec(&raw).expect("reserialize"),
+        )
+        .expect("write settings json");
+        let config = BoCalcConfig::from_app();
+        assert_eq!(config.rounds, 5, "env 覆盖默认");
+
+        for (key, _) in std::env::vars_os() {
+            let key = key.to_string_lossy().into_owned();
+            if key.starts_with("PYTOOLS_BO_CALC") {
+                std::env::remove_var(&key);
+            }
+        }
+        std::env::remove_var("AUDIT_STATE_DIR");
     }
 
     #[test]

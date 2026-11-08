@@ -146,7 +146,7 @@ impl S1RecalculationSession {
         input_path: impl AsRef<Path>,
         output_path: impl AsRef<Path>,
     ) -> Result<S1RecalculationReport> {
-        let bo_config = crate::bo_calc::BoCalcConfig::from_env();
+        let bo_config = crate::bo_calc::BoCalcConfig::from_app();
         let mut bo_fallback_reason: Option<String> = None;
         if bo_config.enabled {
             match self.recalculate_betteroffice(
@@ -858,7 +858,7 @@ pub fn recalculate_s1_formula_copy_batch(
     // betteroffice 优先（Windows / Linux 同一路由）：逐本先试 betteroffice，
     // 只有被拒绝的才进入 LibreOffice 批处理——批量语义（一次 soffice 调用）
     // 保持不变，本函数只负责收窄待转换集合。
-    let bo_config = crate::bo_calc::BoCalcConfig::from_env();
+    let bo_config = crate::bo_calc::BoCalcConfig::from_app();
     let mut betteroffice_outcomes: Vec<Option<S1RecalculationReport>> =
         (0..pairs.len()).map(|_| None).collect();
     let mut betteroffice_reasons: Vec<Option<String>> = (0..pairs.len()).map(|_| None).collect();
@@ -1050,7 +1050,7 @@ pub fn recalculate_s1_formula_copy(
     );
     // betteroffice（纯 Rust）优先——Windows 与 Linux 同一路由：
     // betteroffice → 本函数既有 sidecar（Windows COM / Linux LibreOffice）。
-    let bo_config = crate::bo_calc::BoCalcConfig::from_env();
+    let bo_config = crate::bo_calc::BoCalcConfig::from_app();
     let mut bo_fallback_reason: Option<String> = None;
     if bo_config.enabled && engine_request == "auto" {
         match recalculate_with_betteroffice(input_path.as_ref(), output_path.as_ref(), &bo_config) {

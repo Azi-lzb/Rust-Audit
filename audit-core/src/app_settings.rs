@@ -244,6 +244,15 @@ pub const PREFERENCE_SPECS: &[PreferenceSpec] = preference_specs! {
     "centralTolerance" => PreferenceKind::FloatRange { min: 0.0, max: 1_000_000.0 },
     "centralTrimIndicatorNames" => PreferenceKind::Boolean,
     "centralAutoOpenResult" => PreferenceKind::Boolean,
+    "boCalcEngine" => {
+        PreferenceKind::Enumeration(&["betteroffice", "com", "off"])
+    },
+    "boCalcMaxVisits" => PreferenceKind::IntegerRange { min: 0, max: 1_000_000_000 },
+    "boCalcRounds" => PreferenceKind::IntegerRange { min: 1, max: 5 },
+    "boCalcStripStyle" => PreferenceKind::Boolean,
+    "boCalcFallback" => {
+        PreferenceKind::Enumeration(&["auto", "com", "libreoffice", "none"])
+    },
 };
 
 pub fn preference_spec(key: &str) -> Option<&'static PreferenceSpec> {
@@ -367,6 +376,48 @@ impl AppSettings {
             .and_then(serde_json::Value::as_str)
             .filter(|value| CONDITIONAL_FORMAT_EVALUATOR_VALUES.contains(value))
             .unwrap_or("PYTHON")
+    }
+
+    /// 校验计算引擎：betteroffice（默认，纯 Rust 优先）｜com（直接用
+    /// Excel/WPS）｜off（完全回到 COM/LibreOffice 旧路由）。
+    /// `None` = GUI 未设置（此时环境变量可以生效）。
+    pub fn bo_calc_engine(&self) -> Option<&str> {
+        self.preferences
+            .get("boCalcEngine")
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| ["betteroffice", "com", "off"].contains(value))
+    }
+
+    /// 校验计算预算上限；0/未设置 = 库默认（10,000,000）。
+    pub fn bo_calc_max_visits(&self) -> Option<u64> {
+        self.preferences
+            .get("boCalcMaxVisits")
+            .and_then(serde_json::Value::as_u64)
+            .filter(|value| *value > 0)
+    }
+
+    /// 校验计算轮数（1~5，默认 2；第 2 轮起跨表动态引用才收敛）。
+    pub fn bo_calc_rounds(&self) -> Option<u32> {
+        self.preferences
+            .get("boCalcRounds")
+            .and_then(serde_json::Value::as_u64)
+            .filter(|value| (1..=5).contains(value))
+            .map(|value| value as u32)
+    }
+
+    /// 校验计算剥离样式空格（默认否）。
+    pub fn bo_calc_strip_style(&self) -> Option<bool> {
+        self.preferences
+            .get("boCalcStripStyle")
+            .and_then(serde_json::Value::as_bool)
+    }
+
+    /// 校验计算回退策略（auto 默认；none=不回退直接报错）。
+    pub fn bo_calc_fallback(&self) -> Option<&str> {
+        self.preferences
+            .get("boCalcFallback")
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| ["auto", "com", "libreoffice", "none"].contains(value))
     }
 
     /// 大集中核对差异容差（元）。保存时已做范围校验；手工改坏的设置文件

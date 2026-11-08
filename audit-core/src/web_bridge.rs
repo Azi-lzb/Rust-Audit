@@ -9106,6 +9106,9 @@ mod tests {
         let mut current_work_stages = Vec::new();
         // 本测试验证「有 sidecar / 无 sidecar」的混合语义；betteroffice 是
         // 纯 Rust 独立引擎，会绕开该前提，故显式关闭以保留原测试契约。
+        let _env_guard = crate::app_settings::AUDIT_STATE_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let previous_bo = std::env::var_os("PYTOOLS_BO_CALC");
         std::env::set_var("PYTOOLS_BO_CALC", "off");
         let output = execute_s1_f1_workflow_with_progress(

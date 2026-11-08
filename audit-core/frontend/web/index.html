@@ -2604,6 +2604,26 @@ function renderAdvanced(){
     row('S1-F01 公式复制引擎','自动顺序：OOXML Patch → 可用的 openpyxl → Umya。可分别强制使用这三种引擎；自动模式会跳过无法导入 openpyxl 的运行环境。只有前一引擎在写入前明确拒绝时才尝试下一引擎；写后失败或输出校验失败会停止且不发布。此设置只影响 S1-F01，S2/S3 保持现有路径。',
       '<select class="gen-select" id="setRustEditEngine" onchange="setRustEditEngine(this.value)">'+rustEditOptions+'</select>'),
   ].join('');
+  const boEngine=String(s.boCalcEngine||'betteroffice');
+  const boFallback=String(s.boCalcFallback||'auto');
+  const rowsBoCalc=[
+    row('校验计算引擎','betteroffice=纯 Rust 公式引擎优先（不启动 Excel/WPS/LibreOffice，快，推荐）；com=直接用 Excel/WPS COM 重算；off=完全回到旧路由（Windows Excel/WPS、Linux LibreOffice）。',
+      '<select class="gen-select" id="setBoCalcEngine" onchange="setBoCalcEngine(this.value)">'
+      +'<option value="betteroffice"'+(boEngine==='betteroffice'?' selected':'')+'>betteroffice（纯 Rust，推荐）</option>'
+      +'<option value="com"'+(boEngine==='com'?' selected':'')+'>com（直接 Excel/WPS）</option>'
+      +'<option value="off"'+(boEngine==='off'?' selected':'')+'>off（旧路由）</option>'
+      +'</select>'),
+    row('校验计算预算上限','单次重算的公式格访问预算；留空或 0 = 默认 1000 万。预算耗尽时按回退策略处理。',
+      '<input type="number" class="gen-select" id="setBoCalcMaxVisits" min="0" max="1000000000" step="1" value="'+esc(String(s.boCalcMaxVisits||0))+'" onchange="setBoCalcMaxVisits(this.value)" placeholder="0 = 默认 1000 万">'),
+    row('校验计算轮数','1~5，默认 2。betteroffice 的依赖图看不到 INDIRECT 动态引用，第 1 轮跨表动态链可能读到旧值；第 2 轮起收敛（实测保持 2 即可）。',
+      '<input type="number" class="gen-select" id="setBoCalcRounds" min="1" max="5" step="1" value="'+esc(String(s.boCalcRounds||2))+'" onchange="setBoCalcRounds(this.value)">'),
+    row('校验计算剥离样式空格','开启后重算前删掉工作副本里只有格式没有内容的单元格（大表/整列格式模板更快）；默认关闭。',
+      toggle('setBoCalcStripStyle',!!s.boCalcStripStyle)),
+    row('校验计算回退策略','betteroffice 不可采用（预算耗尽/未实现函数/循环引用）时的处理：auto=Windows 回 Excel/WPS、Linux 回 LibreOffice；com=只回 Excel/WPS；libreoffice=只回 LibreOffice；none=不回退，直接报错。',
+      '<select class="gen-select" id="setBoCalcFallback" onchange="setBoCalcFallback(this.value)">'
+      +['auto','com','libreoffice','none'].map(function(v){return '<option value="'+v+'"'+(boFallback===v?' selected':'')+'>'+v+'</option>';}).join('')
+      +'</select>'),
+  ].join('');
   const rowsCentralForm=[
     row('生成文件方式','由 Excel 文件修改引擎填充并生成金融表单工作簿；不计算公式。','<span>Excel 文件修改引擎</span>'),
   ].join('');
@@ -2629,6 +2649,7 @@ function renderAdvanced(){
     ...(isSystemVisible('S1')||isSystemVisible('S2')||isSystemVisible('S3')?[advCard('Excel 文件处理',(isSystemVisible('S3')?rowsCentralForm+rowsCentralExcel:'')+(isSystemVisible('S2')?rowsPeriodExcel:'')+(isSystemVisible('S1')?rowsAuditExcel:''))]:[]),
     ...(isSystemVisible('S1')?[advCard('计算与条件格式',rowsAuditCalc)]:[]),
     ...(isSystemVisible('S1')||isSystemVisible('S3')?[advCard('计算与文件修改引擎',rowsRustEngines)]:[]),
+    ...(isSystemVisible('S1')?[advCard('校验计算引擎（betteroffice）',rowsBoCalc)]:[]),
     ...(isSystemVisible('S3')?[advCard('大集中表达式求值',rowsCentralExpr)]:[]),
     ...(isSystemVisible('S3')?[advCard('大集中执行与结果',rowsCentralPrefs)]:[]),
   ]:[
@@ -2636,6 +2657,7 @@ function renderAdvanced(){
     advCard('通用设置',rowsPicker),
     ...(isSystemVisible('S1')?[advCard('逐笔统计系统',rowsAuditExcel+rowsAuditCalc)]:[]),
     ...(isSystemVisible('S1')||isSystemVisible('S3')?[advCard('计算与文件修改引擎',rowsRustEngines)]:[]),
+    ...(isSystemVisible('S1')?[advCard('校验计算引擎（betteroffice）',rowsBoCalc)]:[]),
     ...(isSystemVisible('S2')?[advCard('报表采集系统',rowsPeriodExcel)]:[]),
     ...(isSystemVisible('S3')?[advCard('大集中统计系统',rowsCentralForm+rowsCentralExcel+rowsCentralExpr+rowsCentralPrefs)]:[]),
   ];
@@ -2803,6 +2825,41 @@ async function setConditionalFormatEvaluator(value){
   try{const next=await bridge.api.update({conditionalFormatEvaluator:value});if(next&&typeof next==='object')state=next;}
   catch(e){await refresh();showToast(e&&e.message?e.message:String(e));return;}
   if(CFG.tab==='advanced')renderAdvanced();
+}
+async function setBoCalcEngine(value){
+  if(state&&state.busy)return;
+  try{const next=await bridge.api.update({boCalcEngine:value});if(next&&typeof next==='object')state=next;}
+  catch(e){await refresh();showToast(e&&e.message?e.message:String(e));return;}
+  if(CFG.tab==='advanced')renderAdvanced();
+  showToast('校验计算引擎已切换：'+value+'（下一次 S1-F01 重算生效）');
+}
+async function setBoCalcMaxVisits(value){
+  if(state&&state.busy)return;
+  const number=Number(value);
+  if(!isFinite(number)||number<0){showToast('校验计算预算上限必须是不小于 0 的整数（0 = 默认 1000 万）');await refresh();return;}
+  try{const next=await bridge.api.update({boCalcMaxVisits:Math.round(number)});if(next&&typeof next==='object')state=next;}
+  catch(e){await refresh();showToast(e&&e.message?e.message:String(e));return;}
+  showToast('校验计算预算上限已保存：'+(number>0?number:'默认 1000 万'));
+}
+async function setBoCalcRounds(value){
+  if(state&&state.busy)return;
+  const number=Number(value);
+  if(!isFinite(number)||number<1||number>5){showToast('校验计算轮数必须在 1~5 之间');await refresh();return;}
+  try{const next=await bridge.api.update({boCalcRounds:Math.round(number)});if(next&&typeof next==='object')state=next;}
+  catch(e){await refresh();showToast(e&&e.message?e.message:String(e));return;}
+  showToast('校验计算轮数已保存：'+Math.round(number));
+}
+async function setBoCalcStripStyle(on){
+  if(state&&state.busy)return;
+  try{const next=await bridge.api.update({boCalcStripStyle:!!on});if(next&&typeof next==='object')state=next;}
+  catch(e){await refresh();showToast(e&&e.message?e.message:String(e));return;}
+  showToast('校验计算剥离样式空格：'+(on?'开启':'关闭'));
+}
+async function setBoCalcFallback(value){
+  if(state&&state.busy)return;
+  try{const next=await bridge.api.update({boCalcFallback:value});if(next&&typeof next==='object')state=next;}
+  catch(e){await refresh();showToast(e&&e.message?e.message:String(e));return;}
+  showToast('校验计算回退策略已切换：'+value);
 }
 async function setConditionalFormatIncludeBlankCells(on){
   if(state&&state.busy)return;

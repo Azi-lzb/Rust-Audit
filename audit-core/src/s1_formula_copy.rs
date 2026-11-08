@@ -233,7 +233,7 @@ pub(crate) fn execute_s1_formula_copy_with_manual_recovery_session(
 /// 启用时即使没有外部计算 sidecar 也必须继续尝试，否则「无 Office 环境」
 /// 会被误判为「无法重算」。
 fn betteroffice_standalone_available() -> bool {
-    crate::bo_calc::BoCalcConfig::from_env().enabled
+    crate::bo_calc::BoCalcConfig::from_app().enabled
 }
 
 fn execute_s1_formula_copy_with_recalculator<F>(
@@ -2050,6 +2050,9 @@ mod tests {
     /// 无法重算——这正是「不强制要求 Excel/WPS/LibreOffice」的路由前提。
     #[test]
     fn betteroffice_enabled_is_not_blocked_by_a_missing_sidecar() {
+        let _env_guard = crate::app_settings::AUDIT_STATE_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         // 关闭 → 需要 sidecar（旧语义）。
         let previous = std::env::var_os("PYTOOLS_BO_CALC");
         std::env::set_var("PYTOOLS_BO_CALC", "off");
@@ -2082,6 +2085,9 @@ mod tests {
         // 语义锚点：betteroffice 关闭（PYTOOLS_BO_CALC=off）且无 sidecar 时，
         // 仍必须是「待人工重算」；betteroffice 启用时该前置条件不再成立
         // （纯 Rust 引擎不依赖外部 sidecar），由下方独立测试覆盖。
+        let _env_guard = crate::app_settings::AUDIT_STATE_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let previous = std::env::var_os("PYTOOLS_BO_CALC");
         std::env::set_var("PYTOOLS_BO_CALC", "off");
         let outcome = execute_s1_formula_copy_with_manual_recovery(

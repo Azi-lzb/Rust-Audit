@@ -85,7 +85,9 @@ fn run(templates_dir: PathBuf, work_dir: PathBuf, route: String) -> Result<()> {
             .unwrap_or_else(|| PathBuf::from("dist/open-data-audit.exe"));
         let audit_exe = std::fs::canonicalize(&audit_exe)
             .with_context(|| format!("定位 Audit 主程序（COM worker）：{}", audit_exe.display()))?;
-        Some(S1RecalculationSession::new_native_with_executable(&audit_exe, "auto")?)
+        Some(S1RecalculationSession::new_native_with_executable(
+            &audit_exe, "auto",
+        )?)
     };
     #[cfg(not(windows))]
     let mut session: Option<S1RecalculationSession> = None;
@@ -147,7 +149,9 @@ fn run_one(
     let report = match session {
         Some(session) => session.recalculate(&source_copy, &output_copy)?,
         None => audit_core::s1_recalculation::recalculate_s1_formula_copy(
-            std::env::var_os("AUDIT_SIDECAR").map(PathBuf::from).as_deref(),
+            std::env::var_os("AUDIT_SIDECAR")
+                .map(PathBuf::from)
+                .as_deref(),
             &source_copy,
             &output_copy,
             "auto",

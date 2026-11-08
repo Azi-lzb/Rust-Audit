@@ -14,6 +14,39 @@
 **openpyxl 路由换架构压缩 37.3s → 4.6s（2026-11-08 第五轮，用户确认换架构）**：逐段计时（AUDIT_S3F5_TIMING）定位 apply=19-28s / validate=6.8-8.2s。两处纯收益优化：①验证器输入侧缓存（同批次 8 表单 plan.input 字节相同，`(path,size,mtime)` 复用值转储/保真快照/差分样式，validate 9-11s→6.8-8.2s）；②worker 惰性加载（`data_only=True` 整簿二次加载只有 copy_range 需要，改为按需，S3-F05 省每表 ~10s）。但墙钟仍 37s——12 核跑 8 个 Python 进程 + 8 个 Rust 验证线程已近满载，且开销在数千次逐格 Python 赋值。实测证明瓶颈在逐格操作而非 openpyxl 本身（**整簿往返仅 0.75-0.88s/份**）。按用户决策换架构：新增 `fast_render` worker 协议（`mode="fast_roundtrip"`）——Rust 侧完成 FAST 回填，worker 只做「openpyxl 加载→保存」往返，包由 openpyxl 自己的序列化器重建（保持与 FAST 直改字节的实现独立性），并保留样式表完整性校验与源哈希不变校验。路由：`edit_engine=openpyxl` → `FastRenderMode::OpenpyxlRoundtrip`；auto/ooxml → `Direct`。**结果：openpyxl 路由 37.3s → 4.6-5.0s（8 表全批次，单表 2.3s，降 8×），快于旧 audit OPENPYXL 11.2s 的 2.2×；FAST 直出维持 1.7-2.0s；三方逐格仍 0 差异、输入 SHA-256 不变；76/76 + 278/278。**
 
 
+
+**betteroffice GUI 高级配置 5 开关 + 配置优先级（2026-11-08 第六轮）**
+
+- **5 个设置项**（`PREFERENCE_SPECS` 白名单 + `AppSettings` 访问器 + 前端「校验计算引擎（betteroffice）」卡片）：
+  `boCalcEngine`（betteroffice 默认｜com｜off）、`boCalcMaxVisits`（0=默认 1000 万）、
+  `boCalcRounds`（1~5，默认 2）、`boCalcStripStyle`（默认否）、
+  `boCalcFallback`（auto 默认｜com｜libreoffice｜none）。前端 5 个 setter 走 `bridge.api.update`，
+  与既有偏好同一条持久化链路。
+- **配置优先级**：GUI/配置存储 > 环境变量 > 内置默认（`BoCalcConfig::from_app`）。
+  逐键覆盖而非整体替换——GUI 未设置的键让 env 继续生效；「引擎=com」对回退方向有
+  最终决定权（锁定 COM-only）。
+- **#ERROR! 字面检测**：betteroffice 把求值错误写成 `<v>#ERROR!</v>`，OOXML 只允许
+  7 种标准错误码（Excel 0x80020009 拒开）。落盘前扫描字节，命中即视为
+  `BoCalcRefusal::Unusable` 回退，绝不把打不开的文件交给下游。
+
+**GUI 闭环实测（5 项逐个改值 → 重跑 → 行为切换）**：
+
+| 设置 | 实测引擎 | 耗时 |
+| --- | --- | ---: |
+| `boCalcEngine=com` | **Excel.Application**（betteroffice 被跳过） | 7141ms |
+| `boCalcEngine=betteroffice` | **betteroffice (pure Rust)** | 162ms |
+| `boCalcMaxVisits=10` | `Excel.Application；betteroffice 回退（重算预算耗尽（158 个公式格未求值，保留旧值不可信））` | 3554ms |
+| `boCalcFallback=none` + 预算耗尽 | **明确报错**（不静默） | — |
+| `boCalcRounds=1` / `boCalcStripStyle=true` | betteroffice 正常出结果 | 185 / 199ms |
+
+**回归**：audit-core lib **284/284**（+3：`error_literal_detection`、
+`settings_take_priority_over_env_and_defaults`、环境锁串行化的既有测试修正）；
+20 模板双路由对拍维持 **19/20 实质差异 0**（！40 仍是 COM 侧既有
+「重算改变公式」守卫，betteroffice 字节级未改公式）。
+
+**环境变量仍是兜底**（与 Rust-Tools 同名）：`PYTOOLS_BO_CALC` / `_MAX_VISITS` /
+`_ROUNDS` / `_STRIP_STYLE` / `_FALLBACK`，仅在 GUI 未显式设置对应键时生效。
+
 **S1-F01 校验区域重算：betteroffice 优先路由（2026-11-08）**
 
 按 Rust-Tools 已验收的同源改造（919750e/925630b/a23b2ca）移植：
