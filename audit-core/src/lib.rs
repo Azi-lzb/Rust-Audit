@@ -8,9 +8,9 @@
 // serde_json macro expansion needs more recursion depth than the default 128.
 #![recursion_limit = "512"]
 
+pub mod acceptance_runner;
 pub mod app_settings;
 pub mod central_csv;
-pub mod acceptance_runner;
 pub mod conditional_format;
 pub mod config_update;
 pub mod discovery;

@@ -55,13 +55,28 @@ pub struct PickOutcome {
 
 impl PickOutcome {
     fn picked(backend: &'static str, paths: Vec<PathBuf>) -> Self {
-        Self { canceled: false, paths, backend, message: None }
+        Self {
+            canceled: false,
+            paths,
+            backend,
+            message: None,
+        }
     }
     fn canceled(backend: &'static str) -> Self {
-        Self { canceled: true, paths: Vec::new(), backend, message: None }
+        Self {
+            canceled: true,
+            paths: Vec::new(),
+            backend,
+            message: None,
+        }
     }
     fn unavailable(backend: &'static str, message: String) -> Self {
-        Self { canceled: false, paths: Vec::new(), backend, message: Some(message) }
+        Self {
+            canceled: false,
+            paths: Vec::new(),
+            backend,
+            message: Some(message),
+        }
     }
 }
 
@@ -110,7 +125,10 @@ pub fn normalize_start(start: Option<&str>) -> (Option<PathBuf>, Option<String>)
     if candidate.is_file() {
         return (candidate.parent().map(Path::to_path_buf), None);
     }
-    (None, Some(format!("起始路径不存在，已使用系统默认位置：{raw}")))
+    (
+        None,
+        Some(format!("起始路径不存在，已使用系统默认位置：{raw}")),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -123,10 +141,7 @@ async fn platform_pick(request: PickRequest) -> PickOutcome {
     let joined = tokio::task::spawn_blocking(move || blocking_pick(request, label)).await;
     match joined {
         Ok(outcome) => outcome,
-        Err(error) => PickOutcome::unavailable(
-            backend,
-            format!("原生选择器任务执行失败：{error}"),
-        ),
+        Err(error) => PickOutcome::unavailable(backend, format!("原生选择器任务执行失败：{error}")),
     }
 }
 

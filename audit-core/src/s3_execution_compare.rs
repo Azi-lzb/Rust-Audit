@@ -776,17 +776,18 @@ pub fn apply_action_rules(
             // 源生产 indicator_rule_engine 累计分支门控：同年且上期非 1 月 1 日
             // 时 _accu_active=false，只按 change<0 报通用文案（不检查负值、
             // 不走日期分支）；跨年或上期=1月1日才执行完整累计语义。
-            let message = if cumulative_active(current.record_date.as_str(), previous.record_date.as_str()) {
-                cumulative_action_message(
-                    row,
-                    current.record_date.as_str(),
-                    previous.record_date.as_str(),
-                )
-            } else if number_or_zero(&row.change) < 0.0 {
-                " 当年累计指标比上期不应减少，需说明。".to_owned()
-            } else {
-                String::new()
-            };
+            let message =
+                if cumulative_active(current.record_date.as_str(), previous.record_date.as_str()) {
+                    cumulative_action_message(
+                        row,
+                        current.record_date.as_str(),
+                        previous.record_date.as_str(),
+                    )
+                } else if number_or_zero(&row.change) < 0.0 {
+                    " 当年累计指标比上期不应减少，需说明。".to_owned()
+                } else {
+                    String::new()
+                };
             if !message.is_empty() {
                 for index in indices {
                     let rule = &rules[*index];

@@ -5,9 +5,9 @@
 
 use anyhow::{Context, Result};
 use excel_editor::{
-    inspect_xlsx_profile, BackendAttemptOutcome, BackendCapability, CapabilityStatus,
-    EditBackend, EditOperation, EditOperationKind, EngineId, ExcelEditPlan, OoxmlImportBackend,
-    RangeStyleMode, WorkbookFormat, OOXML_IMPORT_OPERATIONS,
+    inspect_xlsx_profile, BackendAttemptOutcome, BackendCapability, CapabilityStatus, EditBackend,
+    EditOperation, EditOperationKind, EngineId, ExcelEditPlan, OoxmlImportBackend, RangeStyleMode,
+    WorkbookFormat, OOXML_IMPORT_OPERATIONS,
 };
 use std::{
     collections::BTreeSet,
@@ -168,7 +168,9 @@ fn s1f1_full_operation_sequence_is_accepted_and_correct() -> Result<()> {
         "stale rule content must be replaced, not merged"
     );
     assert!(
-        !value("A2").map(|text| text.contains("陈旧")).unwrap_or(false),
+        !value("A2")
+            .map(|text| text.contains("陈旧"))
+            .unwrap_or(false),
         "the old rule row must not survive the delete+recreate cycle"
     );
 

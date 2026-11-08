@@ -87,7 +87,10 @@ mod excel_route_support {
     }
 
     /// Runs `action` and returns its step record; a failure aborts the test.
-    pub fn record(step_name: &'static str, action: impl FnOnce() -> Result<String>) -> VerificationStep {
+    pub fn record(
+        step_name: &'static str,
+        action: impl FnOnce() -> Result<String>,
+    ) -> VerificationStep {
         match action() {
             Ok(detail) => VerificationStep::new(step_name, detail),
             Err(error) => panic!("verification step {step_name} failed: {error:#}"),
@@ -178,10 +181,9 @@ fn value_text(dump: &excel_reader::WorkbookDump, sheet: &str, cell: &str) -> Str
 /// The production modifier under verification. Panics on platforms without
 /// committed evidence so the harness can never silently verify nothing.
 fn production_modifier() -> (ExcelModifier, excel_editor::BackendCapability) {
-    let (modifier, capability) = audit_core::excel_route::production_modifier(
-        "production-capability-verification",
-    )
-    .expect("build production modifier");
+    let (modifier, capability) =
+        audit_core::excel_route::production_modifier("production-capability-verification")
+            .expect("build production modifier");
     let capability = capability.expect(
         "production capability must be registered on the evidence platform; \
          run this harness on a registered evidence platform",
@@ -237,12 +239,14 @@ fn verifies_the_production_route_on_the_declared_capability() -> Result<()> {
             "samples": samples,
         });
         if let Some(parent) = report_path.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("create {}", parent.display()))?;
+            fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
         }
         fs::write(&report_path, serde_json::to_vec_pretty(&report)?)
             .with_context(|| format!("write {}", report_path.display()))?;
-        println!("capability evidence report written to {}", report_path.display());
+        println!(
+            "capability evidence report written to {}",
+            report_path.display()
+        );
     }
     Ok(())
 }
@@ -325,7 +329,9 @@ fn verify_s3_f5_form_edit_batch() -> Result<SampleVerification> {
     ];
     require_features(&profile, &declared);
     assert!(
-        !profile.features_present.contains(&WorkbookFeature::DefinedNames),
+        !profile
+            .features_present
+            .contains(&WorkbookFeature::DefinedNames),
         "the S3-F05 sample must not carry defined names: column deletion refuses them"
     );
 
@@ -397,7 +403,10 @@ fn verify_s3_f5_form_edit_batch() -> Result<SampleVerification> {
     steps.push(record("capability_routes_the_batch", || {
         let route = modifier.route(&plan);
         let eligible = route.iter().filter(|decision| decision.eligible).count();
-        anyhow::ensure!(eligible >= 1, "production capability must route the S3-F05 batch: {route:?}");
+        anyhow::ensure!(
+            eligible >= 1,
+            "production capability must route the S3-F05 batch: {route:?}"
+        );
         Ok(format!("eligible backends: {eligible} of {}", route.len()))
     }));
 
@@ -407,15 +416,29 @@ fn verify_s3_f5_form_edit_batch() -> Result<SampleVerification> {
         .context("execute S3-F05 batch")?;
     steps.push(VerificationStep::new(
         "excel_modifier_execute",
-        format!("engine {} published {}", report.engine, report.output.display()),
+        format!(
+            "engine {} published {}",
+            report.engine,
+            report.output.display()
+        ),
     ));
 
     let dump = read_workbook(&output).context("read back edited form")?;
     steps.push(record("values_and_column_shift", || {
-        let form_dump = dump.sheets.iter().find(|sheet| sheet.name == "表单").unwrap();
+        let form_dump = dump
+            .sheets
+            .iter()
+            .find(|sheet| sheet.name == "表单")
+            .unwrap();
         let mut cells: Vec<_> = form_dump.values.iter().collect();
         cells.sort_by_key(|(address, _)| address.clone());
-        println!("FORM_VALUES_DUMP: {:?}", cells.iter().map(|(a, v)| (a.clone(), v["value"].as_str().unwrap_or("∅"))).collect::<Vec<_>>());
+        println!(
+            "FORM_VALUES_DUMP: {:?}",
+            cells
+                .iter()
+                .map(|(a, v)| (a.clone(), v["value"].as_str().unwrap_or("∅")))
+                .collect::<Vec<_>>()
+        );
         println!("FORM_FORMULAS_DUMP: {:?}", form_dump.formulas);
         for (cell, expected) in [
             ("A1", "保留 A"),
@@ -424,18 +447,39 @@ fn verify_s3_f5_form_edit_batch() -> Result<SampleVerification> {
             ("C1", "保留 D"),
         ] {
             let actual = value_text(&dump, "表单", cell);
-            anyhow::ensure!(actual == expected, "表单!{cell} expected {expected:?}, observed {actual:?}");
+            anyhow::ensure!(
+                actual == expected,
+                "表单!{cell} expected {expected:?}, observed {actual:?}"
+            );
         }
-        Ok(format!("row1 dump: {:?}", (1..=5).map(|c| {
-            let letters = ["", "A", "B", "C", "D", "E"];
-            (letters[c], dump.sheets.iter().find(|s| s.name == "表单").unwrap().values.get(&format!("{}1", letters[c])).map(|v| v["value"].as_str().unwrap_or("∅")).unwrap_or("·"))
-        }).collect::<Vec<_>>()))
+        Ok(format!(
+            "row1 dump: {:?}",
+            (1..=5)
+                .map(|c| {
+                    let letters = ["", "A", "B", "C", "D", "E"];
+                    (
+                        letters[c],
+                        dump.sheets
+                            .iter()
+                            .find(|s| s.name == "表单")
+                            .unwrap()
+                            .values
+                            .get(&format!("{}1", letters[c]))
+                            .map(|v| v["value"].as_str().unwrap_or("∅"))
+                            .unwrap_or("·"),
+                    )
+                })
+                .collect::<Vec<_>>()
+        ))
     }));
 
     steps.push(record("formula_text_translated", || {
         for (cell, expected) in [("D1", "SUM(B1:C1)+$B$1"), ("C2", "C1")] {
             let actual = cell_formula(&dump, "表单", cell);
-            anyhow::ensure!(actual == expected, "表单!{cell} formula expected {expected:?}, observed {actual:?}");
+            anyhow::ensure!(
+                actual == expected,
+                "表单!{cell} formula expected {expected:?}, observed {actual:?}"
+            );
         }
         let stale = cell_formula(&dump, "表单", "B2");
         anyhow::ensure!(
@@ -484,10 +528,7 @@ fn verify_s3_f5_form_edit_batch() -> Result<SampleVerification> {
             .expect("表单 present")
             .conditional_formatting
             .clone();
-        anyhow::ensure!(
-            !rules.is_empty(),
-            "conditional formatting lost in edit"
-        );
+        anyhow::ensure!(!rules.is_empty(), "conditional formatting lost in edit");
         let text = serde_json::to_string(&rules)?;
         anyhow::ensure!(
             text.contains("cellIs") && text.contains("greaterThan"),
@@ -504,10 +545,7 @@ fn verify_s3_f5_form_edit_batch() -> Result<SampleVerification> {
             .expect("表单 present")
             .data_validations
             .clone();
-        anyhow::ensure!(
-            !validations.is_empty(),
-            "data validation lost in edit"
-        );
+        anyhow::ensure!(!validations.is_empty(), "data validation lost in edit");
         let text = serde_json::to_string(&validations)?;
         anyhow::ensure!(
             text.contains("A1:A10") || text.contains("A1"),
@@ -525,15 +563,18 @@ fn verify_s3_f5_form_edit_batch() -> Result<SampleVerification> {
         let reopened = excel_editor::open_xlsx(&output)?;
         let form = reopened.sheet_by_name("表单")?;
         anyhow::ensure!(
-            form.row_dimension(5).is_some_and(|dimension| dimension.hidden()),
+            form.row_dimension(5)
+                .is_some_and(|dimension| dimension.hidden()),
             "row 5 must stay hidden"
         );
         anyhow::ensure!(
-            form.row_dimension(9).is_some_and(|dimension| dimension.height() == 25.0),
+            form.row_dimension(9)
+                .is_some_and(|dimension| dimension.height() == 25.0),
             "row 9 height must survive unrelated edits"
         );
         anyhow::ensure!(
-            form.column_dimension("A").is_some_and(|dimension| dimension.width() == 15.0),
+            form.column_dimension("A")
+                .is_some_and(|dimension| dimension.width() == 15.0),
             "column A width must survive unrelated edits"
         );
         let header = form.header_footer().odd_header().value().to_owned();
@@ -608,10 +649,7 @@ fn verify_s3_f5_form_edit_batch() -> Result<SampleVerification> {
 
 /// Builds the S3-F05 sample: 表单 (rich features), 引用 (cross-sheet formula),
 /// 使用说明 (obsolete). Returns through `recorded` the features observed.
-fn build_s3_f5_sample(
-    path: &Path,
-    recorded: Arc<Mutex<Vec<String>>>,
-) -> Result<()> {
+fn build_s3_f5_sample(path: &Path, recorded: Arc<Mutex<Vec<String>>>) -> Result<()> {
     use umya_spreadsheet::structs::{
         ConditionalFormatValues, ConditionalFormatting, ConditionalFormattingOperatorValues,
         ConditionalFormattingRule, Formula, OddFooter, OddHeader, OrientationValues, Pane,
@@ -638,7 +676,8 @@ fn build_s3_f5_sample(
     rule.set_priority(1);
     rule.set_formula(Formula::default().set_string_value("5").clone());
     let mut formatting = ConditionalFormatting::default();
-    formatting.set_sequence_of_references(SequenceOfReferences::default().set_sqref("F2:G5").clone());
+    formatting
+        .set_sequence_of_references(SequenceOfReferences::default().set_sqref("F2:G5").clone());
     formatting.add_conditional_collection(rule);
     form.add_conditional_formatting_collection(formatting);
 
@@ -650,16 +689,20 @@ fn build_s3_f5_sample(
     validation.set_type(DataValidationValues::Whole);
     validation.set_operator(DataValidationOperatorValues::Between);
     validation.set_allow_blank(true);
-    validation.set_sequence_of_references(SequenceOfReferences::default().set_sqref("A1:A10").clone());
+    validation
+        .set_sequence_of_references(SequenceOfReferences::default().set_sqref("A1:A10").clone());
     validation.set_formula1("1");
     validation.set_formula2("100");
     let mut validations = DataValidations::default();
     validations.add_data_validation_list(validation);
     form.set_data_validations(validations);
 
-    form.header_footer_mut().set_odd_header(OddHeader::default().set_value("机构一页眉").clone());
-    form.header_footer_mut().set_odd_footer(OddFooter::default().set_value("第 &P 页").clone());
-    form.page_setup_mut().set_orientation(OrientationValues::Landscape);
+    form.header_footer_mut()
+        .set_odd_header(OddHeader::default().set_value("机构一页眉").clone());
+    form.header_footer_mut()
+        .set_odd_footer(OddFooter::default().set_value("第 &P 页").clone());
+    form.page_setup_mut()
+        .set_orientation(OrientationValues::Landscape);
     form.set_auto_filter("A1:D1");
     form.row_dimension_mut(9).set_height(25.0);
     form.column_dimension_mut("A").set_width(15.0);
@@ -688,7 +731,9 @@ fn build_s3_f5_sample(
 
     let reference = workbook.new_sheet("引用")?;
     reference.cell_mut("A1").set_formula("'表单'!$D$1+C1");
-    reference.cell_mut("B1").set_value_string("other sheet unchanged");
+    reference
+        .cell_mut("B1")
+        .set_value_string("other sheet unchanged");
     workbook.new_sheet("使用说明")?;
     umya_spreadsheet::writer::xlsx::write(&workbook, path)
         .with_context(|| format!("save sample {}", path.display()))?;
@@ -818,7 +863,10 @@ fn verify_s1_f1_formula_copy_batch() -> Result<SampleVerification> {
     steps.push(record("capability_routes_the_batch", || {
         let route = modifier.route(&plan);
         let eligible = route.iter().filter(|decision| decision.eligible).count();
-        anyhow::ensure!(eligible >= 1, "production capability must route the S1-F01 batch: {route:?}");
+        anyhow::ensure!(
+            eligible >= 1,
+            "production capability must route the S1-F01 batch: {route:?}"
+        );
         Ok(format!("eligible backends: {eligible} of {}", route.len()))
     }));
 
@@ -828,22 +876,38 @@ fn verify_s1_f1_formula_copy_batch() -> Result<SampleVerification> {
         .context("execute S1-F01 batch")?;
     steps.push(VerificationStep::new(
         "excel_modifier_execute",
-        format!("engine {} published {}", report.engine, report.output.display()),
+        format!(
+            "engine {} published {}",
+            report.engine,
+            report.output.display()
+        ),
     ));
 
     let dump = read_workbook(&output).context("read back audit copy")?;
     {
         let input_dump = read_workbook(&target).context("read S1 input for comments")?;
-        let fi = input_dump.sheets.iter().find(|s| s.name == "检查表").unwrap();
+        let fi = input_dump
+            .sheets
+            .iter()
+            .find(|s| s.name == "检查表")
+            .unwrap();
         println!("S1_INPUT_COMMENTS: {:?}", fi.comments);
         let f = dump.sheets.iter().find(|s| s.name == "检查表").unwrap();
         println!("S1_COMMENTS: {:?}", f.comments);
         println!("S1_MERGES: {:?}", f.merges);
     }
     steps.push(record("external_sheet_imported", || {
-        for (cell, expected) in [("A1", "代码"), ("B1", "名称"), ("A2", "I001"), ("B2", "测试机构")] {
+        for (cell, expected) in [
+            ("A1", "代码"),
+            ("B1", "名称"),
+            ("A2", "I001"),
+            ("B2", "测试机构"),
+        ] {
             let actual = value_text(&dump, "外部维表", cell);
-            anyhow::ensure!(actual == expected, "外部维表!{cell} expected {expected:?}, observed {actual:?}");
+            anyhow::ensure!(
+                actual == expected,
+                "外部维表!{cell} expected {expected:?}, observed {actual:?}"
+            );
         }
         Ok("external lookup values present".to_owned())
     }));
@@ -851,7 +915,10 @@ fn verify_s1_f1_formula_copy_batch() -> Result<SampleVerification> {
     steps.push(record("template_formulas_copied", || {
         for (cell, expected) in [("A1", "B2+1"), ("B2", "A1*10")] {
             let actual = cell_formula(&dump, "检查表", cell);
-            anyhow::ensure!(actual == expected, "检查表!{cell} formula expected {expected:?}, observed {actual:?}");
+            anyhow::ensure!(
+                actual == expected,
+                "检查表!{cell} formula expected {expected:?}, observed {actual:?}"
+            );
         }
         let values = [("A1", "11.0"), ("B2", "120.0")];
         for (cell, expected) in values {
@@ -934,9 +1001,15 @@ fn verify_s1_f1_formula_copy_batch() -> Result<SampleVerification> {
     }));
 
     steps.push(record("inputs_unchanged", || {
-        anyhow::ensure!(sha256_file(&target)? == target_hash, "target workbook changed");
+        anyhow::ensure!(
+            sha256_file(&target)? == target_hash,
+            "target workbook changed"
+        );
         anyhow::ensure!(sha256_file(&template)? == template_hash, "template changed");
-        anyhow::ensure!(sha256_file(&external)? == external_hash, "external workbook changed");
+        anyhow::ensure!(
+            sha256_file(&external)? == external_hash,
+            "external workbook changed"
+        );
         Ok("all three inputs byte-identical".to_owned())
     }));
 
@@ -967,7 +1040,8 @@ fn build_s1_f1_target(path: &Path) -> Result<()> {
     rule.set_priority(1);
     rule.set_formula(Formula::default().set_string_value("0").clone());
     let mut formatting = ConditionalFormatting::default();
-    formatting.set_sequence_of_references(SequenceOfReferences::default().set_sqref("A1:B2").clone());
+    formatting
+        .set_sequence_of_references(SequenceOfReferences::default().set_sqref("A1:B2").clone());
     formatting.add_conditional_collection(rule);
     sheet.add_conditional_formatting_collection(formatting);
 
@@ -977,13 +1051,16 @@ fn build_s1_f1_target(path: &Path) -> Result<()> {
     let mut validation = DataValidation::default();
     validation.set_type(DataValidationValues::Decimal);
     validation.set_operator(DataValidationOperatorValues::GreaterThanOrEqual);
-    validation.set_sequence_of_references(SequenceOfReferences::default().set_sqref("A1:A5").clone());
+    validation
+        .set_sequence_of_references(SequenceOfReferences::default().set_sqref("A1:A5").clone());
     validation.set_formula1("0");
     let mut validations = DataValidations::default();
     validations.add_data_validation_list(validation);
     sheet.set_data_validations(validations);
 
-    sheet.header_footer_mut().set_odd_header(OddHeader::default().set_value("报送页眉").clone());
+    sheet
+        .header_footer_mut()
+        .set_odd_header(OddHeader::default().set_value("报送页眉").clone());
     let mut pane = umya_spreadsheet::structs::Pane::default();
     pane.set_horizontal_split(1.0);
     let mut coordinate = umya_spreadsheet::structs::Coordinate::default();
@@ -1063,7 +1140,10 @@ fn verify_s3_f03_explanation_writeback() -> Result<SampleVerification> {
 
     steps.push(record("writeback_values_and_protection", || {
         anyhow::ensure!(report.imported == 1, "expected one imported cell");
-        anyhow::ensure!(report.planned_cell_updates == 1, "expected one planned cell update");
+        anyhow::ensure!(
+            report.planned_cell_updates == 1,
+            "expected one planned cell update"
+        );
         anyhow::ensure!(report.conflicts == 0, "expected no conflicts");
         anyhow::ensure!(
             report.output_workbook == target,
@@ -1117,10 +1197,14 @@ fn write_explanation_workbook(path: &Path, reason: &str) {
     .iter()
     .enumerate()
     {
-        sheet.write_string(0, column as u16, *header).expect("write header");
+        sheet
+            .write_string(0, column as u16, *header)
+            .expect("write header");
     }
     for (column, value) in ["0001", "测试机构", "I001", "测试指标"].iter().enumerate() {
-        sheet.write_string(1, column as u16, *value).expect("write field");
+        sheet
+            .write_string(1, column as u16, *value)
+            .expect("write field");
     }
     sheet.write_number(1, 4, 100.0).expect("write value");
     sheet.write_number(1, 5, 20.0).expect("write delta");
@@ -1155,7 +1239,11 @@ fn verifies_the_openpyxl_edit_engine_capability() -> Result<()> {
         .parent()
         .unwrap()
         .join("crates/excel-editor/python/openpyxl_worker.py");
-    anyhow::ensure!(worker.is_file(), "openpyxl worker 脚本缺失：{}", worker.display());
+    anyhow::ensure!(
+        worker.is_file(),
+        "openpyxl worker 脚本缺失：{}",
+        worker.display()
+    );
     let config = OpenpyxlWorkerConfig::new(&python, &worker)?;
 
     let platform = audit_core::excel_route::runtime_platform();
@@ -1196,7 +1284,6 @@ fn verifies_the_openpyxl_edit_engine_capability() -> Result<()> {
             Arc::new(OpenpyxlXlsxValidator),
         )?)
     };
-
 
     // S1-F01 批次：与 Umya 证据同一套特性样本与读回断言。
     // 该候选仅覆盖 S1-F01 的 ImportRange 编辑，仍须通过独立写后校验。
@@ -1283,7 +1370,10 @@ fn verifies_the_openpyxl_edit_engine_capability() -> Result<()> {
             drop_allowed: BTreeMap::new(),
         };
         let modifier = openpyxl_modifier(&config, &platform, &report_path)?;
-        let routed = modifier.route(&plan).iter().any(|decision| decision.eligible);
+        let routed = modifier
+            .route(&plan)
+            .iter()
+            .any(|decision| decision.eligible);
         let outcome = if routed {
             match modifier
                 .execute(&plan)
@@ -1418,7 +1508,10 @@ fn verifies_the_openpyxl_edit_engine_capability() -> Result<()> {
         fs::create_dir_all(parent)?;
     }
     fs::write(&report_path, serde_json::to_vec_pretty(&report)?)?;
-    println!("openpyxl capability evidence written to {}", report_path.display());
+    println!(
+        "openpyxl capability evidence written to {}",
+        report_path.display()
+    );
     Ok(())
 }
 

@@ -11,8 +11,8 @@ use crate::{
     discovery::ScanDepth,
     models::CopyRange,
     name_config::{
-        FIXED_ROW_SUMMARY_FUNCTION, NamedRangeArea, USED_RANGE_SUMMARY_FUNCTION,
-        load_s1_region_summary_mappings, resolve_named_ranges_for_mappings,
+        load_s1_region_summary_mappings, resolve_named_ranges_for_mappings, NamedRangeArea,
+        FIXED_ROW_SUMMARY_FUNCTION, USED_RANGE_SUMMARY_FUNCTION,
     },
     s1_structure_compare::{
         compare_s1_summary_source_structure, read_s1_structure_template_with_required_sheets,
@@ -271,7 +271,10 @@ where
             ScanDepth::RootOnly
         },
     )?;
-    on_progress(&format!("源目录扫描完成：发现 {} 个候选工作簿", sources.len()));
+    on_progress(&format!(
+        "源目录扫描完成：发现 {} 个候选工作簿",
+        sources.len()
+    ));
     if !selected_source_files.is_empty() {
         let selected = selected_source_files
             .iter()
@@ -303,7 +306,10 @@ where
     let discovery_time_ms = discovery_started.elapsed().as_millis();
 
     let template_started = Instant::now();
-    on_progress(&format!("读取汇总模板及命名区域：{}", template_path.display()));
+    on_progress(&format!(
+        "读取汇总模板及命名区域：{}",
+        template_path.display()
+    ));
     let template = read_workbook(&template_path)
         .with_context(|| format!("读取 S1-F02 汇总模板值失败：{}", template_path.display()))?;
     let defined_names = read_defined_names(&template_path)
@@ -324,10 +330,9 @@ where
         .into_iter()
         .filter(|mapping| {
             feature_names.is_empty()
-                || feature_names.iter().any(|name| {
-                    name == &mapping.name
-                        || mapping.name == format!("汇总_{name}")
-                })
+                || feature_names
+                    .iter()
+                    .any(|name| name == &mapping.name || mapping.name == format!("汇总_{name}"))
         })
         .collect::<Vec<_>>();
     ensure!(
@@ -1097,7 +1102,10 @@ where
         return Err(error);
     }
 
-    on_progress(&format!("重新打开并验证输出工作簿：{}", writer_temp.display()));
+    on_progress(&format!(
+        "重新打开并验证输出工作簿：{}",
+        writer_temp.display()
+    ));
     let validation_started = Instant::now();
     if let Err(error) = validate_summary_workbook(&writer_temp, &groups) {
         let _ = fs::remove_file(&writer_temp);
@@ -1845,7 +1853,10 @@ fn discover_source_workbooks(input_dir: &Path, max_depth: ScanDepth) -> Result<V
     let mut found = Vec::new();
     visit(input_dir, 0, max_depth, &mut found)?;
     found.sort();
-    let recurses = !matches!(max_depth, ScanDepth::RootOnly | ScanDepth::MaxDirectoryDepth(0));
+    let recurses = !matches!(
+        max_depth,
+        ScanDepth::RootOnly | ScanDepth::MaxDirectoryDepth(0)
+    );
     let sources = if recurses {
         let nested = found.iter().any(|path| path.parent() != Some(input_dir));
         if nested {

@@ -226,9 +226,7 @@ fn strip_external_refs(text: &str, local_sheets: &[String], stripped: &mut usize
 
     // ① ② 路径式 + 引号：'...\[簿.xlsx]表名'! → '表名'!
     if let Ok(re) = Regex::new(r"'[^']*\[[^\]/]+\.(?:xlsx|xlsm|xlsb|xls)\]((?:[^']|'')*)'!") {
-        let replaced = re.replace_all(&result, |caps: &Captures| {
-            format!("'{}'!", &caps[1])
-        });
+        let replaced = re.replace_all(&result, |caps: &Captures| format!("'{}'!", &caps[1]));
         if replaced != result {
             total += re.find_iter(&result).count();
             result = replaced.into_owned();
@@ -236,9 +234,7 @@ fn strip_external_refs(text: &str, local_sheets: &[String], stripped: &mut usize
     }
     // ③ 路径式 + 裸名：[簿.xlsx]表名! → 表名!
     if let Ok(re) = Regex::new(r"\[[^\]/]+\.(?:xlsx|xlsm|xlsb|xls)\]([^\s!'\[\]<>()]+)!") {
-        let replaced = re.replace_all(&result, |caps: &Captures| {
-            format!("{}!", &caps[1])
-        });
+        let replaced = re.replace_all(&result, |caps: &Captures| format!("{}!", &caps[1]));
         if replaced != result {
             total += re.find_iter(&result).count();
             result = replaced.into_owned();
@@ -246,9 +242,7 @@ fn strip_external_refs(text: &str, local_sheets: &[String], stripped: &mut usize
     }
     // ④ 索引式 + 引号：[1]'表名'! → '表名'!
     if let Ok(re) = Regex::new(r"\[\d+\]'((?:[^']|'')*)'!") {
-        let replaced = re.replace_all(&result, |caps: &Captures| {
-            format!("'{}'!", &caps[1])
-        });
+        let replaced = re.replace_all(&result, |caps: &Captures| format!("'{}'!", &caps[1]));
         if replaced != result {
             total += re.find_iter(&result).count();
             result = replaced.into_owned();
@@ -278,9 +272,7 @@ fn strip_external_refs(text: &str, local_sheets: &[String], stripped: &mut usize
 
     // ④ 索引式 + 裸名：[1]表名! → 表名!
     if let Ok(re) = Regex::new(r"\[\d+\]([^\s!'\[\]<>()]+)!") {
-        let replaced = re.replace_all(&result, |caps: &Captures| {
-            format!("{}!", &caps[1])
-        });
+        let replaced = re.replace_all(&result, |caps: &Captures| format!("{}!", &caps[1]));
         if replaced != result {
             total += re.find_iter(&result).count();
             result = replaced.into_owned();
@@ -323,8 +315,9 @@ fn has_any_external_ref(text: &str) -> bool {
 /// 只识别合法表引用：`'表名'!` 或中文/字母/数字/下划线/空格组成的 `表名!`。
 fn dangling_after_strip(formula_text: &str, local_sheets: &[String]) -> Vec<String> {
     let mut missing: Vec<String> = Vec::new();
-    let Ok(re) = Regex::new(r"(?:'((?:[^']|'')*)'|([A-Za-z_\u{4e00}-\u{9fff}][\w\u{4e00}-\u{9fff} .\u{3000}]*))!")
-    else {
+    let Ok(re) = Regex::new(
+        r"(?:'((?:[^']|'')*)'|([A-Za-z_\u{4e00}-\u{9fff}][\w\u{4e00}-\u{9fff} .\u{3000}]*))!",
+    ) else {
         return missing;
     };
     for caps in re.captures_iter(formula_text) {

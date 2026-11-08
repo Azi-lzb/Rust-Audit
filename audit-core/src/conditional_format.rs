@@ -1872,17 +1872,15 @@ fn compare_values(operator: &str, left: Value, right: Value) -> Value {
 
     // 同类型比较。
     match (&left, &right) {
-        (Value::Number(a), Value::Number(b)) => {
-            Value::Boolean(match operator {
-                "=" => a == b,
-                "<>" => a != b,
-                "<" => a < b,
-                ">" => a > b,
-                "<=" => a <= b,
-                ">=" => a >= b,
-                _ => false,
-            })
-        }
+        (Value::Number(a), Value::Number(b)) => Value::Boolean(match operator {
+            "=" => a == b,
+            "<>" => a != b,
+            "<" => a < b,
+            ">" => a > b,
+            "<=" => a <= b,
+            ">=" => a >= b,
+            _ => false,
+        }),
         (Value::Text(a), Value::Text(b)) => {
             // 文本与文本的 = / <> 按字符串相等；文本不参与 < > <= >= 排序。
             Value::Boolean(match operator {
@@ -1891,17 +1889,15 @@ fn compare_values(operator: &str, left: Value, right: Value) -> Value {
                 _ => false,
             })
         }
-        (Value::Boolean(a), Value::Boolean(b)) => {
-            Value::Boolean(match operator {
-                "=" => a == b,
-                "<>" => a != b,
-                "<" => !a && *b,
-                ">" => *a && !b,
-                "<=" => a <= b,
-                ">=" => a >= b,
-                _ => false,
-            })
-        }
+        (Value::Boolean(a), Value::Boolean(b)) => Value::Boolean(match operator {
+            "=" => a == b,
+            "<>" => a != b,
+            "<" => !a && *b,
+            ">" => *a && !b,
+            "<=" => a <= b,
+            ">=" => a >= b,
+            _ => false,
+        }),
         _ => Value::Boolean(matches!(operator, "<>")),
     }
 }
@@ -2450,18 +2446,34 @@ mod tests {
         assert!(compare_values(">=", Value::Empty, Value::Number(30.0)) == Value::Boolean(false));
 
         // 空/文本：空折空串
-        assert!(compare_values("=", Value::Empty, Value::Text(String::new())) == Value::Boolean(true));
-        assert!(compare_values("<>", Value::Empty, Value::Text(String::new())) == Value::Boolean(false));
+        assert!(
+            compare_values("=", Value::Empty, Value::Text(String::new())) == Value::Boolean(true)
+        );
+        assert!(
+            compare_values("<>", Value::Empty, Value::Text(String::new())) == Value::Boolean(false)
+        );
     }
 
     #[test]
     fn comparison_literal_empty_string_is_text() {
         // 字面量 "" 是文本：0="" → FALSE（混合类型），0<>"" → TRUE
-        assert!(compare_values("=", Value::Number(0.0), Value::Text(String::new())) == Value::Boolean(false));
-        assert!(compare_values("<>", Value::Number(0.0), Value::Text(String::new())) == Value::Boolean(true));
+        assert!(
+            compare_values("=", Value::Number(0.0), Value::Text(String::new()))
+                == Value::Boolean(false)
+        );
+        assert!(
+            compare_values("<>", Value::Number(0.0), Value::Text(String::new()))
+                == Value::Boolean(true)
+        );
         // 反向
-        assert!(compare_values("=", Value::Text(String::new()), Value::Number(0.0)) == Value::Boolean(false));
-        assert!(compare_values("<>", Value::Text(String::new()), Value::Number(0.0)) == Value::Boolean(true));
+        assert!(
+            compare_values("=", Value::Text(String::new()), Value::Number(0.0))
+                == Value::Boolean(false)
+        );
+        assert!(
+            compare_values("<>", Value::Text(String::new()), Value::Number(0.0))
+                == Value::Boolean(true)
+        );
     }
 
     #[test]
@@ -2477,7 +2489,10 @@ mod tests {
     fn comparison_cached_error_text_is_false() {
         // 缓存的错误文本值（t="e"）参与比较 → FALSE
         let cached = Value::Error("#N/A".to_owned());
-        assert!(compare_values("=", cached.clone(), Value::Text("x".to_owned())) == Value::Boolean(false));
+        assert!(
+            compare_values("=", cached.clone(), Value::Text("x".to_owned()))
+                == Value::Boolean(false)
+        );
         assert!(compare_values("<>", Value::Number(1.0), cached) == Value::Boolean(false));
     }
 
@@ -2492,10 +2507,19 @@ mod tests {
         assert!(compare_values("<", num.clone(), txt.clone()) == Value::Boolean(true));
         assert!(compare_values("<=", num, txt.clone()) == Value::Boolean(true));
         // >/>= 数字在左时 FALSE
-        assert!(compare_values(">", Value::Number(5.0), Value::Text("abc".to_owned())) == Value::Boolean(false));
-        assert!(compare_values(">=", Value::Number(5.0), Value::Text("abc".to_owned())) == Value::Boolean(false));
+        assert!(
+            compare_values(">", Value::Number(5.0), Value::Text("abc".to_owned()))
+                == Value::Boolean(false)
+        );
+        assert!(
+            compare_values(">=", Value::Number(5.0), Value::Text("abc".to_owned()))
+                == Value::Boolean(false)
+        );
         // 反向：文本在数字前 → >/>= TRUE
-        assert!(compare_values(">", Value::Text("abc".to_owned()), Value::Number(5.0)) == Value::Boolean(true));
+        assert!(
+            compare_values(">", Value::Text("abc".to_owned()), Value::Number(5.0))
+                == Value::Boolean(true)
+        );
     }
 
     #[test]
@@ -2508,8 +2532,20 @@ mod tests {
         assert!(compare_values("<=", a.clone(), b.clone()) == Value::Boolean(false));
         assert!(compare_values(">=", a, b) == Value::Boolean(false));
         // 但 = 和 <> 按字符串相等
-        assert!(compare_values("=", Value::Text("x".to_owned()), Value::Text("x".to_owned())) == Value::Boolean(true));
-        assert!(compare_values("<>", Value::Text("x".to_owned()), Value::Text("y".to_owned())) == Value::Boolean(true));
+        assert!(
+            compare_values(
+                "=",
+                Value::Text("x".to_owned()),
+                Value::Text("x".to_owned())
+            ) == Value::Boolean(true)
+        );
+        assert!(
+            compare_values(
+                "<>",
+                Value::Text("x".to_owned()),
+                Value::Text("y".to_owned())
+            ) == Value::Boolean(true)
+        );
     }
 
     #[test]
@@ -2518,7 +2554,10 @@ mod tests {
         let blank = Value::Empty;
         // $C54<>"" → 空折空串 → "" <> "" → FALSE
         let ne = compare_values("<>", blank.clone(), Value::Text(String::new()));
-        assert!(ne == Value::Boolean(false), "blank <> empty string must be FALSE");
+        assert!(
+            ne == Value::Boolean(false),
+            "blank <> empty string must be FALSE"
+        );
         // $C54<=50 → 空折 0 → 0 <= 50 → TRUE
         let le = compare_values("<=", blank.clone(), Value::Number(50.0));
         assert!(le == Value::Boolean(true), "blank <= 50 must be TRUE");
@@ -2530,7 +2569,10 @@ mod tests {
         // C54 = 0：$C54<>"" → 0 vs "" 混合类型 → <> TRUE；$C54<=50 → 0<=50 TRUE → AND → TRUE
         let zero = Value::Number(0.0);
         let ne = compare_values("<>", zero.clone(), Value::Text(String::new()));
-        assert!(ne == Value::Boolean(true), "0 <> empty string is TRUE (mixed types)");
+        assert!(
+            ne == Value::Boolean(true),
+            "0 <> empty string is TRUE (mixed types)"
+        );
         let le = compare_values("<=", zero, Value::Number(50.0));
         assert!(le == Value::Boolean(true));
         // C54 = 0.5：$C54<=0.9 → TRUE → 触发
@@ -2540,6 +2582,4 @@ mod tests {
         let three = Value::Number(3.0);
         assert!(compare_values("<=", three, Value::Number(0.9)) == Value::Boolean(false));
     }
-
-
 }

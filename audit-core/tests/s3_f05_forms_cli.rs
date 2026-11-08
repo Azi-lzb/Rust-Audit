@@ -219,8 +219,7 @@ fn cli_generates_financial_forms_and_keeps_inputs_unchanged() {
     assert_eq!(report["matched_indicators"], 1);
     assert_eq!(report["edits"].as_array().unwrap().len(), 1);
     assert_eq!(
-        report["edits"][0]["engine"],
-        "umya_spreadsheet",
+        report["edits"][0]["engine"], "umya_spreadsheet",
         "the production route must use the qualified Umya backend"
     );
 

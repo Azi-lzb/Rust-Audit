@@ -331,20 +331,19 @@ fn restore_comment_vml_selected(
         std::process::id()
     ));
     let report = if let Some(sheet_name) = only_sheet {
-        ooxml_patch::restore_legacy_comments_for_sheet(
-            source,
-            output,
-            &patched_output,
-            sheet_name,
-        )?
+        ooxml_patch::restore_legacy_comments_for_sheet(source, output, &patched_output, sheet_name)?
     } else {
         ooxml_patch::restore_legacy_comment_vml(source, output, &patched_output)?
     };
     if report.restored_sheets.is_empty() {
         return Ok(());
     }
-    let install = std::fs::copy(&patched_output, output)
-        .with_context(|| format!("install restored imported comments for {}", output.display()));
+    let install = std::fs::copy(&patched_output, output).with_context(|| {
+        format!(
+            "install restored imported comments for {}",
+            output.display()
+        )
+    });
     let _ = std::fs::remove_file(&patched_output);
     install?;
     Ok(())

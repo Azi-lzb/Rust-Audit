@@ -25,9 +25,9 @@
 use anyhow::Context;
 use excel_editor::{
     BackendCapability, CapabilityEvidence, CapabilityStatus, EditBackend, EditOperationKind,
-    EngineId, ExcelModifier, OOXML_IMPORT_OPERATIONS, OoxmlImportBackend, OpenpyxlXlsxBackend,
-    OpenpyxlXlsxValidator, PreservationRequirement, UmyaXlsxBackend, UmyaXlsxValidator,
-    WorkbookFeature, WorkbookFormat,
+    EngineId, ExcelModifier, OoxmlImportBackend, OpenpyxlXlsxBackend, OpenpyxlXlsxValidator,
+    PreservationRequirement, UmyaXlsxBackend, UmyaXlsxValidator, WorkbookFeature, WorkbookFormat,
+    OOXML_IMPORT_OPERATIONS,
 };
 use std::{collections::BTreeSet, sync::Arc};
 
@@ -224,16 +224,16 @@ fn s3_f05_modifier(
         // 用户确认（2026-11-08）：auto 时 **OOXML 优先**（ZIP 级直改最快），
         // openpyxl worker 作为备选；两种后端都在写前拒绝不支持的批次。
         "auto" | "" => {
-            backends.push(Arc::new(OoxmlImportBackend::new(
-                ooxml_import_capability(&platform),
-            )?));
+            backends.push(Arc::new(OoxmlImportBackend::new(ooxml_import_capability(
+                &platform,
+            ))?));
             if crate::app_settings::openpyxl_selection_status().0 {
                 backends.push(s1_f01_openpyxl_backend(&platform, feature)?);
             }
         }
-        "ooxml" => backends.push(Arc::new(OoxmlImportBackend::new(
-            ooxml_import_capability(&platform),
-        )?)),
+        "ooxml" => backends.push(Arc::new(OoxmlImportBackend::new(ooxml_import_capability(
+            &platform,
+        ))?)),
         "openpyxl" => backends.push(s1_f01_openpyxl_backend(&platform, feature)?),
         other => anyhow::bail!("S3-F05 修改引擎不支持：{other}（可用 auto/ooxml/openpyxl）"),
     }
@@ -241,9 +241,8 @@ fn s3_f05_modifier(
         !backends.is_empty(),
         "S3-F05 没有可用的编辑后端（openpyxl 运行时不可用且 OOXML 未登记）"
     );
-    let mut modifier =
-        ExcelModifier::new(platform, backends, Arc::new(OpenpyxlXlsxValidator))
-            .with_context(|| format!("初始化 {feature} Excel-Core 生产路由"))?;
+    let mut modifier = ExcelModifier::new(platform, backends, Arc::new(OpenpyxlXlsxValidator))
+        .with_context(|| format!("初始化 {feature} Excel-Core 生产路由"))?;
     modifier = modifier
         .with_unverified_engine_opt_in(EngineId::OpenpyxlWorker)
         .with_unverified_engine_opt_in(EngineId::OoxmlPatch);
@@ -587,16 +586,12 @@ mod tests {
         let candidate = openpyxl_capability("windows-x86_64", "S1-F01")
             .expect("construct S1-F01 Openpyxl candidate");
         assert_eq!(candidate.status, CapabilityStatus::Unverified);
-        assert!(
-            candidate
-                .operations
-                .contains(&EditOperationKind::ImportRange)
-        );
-        assert!(
-            candidate
-                .preserved
-                .contains(&PreservationRequirement::Relationships)
-        );
+        assert!(candidate
+            .operations
+            .contains(&EditOperationKind::ImportRange));
+        assert!(candidate
+            .preserved
+            .contains(&PreservationRequirement::Relationships));
 
         let other = openpyxl_capability("windows-x86_64", "S3-F03")
             .expect("construct non-S1 Openpyxl capability");

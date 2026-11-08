@@ -475,8 +475,8 @@ fn collect_period_workbooks(directory: &Path, max_depth: ScanDepth) -> Result<Ve
         max_depth: ScanDepth,
         files: &mut Vec<PathBuf>,
     ) -> Result<()> {
-        for entry in fs::read_dir(directory)
-            .with_context(|| format!("read {}", directory.display()))?
+        for entry in
+            fs::read_dir(directory).with_context(|| format!("read {}", directory.display()))?
         {
             let entry = entry?;
             let path = entry.path();

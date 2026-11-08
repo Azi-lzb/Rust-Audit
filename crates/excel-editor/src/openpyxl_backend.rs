@@ -9,8 +9,8 @@ use crate::{
     BackendCapability, BackendFailure, EditBackend, EditOperation, EditOperationKind,
     ExcelEditPlan, OutputValidator, PreservationRequirement, RangeStyleMode, WorkbookFormat,
 };
-use anyhow::{Context, Result, bail};
-use excel_reader::{SheetDump, read_workbook};
+use anyhow::{bail, Context, Result};
+use excel_reader::{read_workbook, SheetDump};
 use serde::Deserialize;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -88,8 +88,7 @@ impl OpenpyxlWorkerConfig {
             let worker_script = if bundled_worker.is_file() {
                 bundled_worker
             } else if cfg!(debug_assertions) {
-                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                    .join("python/openpyxl_worker.py")
+                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("python/openpyxl_worker.py")
             } else {
                 bundled_worker
             };
@@ -245,7 +244,9 @@ impl OpenpyxlXlsxBackend {
                 "Python interpreter or openpyxl worker script is missing or not executable"
                     .to_owned(),
             ),
-            None => Some("Python interpreter or openpyxl worker path could not be resolved".to_owned()),
+            None => {
+                Some("Python interpreter or openpyxl worker path could not be resolved".to_owned())
+            }
         };
         if unavailable_reason.is_some() {
             capability.status = crate::CapabilityStatus::Unsupported;
@@ -3508,9 +3509,10 @@ fn plan_row_map(plan: &ExcelEditPlan, source_sheet: &str) -> Result<Option<PlanR
         .operations
         .iter()
         .filter_map(|operation| match operation {
-            EditOperation::DeleteColumn { sheet, column_index } if matches_sheet(sheet) => {
-                Some(*column_index)
-            }
+            EditOperation::DeleteColumn {
+                sheet,
+                column_index,
+            } if matches_sheet(sheet) => Some(*column_index),
             _ => None,
         })
         .collect();
@@ -5615,8 +5617,8 @@ mod tests {
     }
 
     #[test]
-    fn relationships_allow_only_deleted_and_recreated_sheet_and_shared_string_normalization()
-    -> Result<()> {
+    fn relationships_allow_only_deleted_and_recreated_sheet_and_shared_string_normalization(
+    ) -> Result<()> {
         let operations = vec![
             EditOperation::DeleteSheet {
                 name: "History".to_owned(),
@@ -5704,14 +5706,12 @@ mod tests {
             .find(|(namespace, name, _)| namespace.is_empty() && name == "Target")
             .expect("worksheet relationship has a target");
         target.2 = "/xl/worksheets/other.xml".to_owned();
-        assert!(
-            validate_preserved_relationships(
-                &source,
-                &changed_worksheet_target,
-                &relationship_plan(Vec::new())
-            )
-            .is_err()
-        );
+        assert!(validate_preserved_relationships(
+            &source,
+            &changed_worksheet_target,
+            &relationship_plan(Vec::new())
+        )
+        .is_err());
 
         let mut changed_worksheet_id = output;
         let relationships = changed_worksheet_id
@@ -5730,20 +5730,18 @@ mod tests {
             .find(|(namespace, name, _)| namespace.is_empty() && name == "Id")
             .expect("worksheet relationship has an ID");
         id.2 = "rId99".to_owned();
-        assert!(
-            validate_preserved_relationships(
-                &source,
-                &changed_worksheet_id,
-                &relationship_plan(Vec::new())
-            )
-            .is_err()
-        );
+        assert!(validate_preserved_relationships(
+            &source,
+            &changed_worksheet_id,
+            &relationship_plan(Vec::new())
+        )
+        .is_err());
         Ok(())
     }
 
     #[test]
-    fn relationships_allow_planned_new_worksheet_but_preserve_external_link_relationships()
-    -> Result<()> {
+    fn relationships_allow_planned_new_worksheet_but_preserve_external_link_relationships(
+    ) -> Result<()> {
         let external_link_type =
             "http://schemas.openxmlformats.org/officeDocument/2006/relationships/externalLink";
         let worksheet_type =
@@ -5838,22 +5836,22 @@ mod tests {
             "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink",
             "https://example.invalid/changed",
         )];
-        assert!(
-            validate_preserved_relationships(
-                &source,
-                &changed_other_sheet,
-                &relationship_plan(operations.clone())
-            )
-            .is_err()
-        );
+        assert!(validate_preserved_relationships(
+            &source,
+            &changed_other_sheet,
+            &relationship_plan(operations.clone())
+        )
+        .is_err());
 
         let no_recreation = relationship_plan(vec![EditOperation::DeleteSheet {
             name: "History".to_owned(),
         }]);
-        assert!(
-            validate_preserved_relationships(&source, &relationship_snapshot(true), &no_recreation)
-                .is_err()
-        );
+        assert!(validate_preserved_relationships(
+            &source,
+            &relationship_snapshot(true),
+            &no_recreation
+        )
+        .is_err());
     }
 
     #[test]
@@ -6199,7 +6197,7 @@ mod tests {
         duplicate_workbook_relationship_id: bool,
     ) -> Result<PathBuf> {
         use std::{fs, io::Write};
-        use zip::{ZipWriter, write::SimpleFileOptions};
+        use zip::{write::SimpleFileOptions, ZipWriter};
 
         const PACKAGE_REL_NS: &str = "http://schemas.openxmlformats.org/package/2006/relationships";
         const MAIN_NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
@@ -6308,11 +6306,9 @@ mod tests {
             &invalid_shared_index_snapshot,
         )
         .expect_err("out-of-range shared string index must be rejected");
-        assert!(
-            error
-                .to_string()
-                .contains("exceeds sharedStrings item count")
-        );
+        assert!(error
+            .to_string()
+            .contains("exceeds sharedStrings item count"));
         fs::remove_file(invalid_shared_index)?;
 
         let invalid_vml = relationship_integrity_fixture(0, true, false, false, false)?;
@@ -6381,8 +6377,8 @@ mod tests {
     }
 
     #[test]
-    fn empty_default_page_setup_properties_are_normalized_but_explicit_settings_remain()
-    -> Result<()> {
+    fn empty_default_page_setup_properties_are_normalized_but_explicit_settings_remain(
+    ) -> Result<()> {
         const NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
         let source_xml = format!(
             r#"<worksheet xmlns="{NS}"><sheetPr><pageSetUpPr/></sheetPr><pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/></worksheet>"#
@@ -7077,8 +7073,8 @@ mod tests {
     }
 
     #[test]
-    fn import_unstyled_source_preserves_target_direct_components_and_projects_legacy_defaults()
-    -> Result<()> {
+    fn import_unstyled_source_preserves_target_direct_components_and_projects_legacy_defaults(
+    ) -> Result<()> {
         let target = ScratchFile::create(&std::env::temp_dir(), "unstyled-import-style-target")?;
         let target_components = rust_xlsxwriter::Format::new()
             .set_font_name("Target Font")
@@ -7169,11 +7165,9 @@ mod tests {
                 style.number_format().map(|format| format.format_code()),
                 Some("General")
             );
-            assert!(
-                style
-                    .alignment()
-                    .is_none_or(|alignment| alignment == &umya_spreadsheet::Alignment::default())
-            );
+            assert!(style
+                .alignment()
+                .is_none_or(|alignment| alignment == &umya_spreadsheet::Alignment::default()));
             assert!(style
                 .protection()
                 .is_none_or(|protection| protection == &umya_spreadsheet::Protection::default()));
@@ -7784,8 +7778,7 @@ mod tests {
             PathBuf::from("/usr/libexec/pytools/openpyxl/runtime/bin/python3")
         );
         let expected_worker = if cfg!(debug_assertions) {
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("python/openpyxl_worker.py")
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("python/openpyxl_worker.py")
         } else {
             PathBuf::from("/usr/libexec/pytools/openpyxl/worker/openpyxl_worker.py")
         };
@@ -7826,78 +7819,54 @@ mod tests {
             evidence: None,
         };
         let backend = OpenpyxlXlsxBackend::build(capability, None).unwrap();
-        assert!(
-            backend
-                .capability()
-                .operations
-                .contains(&EditOperationKind::SetCellValue)
-        );
-        assert!(
-            !backend
-                .capability()
-                .operations
-                .contains(&EditOperationKind::DeleteRows)
-        );
-        assert!(
-            !backend
-                .capability()
-                .preserved
-                .contains(&PreservationRequirement::UnmodifiedPackageParts)
-        );
-        assert!(
-            backend
-                .capability()
-                .preserved
-                .contains(&PreservationRequirement::Styles)
-        );
-        assert!(
-            backend
-                .capability()
-                .preserved
-                .contains(&PreservationRequirement::PageSettings)
-        );
-        assert!(
-            backend
-                .capability()
-                .preserved
-                .contains(&PreservationRequirement::RowAndColumnDimensions)
-        );
-        assert!(
-            backend
-                .capability()
-                .preserved
-                .contains(&PreservationRequirement::Relationships)
-        );
-        assert!(
-            backend
-                .capability()
-                .preserved
-                .contains(&PreservationRequirement::DefinedNames)
-        );
-        assert!(
-            backend
-                .capability()
-                .preserved
-                .contains(&PreservationRequirement::HeaderFooterText)
-        );
-        assert!(
-            backend
-                .capability()
-                .preserved
-                .contains(&PreservationRequirement::ConditionalFormatting)
-        );
-        assert!(
-            backend
-                .capability()
-                .preserved
-                .contains(&PreservationRequirement::DataValidations)
-        );
-        assert!(
-            backend
-                .capability()
-                .preserved
-                .contains(&PreservationRequirement::CellValuesAndTypes)
-        );
+        assert!(backend
+            .capability()
+            .operations
+            .contains(&EditOperationKind::SetCellValue));
+        assert!(!backend
+            .capability()
+            .operations
+            .contains(&EditOperationKind::DeleteRows));
+        assert!(!backend
+            .capability()
+            .preserved
+            .contains(&PreservationRequirement::UnmodifiedPackageParts));
+        assert!(backend
+            .capability()
+            .preserved
+            .contains(&PreservationRequirement::Styles));
+        assert!(backend
+            .capability()
+            .preserved
+            .contains(&PreservationRequirement::PageSettings));
+        assert!(backend
+            .capability()
+            .preserved
+            .contains(&PreservationRequirement::RowAndColumnDimensions));
+        assert!(backend
+            .capability()
+            .preserved
+            .contains(&PreservationRequirement::Relationships));
+        assert!(backend
+            .capability()
+            .preserved
+            .contains(&PreservationRequirement::DefinedNames));
+        assert!(backend
+            .capability()
+            .preserved
+            .contains(&PreservationRequirement::HeaderFooterText));
+        assert!(backend
+            .capability()
+            .preserved
+            .contains(&PreservationRequirement::ConditionalFormatting));
+        assert!(backend
+            .capability()
+            .preserved
+            .contains(&PreservationRequirement::DataValidations));
+        assert!(backend
+            .capability()
+            .preserved
+            .contains(&PreservationRequirement::CellValuesAndTypes));
         assert_eq!(
             backend.capability().status,
             crate::CapabilityStatus::Unsupported

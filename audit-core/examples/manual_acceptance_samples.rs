@@ -487,10 +487,7 @@ fn write_s1_f02_template(path: &Path) -> Result<(), Box<dyn Error>> {
     {
         sheet.write_string(1, column as u16 + 1, *header)?;
     }
-    workbook.define_name(
-        "任意行汇总区域",
-        "='本地校验结果'!$B$3:$G$10",
-    )?;
+    workbook.define_name("任意行汇总区域", "='本地校验结果'!$B$3:$G$10")?;
     workbook.define_name("表头区域", "='本地校验结果'!$B$2:$G$2")?;
     workbook.save(path)?;
     Ok(())
@@ -635,30 +632,22 @@ fn generate_s1_f02_samples(root: &Path) -> Result<(), Box<dyn Error>> {
             "不应低于",
             "贷款余额",
         ][..],
-        &[
-            "2026-07",
-            "存量单位贷款",
-            "3",
-            "比例",
-            "不应超过",
-            "不良率",
-        ][..],
+        &["2026-07", "存量单位贷款", "3", "比例", "不应超过", "不良率"][..],
     ];
     for input_dir in [&normal_input, &exception_input] {
         write_s1_f02_source(&input_dir.join("甲机构.xlsx"), &alpha_rows, false)?;
         write_s1_f02_source(&input_dir.join("乙机构.xlsx"), &beta_rows, false)?;
     }
-    write_s1_f02_source(
-        &exception_input.join("结构异常.xlsx"),
-        &alpha_rows,
-        true,
-    )?;
+    write_s1_f02_source(&exception_input.join("结构异常.xlsx"), &alpha_rows, true)?;
     println!("generated synthetic S1-F02 samples at {}", root.display());
     Ok(())
 }
 
 fn sample_text<'a>(sheet: &'a excel_reader::SheetDump, address: &str) -> Option<&'a str> {
-    sheet.values.get(address).and_then(|value| value["value"].as_str())
+    sheet
+        .values
+        .get(address)
+        .and_then(|value| value["value"].as_str())
 }
 
 fn verify_s1_f02_outputs(root: &Path) -> Result<(), Box<dyn Error>> {
@@ -696,17 +685,16 @@ fn verify_s1_f02_outputs(root: &Path) -> Result<(), Box<dyn Error>> {
         || sample_text(sheet, &format!("J{row}")) != Some("类别甲|类别乙")
         || sample_text(sheet, &format!("K{row}")) != Some("通过|未通过")
     {
-        return Err("S1-F02 normal output history enrichment differs from independent expectation".into());
+        return Err(
+            "S1-F02 normal output history enrichment differs from independent expectation".into(),
+        );
     }
     println!("verified: S1-F02 normal output has 5 rows and expected history enrichment");
     Ok(())
 }
 
 fn verify_outputs(root: &Path) -> Result<(), Box<dyn Error>> {
-    let files = [
-        "outputs/s3_normal.xlsx",
-        "outputs/s3_exception.xlsx",
-    ];
+    let files = ["outputs/s3_normal.xlsx", "outputs/s3_exception.xlsx"];
     for relative in files {
         let path = root.join(relative);
         let workbook = excel_reader::read_workbook(&path)?;

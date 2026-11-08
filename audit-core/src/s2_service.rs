@@ -16,9 +16,7 @@ use crate::{
     s2_import::{import_period_directory_with_scan_depth, S2ImportResult},
     s2_period::compare_periods,
     s2_rule_engine::evaluate_rules,
-    s2_validation::{
-        validate_config_warnings, validate_import, S2AuditFinding,
-    },
+    s2_validation::{validate_config_warnings, validate_import, S2AuditFinding},
 };
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};

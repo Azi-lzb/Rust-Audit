@@ -322,11 +322,9 @@ fn cli_runs_configured_comparison_writes_result_and_refuses_overwrite() {
         .collect::<Vec<_>>();
     assert!(events.iter().any(|event| event["status"] == "started"));
     assert!(events.iter().any(|event| event["status"] == "completed"));
-    assert!(
-        events
-            .iter()
-            .any(|event| event["step"] == "读取本期/上期导数")
-    );
+    assert!(events
+        .iter()
+        .any(|event| event["step"] == "读取本期/上期导数"));
 
     let inputs_after = [
         fs::read(&current).expect("reread current input"),

@@ -6,10 +6,10 @@
 //! runner-owned copy because its established contract updates its target in
 //! place after creating a backup.
 
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{bail, ensure, Context, Result};
 use chrono::Local;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -158,9 +158,7 @@ pub fn run_acceptance_manifest(
         .with_context(|| format!("创建验收输出目录 {}", output_directory.display()))?;
     let initial_hashes = hash_input_roots(&input_roots)?;
     ensure!(
-        manifest.s1.is_some()
-            || manifest.s2.is_some()
-            || manifest.s3.is_some(),
+        manifest.s1.is_some() || manifest.s2.is_some() || manifest.s3.is_some(),
         "验收清单至少需要提供 S1、S2 或 S3 中的一项"
     );
 

@@ -15,9 +15,9 @@ use crate::{
     s2_period::{S2PeriodBandConfig, S2PeriodConfig, S2PeriodIndicatorConfig},
     s2_rule_engine::{S2Rule, S2RuleEngineConfig},
 };
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{anyhow, bail, Context, Result};
 use chrono::{Datelike, NaiveDateTime, Timelike};
-use excel_reader::{CellValue, SheetValues, read_value_columns_with_iso_dates};
+use excel_reader::{read_value_columns_with_iso_dates, CellValue, SheetValues};
 use serde::Serialize;
 use std::{
     collections::{HashMap, HashSet},
@@ -88,9 +88,7 @@ pub fn resolve_default_config_path() -> Result<PathBuf> {
     #[cfg(target_os = "linux")]
     let directories = {
         let mut directories = directories;
-        directories.push(PathBuf::from(
-            "/usr/share/open-data-audit/config/默认配置",
-        ));
+        directories.push(PathBuf::from("/usr/share/open-data-audit/config/默认配置"));
         directories
     };
     find_s2_config_path(&directories)
@@ -1470,7 +1468,7 @@ mod tests {
             let expected = real.join("2.报表采集系统_配置.xlsx");
             fs::write(&expected, b"real").expect("write real config");
             fs::write(placeholder.join("2.报表采集系统_配置.xlsx"), b"placeholder")
-            .expect("write placeholder config");
+                .expect("write placeholder config");
 
             assert_eq!(find_s2_config_path(&[real, placeholder]).unwrap(), expected);
             fs::remove_dir_all(root).expect("remove temporary config directory");

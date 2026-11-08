@@ -13,7 +13,12 @@
 use anyhow::Result;
 use excel_writer::Workbook;
 use serde_json::json;
-use std::{fs, path::Path, path::PathBuf, time::{SystemTime, UNIX_EPOCH}};
+use std::{
+    fs,
+    path::Path,
+    path::PathBuf,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 fn temporary_directory(label: &str) -> PathBuf {
     let nonce = SystemTime::now()
@@ -62,8 +67,12 @@ fn write_audit_copy(path: &Path) {
     let mut workbook = Workbook::new();
     let sheet = workbook.add_worksheet();
     sheet.set_name("检查表").expect("name audit copy sheet");
-    sheet.write_string(0, 0, "#DIV/0!").expect("write A1 recalc result");
-    sheet.write_string(1, 0, "").expect("write A2 recalc result");
+    sheet
+        .write_string(0, 0, "#DIV/0!")
+        .expect("write A1 recalc result");
+    sheet
+        .write_string(1, 0, "")
+        .expect("write A2 recalc result");
     workbook.save(path).expect("save audit copy");
 }
 

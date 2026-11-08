@@ -196,7 +196,10 @@ impl S1RecalculationSession {
         input_path: impl AsRef<Path>,
         scan_areas: &[String],
     ) -> Result<crate::conditional_format::ConditionalDisplayScan> {
-        ensure!(self.native_office, "原生 Excel COM 显示色扫描工作进程不可用");
+        ensure!(
+            self.native_office,
+            "原生 Excel COM 显示色扫描工作进程不可用"
+        );
         ensure!(
             !scan_areas.is_empty(),
             "模板没有配置条件格式扫描区域；无法按实际显示色审核"
@@ -229,8 +232,7 @@ impl S1RecalculationSession {
             let report: Value =
                 serde_json::from_str(&response).context("解析原生 COM 显示色扫描结果")?;
             ensure!(
-                report.get("status").and_then(Value::as_str)
-                    == Some("display_colors_scanned"),
+                report.get("status").and_then(Value::as_str) == Some("display_colors_scanned"),
                 "Excel COM 显示色扫描失败：{}",
                 report
                     .get("error")
@@ -531,12 +533,12 @@ impl S1RecalculationSession {
             // calculation-only copy and save that file in place instead.
             // Excel keeps the existing SaveAs path, and the original Audit
             // copy remains untouched in both cases.
-            let save_in_place = self.active_engine.as_deref().is_some_and(|engine| {
-                !engine.eq_ignore_ascii_case("Excel.Application")
-            });
+            let save_in_place = self
+                .active_engine
+                .as_deref()
+                .is_some_and(|engine| !engine.eq_ignore_ascii_case("Excel.Application"));
             if save_in_place {
-                fs::copy(&prepared, &engine_output)
-                    .context("准备 WPS 原位保存的独立重算副本")?;
+                fs::copy(&prepared, &engine_output).context("准备 WPS 原位保存的独立重算副本")?;
             }
             let engine_input = if save_in_place {
                 &engine_output
@@ -584,8 +586,7 @@ impl S1RecalculationSession {
                 let should_retry_with_wps = self.engine_request == "auto"
                     && self.native_office
                     && self.active_engine.as_deref() == Some("Excel.Application")
-                    && format!("{error:#}")
-                        .contains("Office COM Workbooks.Open 调用失败");
+                    && format!("{error:#}").contains("Office COM Workbooks.Open 调用失败");
                 self.stop_process();
                 let fallback = if should_retry_with_wps {
                     self.fallback_to_wps(&input, &output, error)
@@ -782,7 +783,11 @@ pub fn recalculate_s1_formula_copy_batch(
         .with_context(|| format!("读取公式重算 sidecar：{}", sidecar_path.as_ref().display()))?;
     ensure!(sidecar_path.is_file(), "公式重算 sidecar 不是文件");
     for (input, output) in pairs {
-        ensure!(input.is_file(), "S1 批次重算输入不是文件：{}", input.display());
+        ensure!(
+            input.is_file(),
+            "S1 批次重算输入不是文件：{}",
+            input.display()
+        );
         ensure!(is_xlsx(input), "S1 批次重算输入必须为 .xlsx");
         ensure!(is_xlsx(output), "S1 批次重算输出必须为 .xlsx");
         ensure!(
@@ -810,8 +815,8 @@ pub fn recalculate_s1_formula_copy_batch(
             stdout_suffix(&command.stdout)
         );
     }
-    let report: Value = serde_json::from_slice(&command.stdout)
-        .context("解析批次公式重算 sidecar 的 JSON 结果")?;
+    let report: Value =
+        serde_json::from_slice(&command.stdout).context("解析批次公式重算 sidecar 的 JSON 结果")?;
     let books = report
         .get("books")
         .and_then(Value::as_array)

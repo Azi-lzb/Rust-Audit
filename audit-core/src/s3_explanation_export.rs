@@ -80,12 +80,7 @@ pub fn export_selected_explanations(
     output_path: impl AsRef<Path>,
     config_path: Option<&Path>,
 ) -> Result<S3ExplanationExportReport> {
-    export_selected_explanations_with_progress(
-        comparison_file,
-        output_path,
-        config_path,
-        |_| {},
-    )
+    export_selected_explanations_with_progress(comparison_file, output_path, config_path, |_| {})
 }
 
 pub fn export_selected_explanations_with_progress<F>(
@@ -114,7 +109,10 @@ where
         output_path.display()
     );
 
-    on_progress(&format!("读取比较结果工作簿：{}", comparison_file.display()));
+    on_progress(&format!(
+        "读取比较结果工作簿：{}",
+        comparison_file.display()
+    ));
     let comparison_started = Instant::now();
     let sheets = read_value_columns(comparison_file, usize::MAX)
         .with_context(|| format!("读取比较结果：{}", comparison_file.display()))?;
@@ -161,7 +159,10 @@ where
         }
     }
 
-    on_progress(&format!("筛选说明标记并整理输出行：工作表={}", source_sheet.name));
+    on_progress(&format!(
+        "筛选说明标记并整理输出行：工作表={}",
+        source_sheet.name
+    ));
     let mut rows = Vec::new();
     for row_number in 2..=source_sheet.max_row {
         let selected = cell(source_sheet, row_number, headers["输出说明"]);
@@ -237,7 +238,10 @@ where
             .with_context(|| format!("创建说明文件目录：{}", parent.display()))?;
     }
 
-    on_progress(&format!("写入、验证并发布说明工作簿：{}", output_path.display()));
+    on_progress(&format!(
+        "写入、验证并发布说明工作簿：{}",
+        output_path.display()
+    ));
     let workbook_write_started = Instant::now();
     let temporary_path = reserve_temporary_path(output_path)?;
     let write_result = write_workbook(&temporary_path, comparison_file, &output_headers, &rows)
@@ -529,13 +533,11 @@ fn write_workbook(
     let explanation = workbook.add_worksheet();
     // 源生产 `_explanation_sheet_title`：从**比较结果工作表名**提取
     // 「YYYY 年 M 月」，生成为 `(说明)YYYY.MM 说明文件`；无法识别回退 "说明文件"。
-    let comparison_sheet_title = excel_reader::read_value_columns_with_iso_dates(
-        comparison_file,
-        usize::MAX,
-    )
-    .ok()
-    .and_then(|sheets| sheets.first().map(|sheet| sheet.name.clone()))
-    .unwrap_or_default();
+    let comparison_sheet_title =
+        excel_reader::read_value_columns_with_iso_dates(comparison_file, usize::MAX)
+            .ok()
+            .and_then(|sheets| sheets.first().map(|sheet| sheet.name.clone()))
+            .unwrap_or_default();
     explanation
         .set_name(&explanation_sheet_title(&comparison_sheet_title))
         .context("设置说明工作表名称失败")?;
@@ -669,8 +671,7 @@ fn validate_output(path: &Path, selected_rows: usize) -> Result<()> {
     let sheet_name = sheets[0].name.as_str();
     ensure!(
         sheet_name == "说明文件"
-            || (sheet_name.starts_with("(说明)")
-                && sheet_name.ends_with(" 说明文件")),
+            || (sheet_name.starts_with("(说明)") && sheet_name.ends_with(" 说明文件")),
         "S3-F02 说明工作簿工作表名称错误：{sheet_name}"
     );
     let explanation = &sheets[0];

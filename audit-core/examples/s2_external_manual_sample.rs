@@ -4,7 +4,7 @@
 //! the S2 configuration and external workbooks are generated with the Rust
 //! writer. No source-project or real business data is used.
 
-use anyhow::{Context, Result, ensure};
+use anyhow::{ensure, Context, Result};
 use excel_writer::{Workbook, Worksheet};
 use std::{env, fs, path::PathBuf};
 
@@ -75,11 +75,7 @@ fn copy_single_xlsx(source_dir: &PathBuf, target_dir: &PathBuf) -> Result<()> {
         source_dir.display()
     );
     let source = &files[0];
-    let target = target_dir.join(
-        source
-            .file_name()
-            .context("合成报表文件名为空")?,
-    );
+    let target = target_dir.join(source.file_name().context("合成报表文件名为空")?);
     fs::copy(source, &target).with_context(|| {
         format!(
             "复制合成报表到独立样例目录：{} -> {}",
@@ -227,10 +223,7 @@ fn write_external(path: &std::path::Path, value: f64) -> Result<()> {
 
     let mapping = workbook.add_worksheet();
     mapping.set_name("机构参照表")?;
-    write_headers(
-        mapping,
-        &["统一社会信用代码", "报表项目", "禁用"],
-    )?;
+    write_headers(mapping, &["统一社会信用代码", "报表项目", "禁用"])?;
     mapping.write_string(1, 0, "9144")?;
     mapping.write_string(1, 1, "存款项目")?;
     mapping.write_string(1, 2, "否")?;

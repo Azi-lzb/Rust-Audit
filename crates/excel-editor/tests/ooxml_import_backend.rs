@@ -7,8 +7,7 @@
 use anyhow::{Context, Result};
 use excel_editor::{
     inspect_xlsx_profile, BackendCapability, CapabilityStatus, EditBackend, EditOperation,
-    EditOperationKind, EngineId, ExcelEditPlan, OoxmlImportBackend, RangeStyleMode,
-    WorkbookFormat,
+    EditOperationKind, EngineId, ExcelEditPlan, OoxmlImportBackend, RangeStyleMode, WorkbookFormat,
 };
 use std::{
     collections::BTreeSet,
@@ -74,7 +73,10 @@ fn write_audit_copy(path: &Path) -> Result<()> {
         sheet.set_name("数据");
         // 区域内：将被模板内容覆盖（含一条陈旧公式，应被清掉）。
         sheet.cell_mut("A2").set_value_string("旧机构");
-        sheet.cell_mut("C2").set_formula("1+1").set_formula_result_number(2.0);
+        sheet
+            .cell_mut("C2")
+            .set_formula("1+1")
+            .set_formula_result_number(2.0);
         // 区域外（E 列以后）：必须原样保留。
         sheet.cell_mut("E1").set_value_string("报送方保留数据");
         sheet.cell_mut("E2").set_value_number(12345.0);

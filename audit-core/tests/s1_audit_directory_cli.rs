@@ -3,7 +3,7 @@ use audit_core::{
 };
 use excel_reader::read_workbook;
 use excel_writer::Workbook;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
     fs,
@@ -579,13 +579,11 @@ fn cli_runs_both_issue_sources_merges_then_classifies_and_logs_actual_engines() 
     assert_eq!(replay_report["summary"]["recurring_issues"], 4);
     assert_eq!(replay_report["summary"]["continuous_issues"], 0);
     assert_eq!(replay_report["issues"].as_array().unwrap().len(), 4);
-    assert!(
-        replay_report["issues"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|issue| issue["status"] == "再次出现")
-    );
+    assert!(replay_report["issues"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|issue| issue["status"] == "再次出现"));
     assert_eq!(replay_report["history_result_workbook"]["issue_count"], 4);
     let replay_log = String::from_utf8_lossy(&replay.stderr);
     assert!(replay_log.contains("S1 历史工作簿读取完成"));
@@ -711,11 +709,9 @@ fn cli_scans_template_validation_formula_cells_and_merges_source_errors() {
         history_result.sheets[0].values[&format!("E{history_issue_row}")]["value"],
         "校验公式错误"
     );
-    assert!(
-        !report["validation_formula_scan"]["per_file"][0]
-            .to_string()
-            .contains("#REF!")
-    );
+    assert!(!report["validation_formula_scan"]["per_file"][0]
+        .to_string()
+        .contains("#REF!"));
     let events = String::from_utf8_lossy(&output.stderr)
         .lines()
         .map(|line| serde_json::from_str::<Value>(line).expect("parse developer event"))
@@ -928,8 +924,8 @@ fn production_s1_directory_command_requires_fresh_formula_calculation() {
 
 #[test]
 #[ignore = "requires Windows Microsoft Excel COM"]
-fn s1_directory_copies_template_formulas_recalculates_and_combines_real_issues()
--> anyhow::Result<()> {
+fn s1_directory_copies_template_formulas_recalculates_and_combines_real_issues(
+) -> anyhow::Result<()> {
     anyhow::ensure!(cfg!(windows), "native COM integration requires Windows");
     let directory = temporary_directory("excel_sidecar_end_to_end");
     let input = directory.join("input");

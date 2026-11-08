@@ -1193,8 +1193,7 @@ impl ExcelModifier {
                 if !plan.workbook.inventory_complete {
                     rejected_reasons.push("workbook feature inventory is incomplete".to_owned());
                 }
-                if !opted_in_unverified
-                    && !plan.operation_kinds().is_subset(&capability.operations)
+                if !opted_in_unverified && !plan.operation_kinds().is_subset(&capability.operations)
                 {
                     rejected_reasons
                         .push("backend does not cover the whole operation batch".to_owned());
@@ -2067,10 +2066,7 @@ mod tests {
             "test-linux-x86_64",
             vec![
                 backend(
-                    capability(
-                        EngineId::UmyaSpreadsheet,
-                        [EditOperationKind::SetCellValue],
-                    ),
+                    capability(EngineId::UmyaSpreadsheet, [EditOperationKind::SetCellValue]),
                     Action::UnsupportedBeforeWrite,
                     Arc::clone(&observed),
                 ),
@@ -2128,7 +2124,10 @@ mod tests {
         let error = modifier.execute(&plan).unwrap_err();
         assert_eq!(error.kind, ExcelModifierErrorKind::NoEligibleBackend);
         assert_eq!(error.route_decisions.len(), 2);
-        assert!(error.route_decisions.iter().all(|decision| !decision.eligible));
+        assert!(error
+            .route_decisions
+            .iter()
+            .all(|decision| !decision.eligible));
         assert!(error.attempts.is_empty());
         assert!(observed.lock().unwrap().is_empty());
         assert_eq!(fs::read(&plan.input).unwrap(), original_bytes);

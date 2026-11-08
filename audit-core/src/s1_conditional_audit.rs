@@ -6,9 +6,9 @@
 
 use crate::{
     conditional_format::{
-        apply_conditional_display_scan, evaluate_workbook_dump,
-        evaluate_xlsx_workbook_with_dump, ConditionalDiagnostic, ConditionalDisplayScan,
-        ConditionalEvaluationReport, ConditionalTrigger, EvaluationStatus,
+        apply_conditional_display_scan, evaluate_workbook_dump, evaluate_xlsx_workbook_with_dump,
+        ConditionalDiagnostic, ConditionalDisplayScan, ConditionalEvaluationReport,
+        ConditionalTrigger, EvaluationStatus,
     },
     models::{CopyRange, Issue},
     template::normalize_template_name,

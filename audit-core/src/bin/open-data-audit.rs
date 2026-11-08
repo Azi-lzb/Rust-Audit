@@ -23,8 +23,8 @@ use audit_core::{
     },
     s1_issue_chain::{merge_s1_issue_sources, S1IssueFilePair},
     s1_recalculation::{
-        recalculate_s1_formula_copy, recalculate_s1_formula_copy_batch,
-        s1_recalculated_filename, S1RecalculationSession,
+        recalculate_s1_formula_copy, recalculate_s1_formula_copy_batch, s1_recalculated_filename,
+        S1RecalculationSession,
     },
     s1_region_summary::summarize_s1_named_regions,
     s1_result_workbook::write_s1_result_workbook,
@@ -2636,13 +2636,12 @@ fn run_s1_audit_directory(arguments: S1AuditDirectoryArgs) -> Result<()> {
                                     )
                                 })?
                                 .clone();
-                            let output_copy = output_dir.join(s1_recalculated_filename(
-                                index + 1,
-                                &input.source_file,
-                            )?);
+                            let output_copy = output_dir
+                                .join(s1_recalculated_filename(index + 1, &input.source_file)?);
                             Ok((original_copy, output_copy))
                         })
-                        .collect::<anyhow::Result<Vec<(std::path::PathBuf, std::path::PathBuf)>>>()?;
+                        .collect::<anyhow::Result<Vec<(std::path::PathBuf, std::path::PathBuf)>>>(
+                        )?;
                     match recalculate_s1_formula_copy_batch(sidecar, &pairs, "auto") {
                         Ok(reports) => Some(reports),
                         Err(error) => {

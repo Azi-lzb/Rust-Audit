@@ -933,9 +933,7 @@ fn create_feedback_backup(target: &Path, permissions: &std::fs::Permissions) -> 
     let timestamp = Local::now().format("%Y%m%d_%H%M%S_%3f");
     for _ in 0..128 {
         let sequence = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let path = parent.join(format!(
-            "{stem}_导入前备份_{timestamp}_{sequence}.xlsx"
-        ));
+        let path = parent.join(format!("{stem}_导入前备份_{timestamp}_{sequence}.xlsx"));
         let mut backup = match OpenOptions::new().write(true).create_new(true).open(&path) {
             Ok(file) => file,
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
@@ -995,9 +993,12 @@ fn publish_candidate_in_place(
             backup.display()
         );
     }
-    Ok(fs::remove_file(rollback)
-        .err()
-        .map(|error| format!("S3-F03 已更新目标；回滚暂存文件清理失败：{} ({error})", rollback.display())))
+    Ok(fs::remove_file(rollback).err().map(|error| {
+        format!(
+            "S3-F03 已更新目标；回滚暂存文件清理失败：{} ({error})",
+            rollback.display()
+        )
+    }))
 }
 
 fn next_feedback_output_path(output_directory: &Path, target_path: &Path) -> Result<PathBuf> {
@@ -1572,8 +1573,8 @@ mod tests {
     use super::{
         amount_value, code_value, create_feedback_backup, execute_explanation_feedback_import,
         execute_explanation_feedback_import_to_copy, publish_candidate_in_place,
-        S3FeedbackStagingDirectory,
         quantize_half_up_four_places, required_preservation, sha256_file, DecimalQuantization,
+        S3FeedbackStagingDirectory,
     };
     use anyhow::Result;
     use excel_editor::{
@@ -1745,13 +1746,12 @@ mod tests {
             Arc::new(UmyaXlsxValidator),
         )?;
 
-        let report =
-            execute_explanation_feedback_import_to_copy(
-                &target,
-                &[feedback.clone()],
-                &output,
-                &modifier,
-            )?;
+        let report = execute_explanation_feedback_import_to_copy(
+            &target,
+            &[feedback.clone()],
+            &output,
+            &modifier,
+        )?;
 
         assert_eq!(report.imported, 1);
         assert_eq!(report.planned_cell_updates, 1);
@@ -1808,8 +1808,7 @@ mod tests {
             }),
         };
         let backend = Arc::new(UmyaXlsxBackend::new(capability)?);
-        let modifier =
-            ExcelModifier::new(platform, vec![backend], Arc::new(UmyaXlsxValidator))?;
+        let modifier = ExcelModifier::new(platform, vec![backend], Arc::new(UmyaXlsxValidator))?;
 
         let report = execute_explanation_feedback_import(&target, &[feedback.clone()], &modifier)?;
 
@@ -1849,11 +1848,8 @@ mod tests {
         write_explanation(&feedback_b, "原因乙");
         let target_hash_before = sha256_file(&target)?;
         let feedback_hashes_before = [sha256_file(&feedback_a)?, sha256_file(&feedback_b)?];
-        let modifier = ExcelModifier::new(
-            "test-platform",
-            Vec::new(),
-            Arc::new(AcceptAllValidator),
-        )?;
+        let modifier =
+            ExcelModifier::new("test-platform", Vec::new(), Arc::new(AcceptAllValidator))?;
 
         let report = execute_explanation_feedback_import(
             &target,

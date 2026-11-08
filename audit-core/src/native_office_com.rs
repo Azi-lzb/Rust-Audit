@@ -23,8 +23,8 @@ use windows_sys::{
         System::{
             Com::{
                 CLSIDFromProgID, CoCreateInstance, CoInitializeEx, CoUninitialize,
-                EXCEPINFO, CLSCTX_LOCAL_SERVER, COINIT_APARTMENTTHREADED, DISPATCH_METHOD,
-                DISPATCH_PROPERTYGET, DISPATCH_PROPERTYPUT, DISPPARAMS,
+                CLSCTX_LOCAL_SERVER, COINIT_APARTMENTTHREADED, DISPATCH_METHOD,
+                DISPATCH_PROPERTYGET, DISPATCH_PROPERTYPUT, DISPPARAMS, EXCEPINFO,
             },
             Diagnostics::ToolHelp::{
                 CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
@@ -517,8 +517,12 @@ impl ExcelComSession {
             .into_dispatch()
             .with_context(|| format!("Excel COM 无法只读打开条件格式来源 {}", input.display()))?;
 
-        let is_wps = self.application_name.eq_ignore_ascii_case("ket.Application")
-            || self.application_name.eq_ignore_ascii_case("KET.Application");
+        let is_wps = self
+            .application_name
+            .eq_ignore_ascii_case("ket.Application")
+            || self
+                .application_name
+                .eq_ignore_ascii_case("KET.Application");
         let scan_result = (|| -> Result<ConditionalDisplayScan> {
             let sheets = workbook.get_dispatch("Worksheets")?;
             let mut scan = ConditionalDisplayScan::default();
@@ -541,9 +545,8 @@ impl ExcelComSession {
             let mut refreshed_wps_sheets = HashSet::new();
             for specification in scan_areas {
                 let Some((raw_sheet_name, range_address)) = specification.rsplit_once('!') else {
-                    scan.diagnostics.push(format!(
-                        "条件格式扫描范围格式无效：{specification}"
-                    ));
+                    scan.diagnostics
+                        .push(format!("条件格式扫描范围格式无效：{specification}"));
                     continue;
                 };
                 let sheet_name = raw_sheet_name.trim_matches('\'').replace("''", "'");
@@ -624,7 +627,10 @@ impl ExcelComSession {
                         let column = area.get_i32("Column")?;
                         let rows = area.get_dispatch("Rows")?.get_i32("Count")?;
                         let columns = area.get_dispatch("Columns")?.get_i32("Count")?;
-                        ensure!(row > 0 && column > 0 && rows > 0 && columns > 0, "Excel 返回了空条件格式扫描范围");
+                        ensure!(
+                            row > 0 && column > 0 && rows > 0 && columns > 0,
+                            "Excel 返回了空条件格式扫描范围"
+                        );
                         Ok((row, column, rows, columns))
                     })();
                     let (row, column, rows, columns) = match dimensions {
@@ -707,14 +713,8 @@ impl ExcelComSession {
         save_in_place: bool,
     ) -> Result<serde_json::Value> {
         write_stage(stage_path, "opening_workbook");
-        let result = self.recalculate_inner(
-            input,
-            output,
-            timeout,
-            stage_path,
-            mode,
-            save_in_place,
-        );
+        let result =
+            self.recalculate_inner(input, output, timeout, stage_path, mode, save_in_place);
         if result.is_err() {
             write_stage(stage_path, "closing_failed_workbook");
         }
@@ -909,9 +909,7 @@ fn scan_display_rectangle(
 ) -> Result<()> {
     use crate::conditional_format::ConditionalDisplayColorChange;
 
-    let end_row = row
-        .checked_add(rows - 1)
-        .context("条件格式范围行号溢出")?;
+    let end_row = row.checked_add(rows - 1).context("条件格式范围行号溢出")?;
     let end_column = column
         .checked_add(columns - 1)
         .context("条件格式范围列号溢出")?;
@@ -1035,7 +1033,9 @@ fn scan_display_rectangle(
 
 fn range_fill_color(range: &Dispatch, display_format: bool) -> Result<Option<i32>> {
     let interior = if display_format {
-        range.get_dispatch("DisplayFormat")?.get_dispatch("Interior")?
+        range
+            .get_dispatch("DisplayFormat")?
+            .get_dispatch("Interior")?
     } else {
         range.get_dispatch("Interior")?
     };
@@ -1046,7 +1046,11 @@ fn range_fill_color(range: &Dispatch, display_format: bool) -> Result<Option<i32
     };
     // ColorIndex is VT_NULL for a mixed-format range, while Color can still
     // misleadingly return one cell's color. Use it as the uniformity check.
-    if interior.get("ColorIndex")?.as_optional_i32(index_label)?.is_none() {
+    if interior
+        .get("ColorIndex")?
+        .as_optional_i32(index_label)?
+        .is_none()
+    {
         return Ok(None);
     }
     range_fill_color_value(range, display_format)
@@ -1054,7 +1058,9 @@ fn range_fill_color(range: &Dispatch, display_format: bool) -> Result<Option<i32
 
 fn range_fill_color_value(range: &Dispatch, display_format: bool) -> Result<Option<i32>> {
     let interior = if display_format {
-        range.get_dispatch("DisplayFormat")?.get_dispatch("Interior")?
+        range
+            .get_dispatch("DisplayFormat")?
+            .get_dispatch("Interior")?
     } else {
         range.get_dispatch("Interior")?
     };
@@ -1417,8 +1423,7 @@ fn owned_process_by_name_diff(
     let mut candidates: Vec<u32> = after
         .iter()
         .filter(|(process_id, name)| {
-            !before.contains_key(process_id)
-                && exe_names.iter().any(|exe| name == exe)
+            !before.contains_key(process_id) && exe_names.iter().any(|exe| name == exe)
         })
         .map(|(process_id, _)| *process_id)
         .collect();

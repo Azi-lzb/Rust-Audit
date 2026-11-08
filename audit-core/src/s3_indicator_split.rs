@@ -459,13 +459,22 @@ where
         .with_context(|| format!("解析 S3-F05 输出目录：{}", output_root.display()))?;
     ensure!(output_root.is_dir(), "S3-F05 输出路径不是目录");
 
-    on_progress(&format!("读取 3.3 金融表单配置：{}", financial_template_path.display()));
+    on_progress(&format!(
+        "读取 3.3 金融表单配置：{}",
+        financial_template_path.display()
+    ));
     let template = load_indicator_split_template(financial_template_path)?;
-    on_progress(&format!("读取 3.0 通用警戒配置：{}", common_config_path.display()));
+    on_progress(&format!(
+        "读取 3.0 通用警戒配置：{}",
+        common_config_path.display()
+    ));
     let alert_bands =
         crate::s3_execution_compare::load_indicator_split_alert_bands(common_config_path)
             .context("读取 S3-F05 大集中通用配置中的环比预警区间")?;
-    on_progress(&format!("读取比较文件并规划机构表单：{}", comparison_path.display()));
+    on_progress(&format!(
+        "读取比较文件并规划机构表单：{}",
+        comparison_path.display()
+    ));
     let plan = plan_indicator_comparison_split(comparison_path, &template, &alert_bands)?;
     ensure!(
         !plan.organizations.is_empty(),
@@ -482,7 +491,10 @@ where
         );
     }
 
-    on_progress(&format!("检查金融表单模板结构：{}", template.path.display()));
+    on_progress(&format!(
+        "检查金融表单模板结构：{}",
+        template.path.display()
+    ));
     let workbook_profile = inspect_xlsx_profile(&template.path)
         .with_context(|| format!("检查 S3-F05 金融表单模板：{}", template.path.display()))?;
     ensure!(
@@ -534,9 +546,15 @@ where
     }
 
     let editing_time_ms = edit_started.elapsed().as_millis();
-    on_progress(&format!("发布全部机构表单目录：{}", final_directory.display()));
+    on_progress(&format!(
+        "发布全部机构表单目录：{}",
+        final_directory.display()
+    ));
     let output_directory = staging.publish(&final_directory)?;
-    on_progress(&format!("机构表单批次已发布：{}", output_directory.display()));
+    on_progress(&format!(
+        "机构表单批次已发布：{}",
+        output_directory.display()
+    ));
     let output_files = output_names
         .iter()
         .map(|name| output_directory.join(name))

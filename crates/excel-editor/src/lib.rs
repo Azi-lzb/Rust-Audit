@@ -11,7 +11,9 @@ mod umya_backend;
 mod workbook_profile;
 
 pub use ooxml_header_backend::{OoxmlHeaderTextBackend, OoxmlHeaderTextValidator};
-pub use ooxml_import_backend::{OoxmlImportBackend, SUPPORTED_OPERATIONS as OOXML_IMPORT_OPERATIONS};
+pub use ooxml_import_backend::{
+    OoxmlImportBackend, SUPPORTED_OPERATIONS as OOXML_IMPORT_OPERATIONS,
+};
 pub use openpyxl_backend::{OpenpyxlWorkerConfig, OpenpyxlXlsxBackend, OpenpyxlXlsxValidator};
 pub use plan::{
     BackendAttempt, BackendAttemptOutcome, BackendCapability, BackendErrorKind, BackendFailure,
