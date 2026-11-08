@@ -218,9 +218,11 @@ fn cli_generates_financial_forms_and_keeps_inputs_unchanged() {
     assert_eq!(report["institution_count"], 1);
     assert_eq!(report["matched_indicators"], 1);
     assert_eq!(report["edits"].as_array().unwrap().len(), 1);
+    // 用户确认（2026-11-08）：S3-F05 auto 路由 OOXML 直改优先，Umya 已退出
+    // 该功能（定义名守卫会拒绝 DeleteColumn 等操作）。
     assert_eq!(
-        report["edits"][0]["engine"], "umya_spreadsheet",
-        "the production route must use the qualified Umya backend"
+        report["edits"][0]["engine"], "ooxml_patch",
+        "the production route must use the OOXML patch backend (Umya excluded from S3-F05)"
     );
 
     // One published output directory holding one generated form workbook.
