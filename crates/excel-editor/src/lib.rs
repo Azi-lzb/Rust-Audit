@@ -14,7 +14,9 @@ pub use ooxml_header_backend::{OoxmlHeaderTextBackend, OoxmlHeaderTextValidator}
 pub use ooxml_import_backend::{
     OoxmlImportBackend, SUPPORTED_OPERATIONS as OOXML_IMPORT_OPERATIONS,
 };
-pub use openpyxl_backend::{OpenpyxlWorkerConfig, OpenpyxlXlsxBackend, OpenpyxlXlsxValidator};
+pub use openpyxl_backend::{
+    fast_roundtrip, OpenpyxlWorkerConfig, OpenpyxlXlsxBackend, OpenpyxlXlsxValidator,
+};
 pub use plan::{
     BackendAttempt, BackendAttemptOutcome, BackendCapability, BackendErrorKind, BackendFailure,
     BackendRouteDecision, CapabilityEvidence, CapabilityStatus, CellValue, EditBackend,

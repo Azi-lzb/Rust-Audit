@@ -258,6 +258,29 @@ fn s1_f01_openpyxl_backend(platform: &str, feature: &str) -> anyhow::Result<Arc<
     Ok(Arc::new(backend))
 }
 
+/// 把已渲染的工作簿交 openpyxl worker 做整簿往返（openpyxl 独立序列化）。
+pub fn fast_roundtrip_via_openpyxl(output: &std::path::Path, request_id: &str) -> anyhow::Result<()> {
+    use anyhow::Context;
+    let platform = runtime_platform();
+    let capability = openpyxl_capability(&platform, "S3-F05")?;
+    let binary = std::env::current_exe().context("定位当前可执行文件以解析 openpyxl 运行时")?;
+    let config = excel_editor::OpenpyxlWorkerConfig::for_product_binary(binary, "open-data-audit")
+        .with_context(|| format!("解析 {} 的 openpyxl worker 运行时", "S3-F05"))?;
+    let _ = capability;
+    // 原地往返：先写临时件，再替换目标
+    let staged = output.with_extension("openpyxl-roundtrip.xlsx");
+    let _ = std::fs::remove_file(&staged);
+    excel_editor::fast_roundtrip(&config, request_id, output, &staged)?;
+    std::fs::rename(&staged, output).with_context(|| {
+        format!(
+            "发布 openpyxl 往返产物：{} -> {}",
+            staged.display(),
+            output.display()
+        )
+    })?;
+    Ok(())
+}
+
 /// S1-F01 backend choices. Auto orders candidates OOXML → openpyxl (only when
 /// its interpreter, worker and module are available) → Umya. An automatic
 /// fallback occurs only after an earlier backend explicitly rejects the batch

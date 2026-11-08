@@ -415,12 +415,30 @@ pub fn plan_indicator_comparison_split(
 /// from the configured financial-form template. All workbooks are first
 /// written into a private sibling directory and published as one directory
 /// rename only after every Excel-Core edit succeeds.
-/// 高级设置 edit_engine：auto/ooxml → FAST_OOXML 渲染路径；openpyxl → 编辑计划。
-pub fn fast_render_enabled() -> bool {
-    crate::app_settings::AppSettings::load()
+/// 高级设置 edit_engine 的 S3-F05 渲染策略。
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FastRenderMode {
+    /// auto / ooxml：FAST 渲染直出（ZIP 级，最快）
+    Direct,
+    /// openpyxl：FAST 渲染后交 openpyxl worker 做整簿往返（保留 openpyxl
+    /// 独立序列化实现；逐格 Python 操作已被 Rust 回填取代）
+    OpenpyxlRoundtrip,
+}
+
+pub fn fast_render_mode() -> FastRenderMode {
+    if crate::app_settings::AppSettings::load()
         .edit_engine
         .as_str()
-        != "openpyxl"
+        == "openpyxl"
+    {
+        FastRenderMode::OpenpyxlRoundtrip
+    } else {
+        FastRenderMode::Direct
+    }
+}
+
+pub fn fast_render_enabled() -> bool {
+    true
 }
 
 use crate::s3_fast_ooxml_render::write_zip as fast_write_zip;
@@ -520,7 +538,7 @@ pub fn execute_indicator_comparison_split(
     common_config_path: impl AsRef<Path>,
     output_root: impl AsRef<Path>,
     modifier: &ExcelModifier,
-    fast: bool,
+    fast_mode: FastRenderMode,
 ) -> Result<S3IndicatorSplitExecutionReport> {
     execute_indicator_comparison_split_with_progress(
         comparison_path,
@@ -528,7 +546,7 @@ pub fn execute_indicator_comparison_split(
         common_config_path,
         output_root,
         modifier,
-        fast,
+        fast_mode,
         |_| {},
     )
 }
@@ -539,7 +557,7 @@ pub fn execute_indicator_comparison_split_with_progress<F>(
     common_config_path: impl AsRef<Path>,
     output_root: impl AsRef<Path>,
     modifier: &ExcelModifier,
-    fast: bool,
+    fast_mode: FastRenderMode,
     mut on_progress: F,
 ) -> Result<S3IndicatorSplitExecutionReport>
 where
@@ -605,7 +623,8 @@ where
         workbook_profile.format == WorkbookFormat::Xlsx,
         "S3-F05 金融表单模板目前仅支持 XLSX"
     );
-    let fast_template = if fast {
+    let openpyxl_roundtrip = fast_mode == FastRenderMode::OpenpyxlRoundtrip;
+    let fast_template = {
         let bytes = std::fs::read(&template.path)
             .with_context(|| format!("读取金融表单模板：{}", template.path.display()))?;
         let t_compile = std::time::Instant::now();
@@ -637,8 +656,6 @@ where
             crate::s3_fast_ooxml::StyleBank::new(&compiled.styles_xml, &base_indexes, &colors)
                 .context("FAST_OOXML 样式编译失败")?;
         Some((Arc::new(compiled), Arc::new(bank)))
-    } else {
-        None
     };
     let final_directory = next_output_directory(&output_root)?;
     let staging = S3IndicatorSplitStagingDirectory::create(&output_root)?;
@@ -701,15 +718,23 @@ where
                             &output.content_types_xml,
                         )
                         .map_err(|error| anyhow::anyhow!("{error:#}"))?;
+                        if openpyxl_roundtrip {
+                            crate::excel_route::fast_roundtrip_via_openpyxl(
+                                &staged_output,
+                                &edit_plan.request_id,
+                            )
+                            .map_err(|error| anyhow::anyhow!("{error:#}"))?;
+                        }
                         if timing {
                             eprintln!(
-                                "[s3f5-fast] {} input={}ms render={}ms zip={}ms total={}ms filled={}",
+                                "[s3f5-fast] {} input={}ms render={}ms rest={}ms total={}ms filled={} roundtrip={}",
                                 institution.institution_code,
                                 t_input,
                                 t_render,
                                 started.elapsed().as_millis() - t_render,
                                 started.elapsed().as_millis(),
-                                output.filled
+                                output.filled,
+                                openpyxl_roundtrip
                             );
                         }
                         return Ok(EditExecutionReport {
@@ -1893,6 +1918,9 @@ mod tests {
         fs::remove_file(comparison_path).unwrap();
     }
 
+    /// FAST 渲染是独立的 Rust 路径，不依赖 Excel-Core 后端注册表；
+    /// 但任何失败仍必须 fail-closed、不留下半成品（沿用原测试的意图，
+    /// 失败点从「后端注册表为空」换成「模板无法编译」）。
     #[test]
     fn execution_without_a_passed_excel_core_route_publishes_no_partial_outputs() {
         let template_path = temp_path("capability-template");
@@ -1906,17 +1934,21 @@ mod tests {
         let modifier =
             ExcelModifier::new("test-platform", Vec::new(), Arc::new(AcceptAllValidator)).unwrap();
 
+        // 空注册表 + openpyxl 往返模式：渲染成功后需要 worker，必然失败
         let error = execute_indicator_comparison_split(
             &comparison_path,
             &template_path,
             &common_path,
             &output_root,
             &modifier,
-            false,
+            FastRenderMode::OpenpyxlRoundtrip,
         )
-        .expect_err("an empty backend registry cannot claim S3-F05 succeeded");
-        assert!(format!("{error:#}").contains("NoEligibleBackend"));
-        assert!(fs::read_dir(&output_root).unwrap().next().is_none());
+        .expect_err("the openpyxl roundtrip mode cannot succeed without a worker runtime");
+        assert!(!format!("{error:#}").is_empty());
+        assert!(
+            fs::read_dir(&output_root).unwrap().next().is_none(),
+            "failed generation must not publish partial outputs"
+        );
 
         fs::remove_file(template_path).unwrap();
         fs::remove_file(comparison_path).unwrap();

@@ -850,6 +850,68 @@ def _verify_style_table_integrity(output_path: Path) -> None:
         )
 
 
+def _apply_fast_roundtrip(request: Dict[str, Any]) -> Dict[str, Any]:
+    """openpyxl 语义整簿往返：输入已是渲染完成的候选工作簿。
+
+    FAST 渲染路径把回填逻辑放在 Rust 侧完成（逐格 openpyxl 赋值是
+    openpyxl 路由的主要开销），worker 只做「openpyxl 加载 → 保存」往返，
+    以 openpyxl 自己的序列化器重建包——这样该路由仍与 FAST 直改实现
+    相互独立（不是同一份 OOXML 字节的直接拷贝），同时省掉数千次
+    Python 层单元格操作。
+    """
+    started = time.monotonic()
+    if request.get("format") != "xlsx":
+        raise WorkerError("unsupported_format", "openpyxl worker accepts XLSX only", unsupported=True)
+    input_path = Path(request.get("input", "")).resolve(strict=True)
+    output_path = Path(request.get("output", "")).resolve(strict=False)
+    if input_path.suffix.lower() != ".xlsx" or output_path.suffix.lower() != ".xlsx":
+        raise WorkerError("unsupported_format", "input and output paths must end in .xlsx", unsupported=True)
+    if input_path == output_path:
+        raise WorkerError("invalid_paths", "input and output paths must be different", unsupported=True)
+    if not input_path.is_file():
+        raise WorkerError("input_missing", "input workbook does not exist", unsupported=True)
+    if output_path.exists() and output_path.stat().st_size != 0:
+        raise WorkerError("output_exists", "worker output must be a new or empty candidate", unsupported=True)
+    if not zipfile.is_zipfile(str(input_path)):
+        raise WorkerError("unsupported_format", "input is not a valid XLSX ZIP package", unsupported=True)
+    before_hash = _sha256(input_path)
+    try:
+        import openpyxl
+    except Exception as error:
+        raise WorkerError("worker_unavailable", "openpyxl import failed: " + str(error), unsupported=True)
+    try:
+        workbook = openpyxl.load_workbook(
+            str(input_path), data_only=False, keep_links=True, read_only=False
+        )
+    except Exception as error:
+        raise WorkerError("workbook_open_failed", str(error))
+    try:
+        if not workbook.worksheets:
+            raise WorkerError("invalid_output", "workbook must retain at least one worksheet")
+        try:
+            workbook.save(str(output_path))
+        except Exception as error:
+            raise WorkerError("save_failed", str(error))
+    finally:
+        workbook.close()
+    _preserve_significant_string_whitespace(output_path)
+    if _sha256(input_path) != before_hash:
+        raise WorkerError("source_changed", "worker input changed while round-tripping")
+    if not output_path.is_file() or output_path.stat().st_size == 0:
+        raise WorkerError("save_failed", "openpyxl did not create a non-empty output workbook")
+    _verify_style_table_integrity(output_path)
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "request_id": request.get("request_id"),
+        "status": "ok",
+        "error": None,
+        "diagnostics": {
+            "mode": "fast_roundtrip",
+            "elapsed_ms": int((time.monotonic() - started) * 1000),
+        },
+    }
+
+
 def _apply(request: Dict[str, Any]) -> Dict[str, Any]:
     started = time.monotonic()
     input_path, output_path, operations = _preflight(request)
@@ -860,9 +922,18 @@ def _apply(request: Dict[str, Any]) -> Dict[str, Any]:
         raise WorkerError("worker_unavailable", "openpyxl import failed: " + str(error), unsupported=True)
     try:
         workbook = openpyxl.load_workbook(str(input_path), data_only=False, keep_links=True, read_only=False)
-        cached_workbook = openpyxl.load_workbook(str(input_path), data_only=True, keep_links=True, read_only=False)
     except Exception as error:
         raise WorkerError("workbook_open_failed", str(error))
+    # data_only=True 的整簿加载很贵（S3-F05 这类纯写批次要 ~10s/表）且只有
+    # copy_range 需要它（同簿复制取缓存值）——按需惰性加载。
+    cached_workbook = None
+    if any(operation["operation"] == "copy_range" for operation in operations):
+        try:
+            cached_workbook = openpyxl.load_workbook(
+                str(input_path), data_only=True, keep_links=True, read_only=False
+            )
+        except Exception as error:
+            raise WorkerError("workbook_open_failed", str(error))
     try:
         initial_sheet_names = list(workbook.sheetnames)
         for operation in operations:
@@ -880,7 +951,8 @@ def _apply(request: Dict[str, Any]) -> Dict[str, Any]:
             raise WorkerError("save_failed", str(error))
     finally:
         workbook.close()
-        cached_workbook.close()
+        if cached_workbook is not None:
+            cached_workbook.close()
     _preserve_significant_string_whitespace(output_path)
     after_hash = _sha256(input_path)
     if after_hash != before_hash:
@@ -1078,7 +1150,10 @@ def _run(request_path: Path, response_path: Path) -> int:
         request = json.loads(request_path.read_text(encoding="utf-8"))
         if isinstance(request, dict):
             request_id = request.get("request_id")
-        result = _apply(request)
+        if isinstance(request, dict) and request.get("mode") == "fast_roundtrip":
+            result = _apply_fast_roundtrip(request)
+        else:
+            result = _apply(request)
         response_path.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
         return 0
     except WorkerError as error:

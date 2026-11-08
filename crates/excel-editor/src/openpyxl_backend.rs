@@ -571,12 +571,60 @@ fn supported_operation(operation: EditOperationKind) -> bool {
     )
 }
 
+
+/// 验证器输入侧缓存：同批次机构表单的 plan.input 字节相同，源文件解析
+/// （值转储 + 保真快照 + 差分样式）按 (path, size, mtime) 复用，避免
+/// 逐表单重复解析（openpyxl 路由验证占每表单 ~10s，源侧约占一半）。
+#[derive(Clone)]
+struct ValidatorSourceArtifacts {
+    dump: std::sync::Arc<excel_reader::WorkbookDump>,
+    snapshot: WorkbookPreservationSnapshot,
+    diff_styles: Vec<CanonicalXmlElement>,
+}
+
+fn validator_source_cache_key(path: &Path) -> Result<(PathBuf, u64, u64)> {
+    let metadata = std::fs::metadata(path)
+        .with_context(|| format!("read validation input metadata: {}", path.display()))?;
+    Ok((
+        path.to_path_buf(),
+        metadata.len(),
+        metadata
+            .modified()
+            .ok()
+            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|duration| duration.as_millis() as u64)
+            .unwrap_or(0),
+    ))
+}
+
+fn validator_source_artifacts(path: &Path) -> Result<std::sync::Arc<ValidatorSourceArtifacts>> {
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<(PathBuf, u64, u64), std::sync::Arc<ValidatorSourceArtifacts>>>> =
+        std::sync::OnceLock::new();
+    let key = validator_source_cache_key(path)?;
+    let cache = CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    let mut guard = cache.lock().expect("validator source cache");
+    if let Some(artifacts) = guard.get(&key) {
+        return Ok(artifacts.clone());
+    }
+    let artifacts = std::sync::Arc::new(ValidatorSourceArtifacts {
+        dump: std::sync::Arc::new(read_workbook(path).map_err(|error| {
+            anyhow::anyhow!("read source workbook for openpyxl validation: {error:#}")
+        })?),
+        snapshot: workbook_preservation_snapshot(path).map_err(|error| {
+            anyhow::anyhow!("cached source preservation snapshot: {error:#}")
+        })?,
+        diff_styles: differential_styles(path)?,
+    });
+    guard.insert(key, artifacts.clone());
+    Ok(artifacts)
+}
+
 pub struct OpenpyxlXlsxValidator;
 
 impl OutputValidator for OpenpyxlXlsxValidator {
     fn validate(&self, plan: &ExcelEditPlan, candidate_output: &Path) -> Result<()> {
-        let source =
-            read_workbook(&plan.input).context("read source workbook for openpyxl validation")?;
+        let source_artifacts = validator_source_artifacts(&plan.input)?;
+        let source = &source_artifacts.dump;
         let output = read_workbook(candidate_output)
             .context("reopen openpyxl candidate with Calamine/OOXML reader")?;
         let profile = crate::inspect_xlsx_profile(candidate_output)?;
@@ -1018,6 +1066,7 @@ fn validate_preserved_ooxml_metadata(
     output_path: &Path,
     plan: &ExcelEditPlan,
 ) -> Result<()> {
+    let source_artifacts = validator_source_artifacts(input_path)?;
     let checked = [
         PreservationRequirement::DefinedNames,
         PreservationRequirement::RowAndColumnDimensions,
@@ -1036,11 +1085,7 @@ fn validate_preserved_ooxml_metadata(
         return Ok(());
     }
 
-    let source = workbook_preservation_snapshot(input_path).map_err(|error| {
-        anyhow::anyhow!(
-            "read source OOXML metadata for openpyxl preservation validation: {error:#}"
-        )
-    })?;
+    let source = &source_artifacts.snapshot;
     let output = workbook_preservation_snapshot(output_path).map_err(|error| {
         anyhow::anyhow!(
             "read output OOXML metadata for openpyxl preservation validation: {error:#}"
@@ -1088,7 +1133,7 @@ fn validate_preserved_ooxml_metadata(
         .preserve
         .contains(&PreservationRequirement::ConditionalFormatting)
     {
-        let source_styles = differential_styles(input_path)?;
+        let source_styles = &source_artifacts.diff_styles;
         let output_styles = differential_styles(output_path)?;
         let source_conditional_formatting =
             semantic_conditional_formatting(&source.conditional_formatting, &source_styles)?;
@@ -5319,6 +5364,86 @@ struct WorkerResponse {
 struct WorkerResponseError {
     kind: String,
     message: String,
+}
+
+/// openpyxl 语义整簿往返（FAST 渲染产物 → openpyxl 重建包）。
+///
+/// FAST 渲染把回填放在 Rust 侧完成；本函数让 openpyxl worker 只做
+/// 「加载 → 保存」往返，既保留 openpyxl 独立序列化实现（与 FAST 直改
+/// 字节互不依赖），又避免逐格 Python 操作的巨大开销。
+pub fn fast_roundtrip(
+    config: &OpenpyxlWorkerConfig,
+    request_id: &str,
+    input: &Path,
+    output: &Path,
+) -> Result<()> {
+    let parent = output
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let request_file = ScratchFile::create(parent, "openpyxl-fast-request")?;
+    let response_file = ScratchFile::create(parent, "openpyxl-fast-response")?;
+    let stdout_file = ScratchFile::create(parent, "openpyxl-fast-stdout")?;
+    let stderr_file = ScratchFile::create(parent, "openpyxl-fast-stderr")?;
+    let request = serde_json::json!({
+        "schema_version": 1,
+        "request_id": request_id,
+        "mode": "fast_roundtrip",
+        "format": "xlsx",
+        "input": input,
+        "output": output,
+    });
+    fs::write(request_file.path(), serde_json::to_vec(&request)?)
+        .with_context(|| "write fast roundtrip request")?;
+    let stdout = File::create(stdout_file.path())?;
+    let stderr = File::create(stderr_file.path())?;
+    let mut child = Command::new(&config.python_executable)
+        .arg("-I")
+        .arg(&config.worker_script)
+        .arg("--request")
+        .arg(request_file.path())
+        .arg("--response")
+        .arg(response_file.path())
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(stdout))
+        .stderr(Stdio::from(stderr))
+        .spawn()
+        .with_context(|| "start openpyxl worker for fast roundtrip")?;
+    let started = Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if started.elapsed() < config.timeout => {
+                thread::sleep(Duration::from_millis(10))
+            }
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                bail!("openpyxl fast roundtrip timed out after {:?}", config.timeout);
+            }
+            Err(error) => bail!("wait for openpyxl fast roundtrip: {error}"),
+        }
+    };
+    let response_text = fs::read_to_string(response_file.path()).unwrap_or_default();
+    let response: serde_json::Value =
+        serde_json::from_str(&response_text).unwrap_or(serde_json::Value::Null);
+    let status_text = response
+        .get("status")
+        .and_then(|value| value.as_str())
+        .unwrap_or("<missing>");
+    if !status.success() || status_text != "ok" {
+        let message = response
+            .get("error")
+            .and_then(|error| error.get("message"))
+            .and_then(|message| message.as_str())
+            .unwrap_or("openpyxl fast roundtrip failed");
+        let stderr_text = fs::read_to_string(stderr_file.path()).unwrap_or_default();
+        bail!("{message}（worker stderr: {}）", stderr_text.trim());
+    }
+    if !output.is_file() || output.metadata().map(|meta| meta.len()).unwrap_or(0) == 0 {
+        bail!("openpyxl fast roundtrip did not produce a non-empty output");
+    }
+    Ok(())
 }
 
 struct ScratchFile(PathBuf);

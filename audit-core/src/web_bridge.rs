@@ -61,7 +61,7 @@ use crate::{
     s3_explanation_export::export_selected_explanations_with_progress,
     s3_explanation_feedback::execute_explanation_feedback_import_with_progress,
     s3_indicator_split::execute_indicator_comparison_split_with_progress,
-    s3_indicator_split::fast_render_enabled,
+    s3_indicator_split::fast_render_mode,
 };
 use anyhow::{bail, ensure, Context, Result};
 use axum::{
@@ -6529,7 +6529,7 @@ fn run_s3_indicator_split_worker(
         &common_config,
         &output_directory,
         &modifier,
-        fast_render_enabled(),
+        fast_render_mode(),
         |stage| {
             let mut ui = progress_state.lock();
             ui.value["currentWork"] = json!({

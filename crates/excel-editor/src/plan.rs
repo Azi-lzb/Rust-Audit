@@ -1437,6 +1437,7 @@ impl ExcelModifier {
                     &attempts,
                 ));
             }
+            let apply_elapsed = attempt_started.elapsed().as_millis();
             if let Err(error) = self.validator.validate(plan, output_candidate.path()) {
                 let message = error.to_string();
                 attempts.push(BackendAttempt {
@@ -1445,6 +1446,14 @@ impl ExcelModifier {
                     message: message.clone(),
                     elapsed_ms: attempt_started.elapsed().as_millis(),
                 });
+                if std::env::var_os("AUDIT_S3F5_TIMING").is_some() {
+                    eprintln!(
+                        "[s3f5-plan] {} apply={}ms validate={}ms",
+                        engine,
+                        apply_elapsed,
+                        attempt_started.elapsed().as_millis() - apply_elapsed
+                    );
+                }
                 return Err(execution_error(
                     ExcelModifierErrorKind::OutputValidationFailed,
                     Some(engine),
@@ -1452,6 +1461,14 @@ impl ExcelModifier {
                     &route,
                     &attempts,
                 ));
+            }
+            if std::env::var_os("AUDIT_S3F5_TIMING").is_some() {
+                eprintln!(
+                    "[s3f5-plan] {} apply={}ms validate={}ms",
+                    engine,
+                    apply_elapsed,
+                    attempt_started.elapsed().as_millis() - apply_elapsed
+                );
             }
             OpenOptions::new()
                 .write(true)
