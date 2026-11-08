@@ -167,7 +167,30 @@ fn apply_plan(plan: &ExcelEditPlan) -> Result<()> {
     let mut sheet_parts = SheetParts::resolve(&package)?;
     let mut workbook_xml = package.text("xl/workbook.xml")?;
 
+    // S3-F05 批次是数千级逐格写：逐操作全表扫描+重建成本 O(操作数×表长)。
+    // 值/样式类操作按表累积成批，遇任何非批类操作（删表/删列/导入等可能
+    // 改变表集合或坐标的）先冲刷，最后冲刷余量——批内同格后者覆盖前者，
+    // 与逐操作语义一致。
+    let mut batches: std::collections::BTreeMap<
+        String,
+        std::collections::BTreeMap<(u32, u32), CellTargets>,
+    > = Default::default();
+    let mut styles_table: Option<StyleTable> = None;
+
     for operation in &plan.operations {
+        if !matches!(
+            operation,
+            EditOperation::SetCellValue { .. }
+                | EditOperation::SetCellNumberFormat { .. }
+                | EditOperation::SetCellFillColor { .. }
+        ) {
+            flush_cell_batches(
+                &mut package,
+                &mut sheet_parts,
+                &mut batches,
+                &mut styles_table,
+            )?;
+        }
         match operation {
             EditOperation::CreateSheet { name } => {
                 sheet_parts.create_sheet(&mut package, &mut workbook_xml, name, None)?;
@@ -233,37 +256,35 @@ fn apply_plan(plan: &ExcelEditPlan) -> Result<()> {
                 )?;
             }
             EditOperation::SetCellValue { sheet, cell, value } => {
-                let part = sheet_parts.part_for(sheet)?.to_owned();
-                let sheet_xml = package.text(&part)?;
-                let updated = set_cell_value_in_sheet_xml(&sheet_xml, cell, value)?;
-                package.set_text(&part, updated);
+                let key = parse_cell(cell)?;
+                batches
+                    .entry(sheet.clone())
+                    .or_default()
+                    .entry(key)
+                    .or_default()
+                    .value = Some((*value).clone());
             }
             EditOperation::SetCellNumberFormat {
                 sheet,
                 cell,
                 format_code,
             } => {
-                let part = sheet_parts.part_for(sheet)?.to_owned();
-                let sheet_xml = package.text(&part)?;
-                let styles_xml = package
-                    .text("xl/styles.xml")
-                    .context("OOXML 副本缺少 xl/styles.xml")?;
-                let (styles_xml, style_index) =
-                    ensure_number_format_style(&styles_xml, format_code)?;
-                package.set_text("xl/styles.xml", styles_xml);
-                let updated = set_cell_style_index(&sheet_xml, cell, style_index)?;
-                package.set_text(&part, updated);
+                let key = parse_cell(cell)?;
+                batches
+                    .entry(sheet.clone())
+                    .or_default()
+                    .entry(key)
+                    .or_default()
+                    .style = Some(StyleRequest::NumberFormat((*format_code).clone()));
             }
             EditOperation::SetCellFillColor { sheet, cell, argb } => {
-                let part = sheet_parts.part_for(sheet)?.to_owned();
-                let sheet_xml = package.text(&part)?;
-                let styles_xml = package
-                    .text("xl/styles.xml")
-                    .context("OOXML 副本缺少 xl/styles.xml")?;
-                let (styles_xml, style_index) = ensure_fill_style(&styles_xml, argb)?;
-                package.set_text("xl/styles.xml", styles_xml);
-                let updated = set_cell_style_index(&sheet_xml, cell, style_index)?;
-                package.set_text(&part, updated);
+                let key = parse_cell(cell)?;
+                batches
+                    .entry(sheet.clone())
+                    .or_default()
+                    .entry(key)
+                    .or_default()
+                    .style = Some(StyleRequest::Fill((*argb).clone()));
             }
             EditOperation::SetRowHidden {
                 sheet,
@@ -296,6 +317,12 @@ fn apply_plan(plan: &ExcelEditPlan) -> Result<()> {
             other => bail!("OOXML 导入后端到达未预期操作：{other:?}"),
         }
     }
+    flush_cell_batches(
+        &mut package,
+        &mut sheet_parts,
+        &mut batches,
+        &mut styles_table,
+    )?;
 
     // 写入过公式的计划：丢弃 calcChain（缓存已失效，由重算重建）。
     let wrote_formulas = plan.operations.iter().any(|operation| {
@@ -1382,7 +1409,7 @@ fn set_cell_value_in_sheet_xml(
                 format!("><v>{}</v></c>", if *flag { 1 } else { 0 })
             }
             crate::CellValue::Error(token) => format!(r#"><v>{}</v></c>"#, escape_xml(token)),
-            crate::CellValue::Blank => ">/>".to_owned(),
+            crate::CellValue::Blank => "/>".to_owned(),
         };
         let type_attribute = match value {
             crate::CellValue::Text(_) => " t=\"inlineStr\"",
@@ -1469,6 +1496,256 @@ fn set_cell_value_in_sheet_xml(
             Ok(expand_dimension_ref(&output, row_number, column))
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// S3-F05 批量回填：值/样式操作按表累积，单遍扫描改写既有格，缺失格按行插补
+// ---------------------------------------------------------------------------
+
+/// 单格的样式诉求（同格多次设置时后者覆盖前者，与逐操作语义一致）。
+#[derive(Clone, Debug)]
+enum StyleRequest {
+    NumberFormat(String),
+    Fill(String),
+}
+
+/// 单格累积目标：值与样式可同时存在（值定内容、样式定 s=）。
+#[derive(Default, Clone, Debug)]
+struct CellTargets {
+    value: Option<crate::CellValue>,
+    style: Option<StyleRequest>,
+}
+
+/// styles.xml 全局样式表：按格式代码/填充色去重解析 xf 索引，避免逐操作
+/// 追加成百上千个重复 numFmt/xf。
+struct StyleTable {
+    styles_xml: String,
+    format_to_xf: std::collections::HashMap<String, u32>,
+    fill_to_xf: std::collections::HashMap<String, u32>,
+}
+
+impl StyleTable {
+    fn new(styles_xml: String) -> Self {
+        Self {
+            styles_xml,
+            format_to_xf: Default::default(),
+            fill_to_xf: Default::default(),
+        }
+    }
+
+    fn xf_for_format(&mut self, code: &str) -> Result<u32> {
+        if let Some(index) = self.format_to_xf.get(code) {
+            return Ok(*index);
+        }
+        let (styles_xml, index) = ensure_number_format_style(&self.styles_xml.clone(), code)?;
+        self.styles_xml = styles_xml;
+        self.format_to_xf.insert(code.to_owned(), index);
+        Ok(index)
+    }
+
+    fn xf_for_fill(&mut self, argb: &str) -> Result<u32> {
+        if let Some(index) = self.fill_to_xf.get(argb) {
+            return Ok(*index);
+        }
+        let (styles_xml, index) = ensure_fill_style(&self.styles_xml.clone(), argb)?;
+        self.styles_xml = styles_xml;
+        self.fill_to_xf.insert(argb.to_owned(), index);
+        Ok(index)
+    }
+}
+
+/// 冲刷全部累积批：styles.xml 建一次表，逐表单遍扫描改写既有格 + 补插缺失格。
+fn flush_cell_batches(
+    package: &mut Package,
+    sheet_parts: &mut SheetParts,
+    batches: &mut std::collections::BTreeMap<
+        String,
+        std::collections::BTreeMap<(u32, u32), CellTargets>,
+    >,
+    styles: &mut Option<StyleTable>,
+) -> Result<()> {
+    if batches.is_empty() {
+        return Ok(());
+    }
+    if styles.is_none() {
+        let styles_xml = package
+            .text("xl/styles.xml")
+            .context("OOXML 副本缺少 xl/styles.xml")?;
+        *styles = Some(StyleTable::new(styles_xml));
+    }
+    let table = styles.as_mut().expect("styles table just initialized");
+    for (sheet, targets) in batches.iter_mut() {
+        if targets.is_empty() {
+            continue;
+        }
+        let part = sheet_parts.part_for(sheet)?.to_owned();
+        let sheet_xml = package.text(&part)?;
+        let updated = apply_cell_targets_batch(&sheet_xml, targets, table)?;
+        package.set_text(&part, updated);
+        targets.clear();
+    }
+    batches.clear();
+    let table = styles.as_mut().expect("styles table just initialized");
+    package.set_text("xl/styles.xml", table.styles_xml.clone());
+    Ok(())
+}
+
+/// 单遍扫描：改写全部命中的既有单元格；未命中目标在扫描后按行插补。
+fn apply_cell_targets_batch(
+    sheet_xml: &str,
+    targets: &mut std::collections::BTreeMap<(u32, u32), CellTargets>,
+    table: &mut StyleTable,
+) -> Result<String> {
+    if targets.is_empty() {
+        return Ok(sheet_xml.to_owned());
+    }
+    // 样式请求先解析成 xf（styles.xml 全局去重）
+    let mut style_xf: std::collections::HashMap<(u32, u32), u32> = Default::default();
+    for (key, target) in targets.iter() {
+        if let Some(request) = &target.style {
+            let index = match request {
+                StyleRequest::NumberFormat(code) => table.xf_for_format(code)?,
+                StyleRequest::Fill(argb) => table.xf_for_fill(argb)?,
+            };
+            style_xf.insert(*key, index);
+        }
+    }
+
+    // 自闭合分支必须在前，否则全节点分支会越过本格吞到下一个 </c>
+    let node_re = regex::Regex::new(concat!(
+        r#"(?P<sc_node><c r="(?P<sccol>[A-Za-z]+)(?P<scrow>\d+)"(?P<scattrs>[^>]*?)/>)"#,
+        r#"|(?P<full_node><c r="(?P<fcol>[A-Za-z]+)(?P<frow>\d+)"(?P<fattrs>[^>]*?)>(?P<inner>.*?)</c>)"#,
+    ))
+    .context("编译批量单元格正则失败")?;
+
+    let mut matched: std::collections::HashSet<(u32, u32)> = Default::default();
+    let mut output = String::with_capacity(sheet_xml.len() + 4096);
+    let mut last = 0usize;
+    for caps in node_re.captures_iter(sheet_xml) {
+        let whole = caps.get(0).unwrap();
+        let (column_text, row_number, attrs, inner, self_closed) = if caps.name("sc_node").is_some()
+        {
+            (
+                caps.name("sccol").expect("sccol").as_str(),
+                caps.name("scrow").expect("scrow").as_str(),
+                caps.name("scattrs").map(|m| m.as_str()).unwrap_or(""),
+                "",
+                true,
+            )
+        } else {
+            (
+                caps.name("fcol").expect("fcol").as_str(),
+                caps.name("frow").expect("frow").as_str(),
+                caps.name("fattrs").map(|m| m.as_str()).unwrap_or(""),
+                caps.name("inner").map(|m| m.as_str()).unwrap_or(""),
+                false,
+            )
+        };
+        let key = (
+            row_number.parse::<u32>().unwrap_or(0),
+            column_index(&column_text.to_ascii_uppercase()),
+        );
+        output.push_str(&sheet_xml[last..whole.start()]);
+        last = whole.end();
+        if let Some(target) = targets.get(&key) {
+            matched.insert(key);
+            let style_index = style_xf.get(&key).copied();
+            output.push_str(&rebuild_cell_node(
+                &column_text.to_ascii_uppercase(),
+                key.0,
+                attrs,
+                self_closed,
+                inner,
+                target,
+                style_index,
+            ));
+        } else {
+            output.push_str(whole.as_str());
+        }
+    }
+    output.push_str(&sheet_xml[last..]);
+
+    // 缺失格：复用既有单格路径（行内按列序插入 / 建行 + dimension 扩展）
+    for ((row_number, column), target) in targets.iter() {
+        if matched.contains(&(*row_number, *column)) {
+            continue;
+        }
+        let address = format!("{}{}", column_letters(*column), row_number);
+        let value = target.value.clone().unwrap_or(crate::CellValue::Blank);
+        let updated = set_cell_value_in_sheet_xml(&output, &address, &value)?;
+        output = match style_xf.get(&(*row_number, *column)) {
+            Some(index) => set_cell_style_index(&updated, &address, *index)?,
+            None => updated,
+        };
+    }
+    Ok(output)
+}
+
+/// 按目标重建单个单元格节点：值定内容，样式定 s=（无样式诉求保留原 s=）。
+#[allow(clippy::too_many_arguments)]
+fn rebuild_cell_node(
+    column_letters_text: &str,
+    row_number: u32,
+    attrs: &str,
+    self_closed: bool,
+    inner: &str,
+    target: &CellTargets,
+    style_index: Option<u32>,
+) -> String {
+    let address = format!("{column_letters_text}{row_number}");
+    let Some(value) = &target.value else {
+        // 仅样式：保留除 s= 外的全部属性（如 t="s" 共享串标记）、内容与闭合形态
+        let mut parts: Vec<String> = attrs
+            .split_whitespace()
+            .filter(|part| !part.starts_with("s="))
+            .map(str::to_owned)
+            .collect();
+        let style_attribute = match style_index {
+            Some(index) => format!("s=\"{index}\""),
+            None => attrs
+                .split_whitespace()
+                .find(|part| part.starts_with("s="))
+                .unwrap_or("")
+                .to_owned(),
+        };
+        parts.insert(0, style_attribute);
+        let kept = parts.join(" ");
+        let kept_space = if kept.is_empty() { "" } else { " " };
+        return if self_closed {
+            format!("<c r=\"{address}\"{kept_space}{kept}/>")
+        } else {
+            format!("<c r=\"{address}\"{kept_space}{kept}>{inner}</c>")
+        };
+    };
+    let kept_style = match style_index {
+        Some(index) => format!("s=\"{index}\""),
+        None => attrs
+            .split_whitespace()
+            .find(|part| part.starts_with("s="))
+            .unwrap_or("")
+            .to_owned(),
+    };
+    let kept_space = if kept_style.is_empty() { "" } else { " " };
+    let (type_attribute, content) = match value {
+        crate::CellValue::Text(text) => (
+            " t=\"inlineStr\"",
+            format!(
+                "><is><t xml:space=\"preserve\">{}</t></is></c>",
+                escape_xml(text)
+            ),
+        ),
+        crate::CellValue::Decimal(number) => ("", format!("><v>{number}</v></c>")),
+        crate::CellValue::DateTime { serial, .. } => ("", format!("><v>{serial}</v></c>")),
+        crate::CellValue::Boolean(flag) => (
+            " t=\"b\"",
+            format!("><v>{}</v></c>", if *flag { 1 } else { 0 }),
+        ),
+        crate::CellValue::Error(token) => {
+            (" t=\"e\"", format!("><v>{}</v></c>", escape_xml(token)))
+        }
+        crate::CellValue::Blank => ("", "/>".to_owned()),
+    };
+    format!("<c r=\"{address}\"{kept_space}{kept_style}{type_attribute}{content}")
 }
 
 /// 把 `<dimension ref="..."/>` 扩展到覆盖 (row, column)；只扩不缩。
@@ -4263,5 +4540,50 @@ mod tests {
             "工作簿级名称原样保留: {updated}"
         );
         assert!(updated.contains(r#"count="2""#), "计数同步: {updated}");
+    }
+
+    #[test]
+    fn cell_targets_batch_rewrites_inserts_and_dedupes_styles() {
+        let sheet = r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:B2"/><sheetData><row r="1"><c r="A1" s="6" t="s"><v>167</v></c><c r="B1" s="6" t="s"><v>168</v></c></row><row r="2"><c r="A2" s="1"/><c r="B2"><v>9</v></c></row></sheetData></worksheet>"#;
+        let styles = r#"<?xml version="1.0"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs></styleSheet>"#;
+        let mut table = StyleTable::new(styles.to_owned());
+        let mut targets: std::collections::BTreeMap<(u32, u32), CellTargets> = Default::default();
+        // A1 存在：改值 + 设样式
+        let entry = targets.entry((1, 1)).or_default();
+        entry.value = Some(crate::CellValue::Text("新值".to_owned()));
+        entry.style = Some(StyleRequest::NumberFormat("0.000%".to_owned()));
+        // B1 存在：仅样式（内容保留）
+        targets.entry((1, 2)).or_default().style =
+            Some(StyleRequest::NumberFormat("0.000%".to_owned()));
+        // C3 缺失：值 + 同款样式
+        let entry = targets.entry((3, 3)).or_default();
+        entry.value = Some(crate::CellValue::Decimal("12.5".to_owned()));
+        entry.style = Some(StyleRequest::NumberFormat("0.000%".to_owned()));
+
+        let updated = apply_cell_targets_batch(sheet, &mut targets, &mut table).unwrap();
+        assert!(
+            updated.contains(
+                r#"<c r="A1" s="1" t="inlineStr"><is><t xml:space="preserve">新值</t></is></c>"#
+            ),
+            "存在格改值+换样式: {updated}"
+        );
+        assert!(
+            updated.contains(r#"<c r="B1" s="1" t="s"><v>168</v></c>"#),
+            "仅样式格保留内容: {updated}"
+        );
+        assert!(
+            updated.contains(r#"<c r="C3" s="1"><v>12.5</v></c>"#),
+            "缺失格插入值+样式: {updated}"
+        );
+        assert!(
+            updated.contains(r#"<dimension ref="A1:C3"/>"#),
+            "dimension 随插入扩展: {updated}"
+        );
+        assert_eq!(
+            table.styles_xml.matches(r#"formatCode="0.000%""#).count(),
+            1,
+            "同码样式全局去重（三个目标只追加一个 numFmt）: {}",
+            table.styles_xml
+        );
     }
 }

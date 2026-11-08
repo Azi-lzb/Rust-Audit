@@ -504,44 +504,111 @@ where
     let final_directory = next_output_directory(&output_root)?;
     let staging = S3IndicatorSplitStagingDirectory::create(&output_root)?;
     let edit_started = Instant::now();
-    let mut edit_reports = Vec::with_capacity(plan.organizations.len());
-    let mut output_names = Vec::with_capacity(plan.organizations.len());
+    let total = plan.organizations.len();
+    let workers = total.min(
+        std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4),
+    );
+    on_progress(&format!("并行生成 {total} 份机构表单（{workers} 线程）……"));
+    let (progress_tx, progress_rx) = std::sync::mpsc::channel::<String>();
 
-    for (index, institution) in plan.organizations.iter().enumerate() {
-        let staged_output = staging.path().join(&institution.output_file_name);
-        on_progress(&format!(
-            "生成金融表单 [{}/{}] 机构={}（{}）；输出={}；准备 Excel-Core 编辑计划",
-            index + 1,
-            plan.organizations.len(),
-            institution.institution_name,
-            institution.institution_code,
-            staged_output.display()
-        ));
-        let edit_plan = build_indicator_split_edit_plan(
-            &template.path,
-            &staged_output,
-            &workbook_profile,
-            institution,
-            index,
-        )?;
-        let report = modifier.execute(&edit_plan).with_context(|| {
+    let mut filled_reports: Vec<Option<EditExecutionReport>> = (0..total).map(|_| None).collect();
+    let mut first_error: Option<anyhow::Error> = None;
+    std::thread::scope(|scope| {
+        let mut handles = Vec::with_capacity(total);
+        for (index, institution) in plan.organizations.iter().enumerate() {
+            let staged_output = staging.path().join(&institution.output_file_name);
+            let modifier = &modifier;
+            let template_path = &template.path;
+            let profile = &workbook_profile;
+            let sender = progress_tx.clone();
+            handles.push(scope.spawn(move || {
+                let label = format!(
+                    "机构={}（{}）",
+                    institution.institution_name, institution.institution_code
+                );
+                let _ = sender.send(format!(
+                    "[{}/{}] {label}：准备 Excel-Core 编辑计划",
+                    index + 1,
+                    total
+                ));
+                let outcome = build_indicator_split_edit_plan(
+                    template_path,
+                    &staged_output,
+                    profile,
+                    institution,
+                    index,
+                )
+                .and_then(|edit_plan| {
+                    let _ =
+                        sender.send(format!("[{}/{}] {label}：执行编辑并验证", index + 1, total));
+                    modifier
+                        .execute(&edit_plan)
+                        .map_err(|error| anyhow::anyhow!("{error:#}"))
+                })
+                .with_context(|| format!("S3-F05 生成机构 {label} 金融表单"))
+                .and_then(|report| {
+                    ensure!(
+                        report.output == staged_output && staged_output.is_file(),
+                        "S3-F05 Excel-Core 未生成请求的金融表单：{}",
+                        staged_output.display()
+                    );
+                    Ok(report)
+                });
+                let _ = sender.send(match &outcome {
+                    Ok(_) => format!(
+                        "[{}/{}] 金融表单已生成并验证：{}",
+                        index + 1,
+                        total,
+                        staged_output.display()
+                    ),
+                    Err(error) => format!("[{}/{}] {label} 失败：{error:#}", index + 1, total),
+                });
+                (index, outcome)
+            }));
+        }
+        drop(progress_tx);
+        // 进度只从主线程回调（FnMut 非线程安全）；通道断开即全部工作线程结束
+        while let Ok(message) = progress_rx.recv() {
+            on_progress(&message);
+        }
+        for handle in handles {
+            let (index, outcome) = match handle.join() {
+                Ok(joined) => joined,
+                Err(panic) => {
+                    let message = panic
+                        .downcast_ref::<&str>()
+                        .map(|text| (*text).to_owned())
+                        .or_else(|| panic.downcast_ref::<String>().cloned())
+                        .unwrap_or_else(|| "工作线程已 panic".to_owned());
+                    // 索引取占位值即可：outcome 为 Err，不会写入 filled_reports
+                    (
+                        usize::MAX,
+                        Err(anyhow::anyhow!("S3-F05 并行生成工作线程异常：{message}")),
+                    )
+                }
+            };
+            match outcome {
+                Ok(report) => filled_reports[index] = Some(report),
+                Err(error) if first_error.is_none() => first_error = Some(error),
+                Err(_) => {}
+            }
+        }
+    });
+    if let Some(error) = first_error {
+        return Err(error);
+    }
+    let mut edit_reports = Vec::with_capacity(total);
+    let mut output_names = Vec::with_capacity(total);
+    for (index, report) in filled_reports.into_iter().enumerate() {
+        let report = report.with_context(|| {
             format!(
-                "S3-F05 生成机构 {}（{}）金融表单",
-                institution.institution_name, institution.institution_code
+                "S3-F05 机构 {} 未产出编辑报告",
+                plan.organizations[index].institution_code
             )
         })?;
-        ensure!(
-            report.output == staged_output && staged_output.is_file(),
-            "S3-F05 Excel-Core 未生成请求的金融表单：{}",
-            staged_output.display()
-        );
-        on_progress(&format!(
-            "金融表单已生成并验证 [{}/{}]：{}",
-            index + 1,
-            plan.organizations.len(),
-            staged_output.display()
-        ));
-        output_names.push(institution.output_file_name.clone());
+        output_names.push(plan.organizations[index].output_file_name.clone());
         edit_reports.push(report);
     }
 
