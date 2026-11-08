@@ -193,15 +193,17 @@ impl S1RecalculationSession {
         let started = Instant::now();
         let (input, output, destination_staging) =
             prepare_recalculation_paths(input_path, output_path)?;
-        // 与 COM 分支同一口径：**任何引擎打开之前**先做 OOXML 规范化。
-        // 曾经只有 recalculate_native 调用，导致 betteroffice 侧副本仍带
-        // 错位的 shared formula ref（ref="C13:C48" 而主格在 C14），COM 侧却
-        // 已归一为 "C14:C48"——跨路由对拍时两侧从属格展开不同，产生假阳性。
-        let repair = crate::excel_open_repair::repair_audit_copy_for_excel(&input);
-        let candidate = destination_staging.path().join("recalculated.xlsx");
-        std::fs::copy(&input, &candidate).with_context(|| {
-            format!("为 betteroffice 重算准备工作副本：{}", candidate.display())
-        })?;
+        // 安全边界：调用方传入的 input 可能是用户可见的审核副本。规范化
+        // **只允许改我们自己的临时工作副本**，绝不回写调用方文件。
+        //
+        // 同时必须保留一份「已规范化、未重算」的基线：后续
+        // validate_recalculated_copy 拿它与重算产物比对。若拿未规范化的
+        // 调用方文件当基线，shared ref 归一这类规范化会被误判成「重算改变
+        // 公式」（实测直接让 ！40 / ！70 两条路由全部失败）。
+        let baseline = destination_staging.path().join("recalc-baseline.xlsx");
+        std::fs::copy(&input, &baseline)
+            .with_context(|| format!("为 betteroffice 重算准备基线副本：{}", baseline.display()))?;
+        let repair = crate::excel_open_repair::repair_audit_copy_for_excel(&baseline);
         if repair.changed {
             eprintln!(
                 "S1-F01 审核副本 OOXML 规范化（betteroffice 路由）：shared_ref={} quoted={} external={} pane={}",
@@ -209,12 +211,16 @@ impl S1RecalculationSession {
                 repair.external_ref_fixed, repair.pane_fixed
             );
         }
+        let candidate = destination_staging.path().join("recalculated.xlsx");
+        std::fs::copy(&baseline, &candidate).with_context(|| {
+            format!("为 betteroffice 重算准备工作副本：{}", candidate.display())
+        })?;
         let outcome = crate::bo_calc::recalculate(&candidate, config)?;
         let report = serde_json::json!({
             "status": "recalculated",
             "engine": outcome.application,
         });
-        let mut report = finish_recalculation(&input, &output, &candidate, report, started)?;
+        let mut report = finish_recalculation(&baseline, &output, &candidate, report, started)?;
         report.elapsed_ms = started.elapsed().as_millis();
         Ok(report)
     }
@@ -606,15 +612,14 @@ impl S1RecalculationSession {
         }
         let started = Instant::now();
         let (input, output, destination_staging) = prepare_recalculation_paths(input, output)?;
-        // 与 GUI 主路径同一口径：COM 打开前先做 Excel 打开修复（shared formula
-        // 的 ref 归一等）。诊断/CLI 入口绕过 s1_formula_copy 时同样生效。
-        // 与计算引擎无关（见 s1_formula_copy 同处说明）。
-        let _ = crate::excel_open_repair::repair_audit_copy_for_excel(&input);
         // Excel receives short temporary paths; the final candidate is staged
         // beside the destination so publication remains atomic and no-overwrite.
         let engine_staging = StagingDirectory::create(&std::env::temp_dir())?;
         let prepared =
             crate::native_recalculation::prepare_engine_input(&input, engine_staging.path(), true)?;
+        // 安全边界：只对交给引擎的临时副本做规范化，绝不回写调用方 input；
+        // 该副本同时作为重算后的比对基线（见 recalculate_betteroffice 说明）。
+        let _ = crate::excel_open_repair::repair_audit_copy_for_excel(&prepared);
         let engine_output = engine_staging.path().join("native-com-result.xlsx");
         let candidate = destination_staging.path().join("recalculated.xlsx");
 
@@ -663,13 +668,16 @@ impl S1RecalculationSession {
                 "原生 COM 未按预期保存方式完成重算"
             );
             ensure!(engine_output.is_file(), "原生 COM 没有生成重算工作簿");
+            // 基准必须是已规范化的引擎输入副本：用未规范化的调用方 input
+            // 比对，会把 shared ref 归一误判成「重算改变公式」。
             let normalized = crate::native_recalculation::normalize_engine_output(
-                &input,
+                &prepared,
                 &engine_output,
                 engine_staging.path(),
             )?;
             fs::copy(normalized, &candidate).context("暂存原生 COM 重算结果")?;
-            validate_recalculated_copy(&input, &candidate)?;
+            // 比对基准用已规范化的引擎输入副本，避免把规范化误判为重算改动。
+            validate_recalculated_copy(&prepared, &candidate)?;
             Ok(report)
         })();
         let report = match attempt {
@@ -691,7 +699,8 @@ impl S1RecalculationSession {
                 });
             }
         };
-        finish_recalculation(&input, &output, &candidate, report, started)
+        // 比对基准用已规范化的引擎输入副本（不是未修复的调用方 input）。
+        finish_recalculation(&prepared, &output, &candidate, report, started)
     }
 
     fn fallback_to_wps(
@@ -751,7 +760,8 @@ impl S1RecalculationSession {
         let candidate = destination_staging.path().join("recalculated.xlsx");
         fs::copy(normalized, &candidate).context("暂存 LibreOffice 重算结果")?;
         let report = serde_json::json!({"status":"recalculated", "engine":"LibreOffice"});
-        finish_recalculation(&input, &output, &candidate, report, started)
+        // 同一口径：比对基准必须是已规范化的引擎输入副本。
+        finish_recalculation(&prepared, &output, &candidate, report, started)
     }
 }
 
@@ -935,10 +945,22 @@ pub fn recalculate_s1_formula_copy_batch(
         );
     }
     let started = Instant::now();
-    let pending: Vec<(PathBuf, PathBuf)> = pending_pairs
-        .iter()
-        .map(|(_, input, output)| (input.clone(), output.clone()))
-        .collect();
+    // 安全边界 + 口径一致：为每个待处理工作簿建一份**规范化基线副本**，
+    // sidecar 读基线、比对也用基线，调用方文件保持原样。
+    let batch_staging = StagingDirectory::create(&std::env::temp_dir())?;
+    let mut pending: Vec<(PathBuf, PathBuf)> = Vec::with_capacity(pending_pairs.len());
+    let mut batch_baselines: Vec<PathBuf> = Vec::with_capacity(pending_pairs.len());
+    for (sequence, (_, input, _)) in pending_pairs.iter().enumerate() {
+        let baseline = batch_staging
+            .path()
+            .join(format!("baseline-{sequence}.xlsx"));
+        std::fs::copy(input, &baseline)
+            .with_context(|| format!("为批量重算准备基线副本：{}", input.display()))?;
+        let _ = crate::excel_open_repair::repair_audit_copy_for_excel(&baseline);
+        batch_baselines.push(baseline.clone());
+        let (_, _, output) = &pending_pairs[sequence];
+        pending.push((baseline, output.clone()));
+    }
     let pairs_file = unique_pairs_file(&pending)?;
     let command = Command::new(&sidecar_path)
         .arg("recalculate-batch")
@@ -990,10 +1012,7 @@ pub fn recalculate_s1_formula_copy_batch(
     let mut outcomes = betteroffice_outcomes;
     for (pending_index, book) in books.iter().enumerate() {
         let original_index = pending_pairs[pending_index].0;
-        let (input, output) = (
-            &pending_pairs[pending_index].1,
-            &pending_pairs[pending_index].2,
-        );
+        let output = &pending_pairs[pending_index].2;
         if book.get("status").and_then(Value::as_str) != Some("recalculated") {
             continue;
         }
@@ -1003,14 +1022,16 @@ pub fn recalculate_s1_formula_copy_batch(
             .context("批次重算结果缺少引擎名")?
             .to_owned();
         validate_s1_engine(&engine)?;
-        validate_recalculated_copy(input, output)?;
+        // 与「已规范化基线」比对（sidecar 读的就是同一份基线），
+        // 避免把 shared ref 归一误判成「重算改变公式」。
+        validate_recalculated_copy(&batch_baselines[pending_index], output)?;
         let engine = match betteroffice_reasons[original_index].as_ref() {
             Some(reason) => format!("{engine}；{reason}"),
             None => engine,
         };
         outcomes[original_index] = Some(S1RecalculationReport {
             engine,
-            input: input.clone(),
+            input: pending_pairs[pending_index].1.clone(),
             output: output.clone(),
             elapsed_ms: elapsed_per_book_ms,
         });
@@ -1067,9 +1088,6 @@ pub fn recalculate_s1_formula_copy(
     // Excel COM 打开修复：与 GUI 主路径（execute_s1_formula_copy_*）同一口径。
     // 本函数也被 CLI/诊断入口直接调用，若不在此修复，shared formula 的 ref
     // 错位会让重算守卫误判「重算改变公式」。
-    // 与计算引擎无关：任何引擎打开副本前都先做 OOXML 规范化
-    // （shared formula ref 归一等），保证两条路由口径一致。
-    let _ = crate::excel_open_repair::repair_audit_copy_for_excel(input_path.as_ref());
     // betteroffice（纯 Rust）优先——Windows 与 Linux 同一路由：
     // betteroffice → 本函数既有 sidecar（Windows COM / Linux LibreOffice）。
     let bo_config = crate::bo_calc::BoCalcConfig::from_app();
@@ -1097,7 +1115,15 @@ pub fn recalculate_s1_formula_copy(
     let (input_path, output_path, staging) =
         prepare_recalculation_paths(input_path.as_ref(), output_path.as_ref())?;
     let candidate = staging.path().join("recalculated.xlsx");
-    let sidecar_input = sidecar_io_path(&input_path);
+    // 安全边界：sidecar 引擎读的是临时副本，规范化只改它。
+    // 规范化基线单独留一份，供重算后比对（否则 ref 归一会被误判成改公式）。
+    let baseline = staging.path().join("recalc-baseline.xlsx");
+    std::fs::copy(&input_path, &baseline)
+        .with_context(|| format!("为 sidecar 重算准备基线副本：{}", baseline.display()))?;
+    let _ = crate::excel_open_repair::repair_audit_copy_for_excel(&baseline);
+    std::fs::copy(&baseline, &candidate)
+        .with_context(|| format!("为 sidecar 重算准备工作副本：{}", candidate.display()))?;
+    let sidecar_input = sidecar_io_path(&candidate);
     let sidecar_output = sidecar_io_path(&candidate);
     let command = Command::new(&sidecar_path)
         .arg("recalculate")
@@ -1120,7 +1146,7 @@ pub fn recalculate_s1_formula_copy(
 
     let report: Value =
         serde_json::from_slice(&command.stdout).context("解析公式重算 sidecar 的 JSON 结果")?;
-    let mut report = finish_recalculation(&input_path, &output_path, &candidate, report, started)?;
+    let mut report = finish_recalculation(&baseline, &output_path, &candidate, report, started)?;
     if let Some(reason) = bo_fallback_reason {
         report.engine = format!("{}；{}", report.engine, reason);
     }
@@ -1136,8 +1162,14 @@ fn recalculate_with_betteroffice(
     let started = Instant::now();
     let (input, output, destination_staging) =
         prepare_recalculation_paths(input_path, output_path)?;
+    // 安全边界：只改临时工作副本，绝不回写调用方文件；并保留已规范化的
+    // 基线用于重算后比对（见 recalculate_betteroffice 同处说明）。
+    let baseline = destination_staging.path().join("recalc-baseline.xlsx");
+    std::fs::copy(&input, &baseline)
+        .with_context(|| format!("为 betteroffice 重算准备基线副本：{}", baseline.display()))?;
+    let _ = crate::excel_open_repair::repair_audit_copy_for_excel(&baseline);
     let candidate = destination_staging.path().join("recalculated.xlsx");
-    std::fs::copy(&input, &candidate)
+    std::fs::copy(&baseline, &candidate)
         .with_context(|| format!("为 betteroffice 重算准备工作副本：{}", candidate.display()))?;
     let outcome = crate::bo_calc::recalculate(&candidate, config)?;
     let report = serde_json::json!({
@@ -1447,6 +1479,47 @@ mod tests {
             "0002-个人贷款_2026-recalculated.xlsx"
         );
         assert!(s1_recalculated_filename(0, "sample.xlsx").is_err());
+    }
+
+    /// 规范化只允许改临时工作副本：重算不得回写调用方传入的输入文件。
+    /// 用真实 ！40 模板（含 needs_repair 命中的 shared ref）构造调用。
+    #[test]
+    fn recalculation_never_rewrites_the_callers_input_file() {
+        let Some(template) = real_template_path("！40.金融基础数据采集（委托贷款）202608.xlsx")
+        else {
+            return; // 测试数据不在时跳过（CI/裁剪仓库）
+        };
+        let state = std::env::temp_dir().join(format!(
+            "audit_no_mutation_{}",
+            std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&state).unwrap();
+        let input = state.join("caller-input.xlsx");
+        let output = state.join("recalculated.xlsx");
+        std::fs::copy(&template, &input).unwrap();
+        let before = std::fs::read(&input).unwrap();
+
+        // betteroffice 可用时直接成功；不可用时回退也会失败（无 sidecar），
+        // 两种情形都只关心「input 是否被改写」，因此忽略结果。
+        let _ = recalculate_s1_formula_copy(None, &input, &output, "auto");
+
+        let after = std::fs::read(&input).unwrap();
+        assert_eq!(
+            before, after,
+            "调用方输入文件被规范化回写（必须只改临时工作副本）"
+        );
+        let _ = std::fs::remove_dir_all(&state);
+    }
+
+    fn real_template_path(name: &str) -> Option<std::path::PathBuf> {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent()?;
+        let path = root
+            .join("测试数据/S1F1_新旧对比_20261105_231620/business_templates")
+            .join(name);
+        path.is_file().then_some(path)
     }
 
     /// 公式文本守卫的可配置性：默认开启；关闭只影响第一层（文本比对），

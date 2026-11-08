@@ -194,6 +194,11 @@ fn run_native_com_worker(engine: &str) -> Result<()> {
     Ok(())
 }
 
+#[doc(hidden)]
+pub fn prepare_engine_input_for_test(input: &Path, directory: &Path, com: bool) -> Result<PathBuf> {
+    prepare_engine_input(input, directory, com)
+}
+
 pub(crate) fn prepare_engine_input(input: &Path, directory: &Path, com: bool) -> Result<PathBuf> {
     let cacheless = directory.join("formula-cache-cleared.xlsx");
     let prepared = directory.join("recalculation-request.xlsx");
