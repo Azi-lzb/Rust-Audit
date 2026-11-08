@@ -195,7 +195,7 @@ pub fn execute_s1_formula_copy_with_manual_recovery(
         crate::excel_open_repair::excel_com_engine_requested(calc_engine),
         |input, output| {
             crate::s1_recalculation::recalculate_s1_formula_copy(
-                sidecar_path.context("公式重算 sidecar 不可用")?,
+                sidecar_path,
                 input,
                 output,
                 calc_engine,
@@ -227,6 +227,13 @@ pub(crate) fn execute_s1_formula_copy_with_manual_recovery_session(
         crate::excel_open_repair::excel_com_engine_requested(session.engine_request()),
         |input, output| session.recalculate(input, output),
     )
+}
+
+/// betteroffice（纯 Rust）是否可独立完成重算——不依赖 Excel/WPS/LibreOffice。
+/// 启用时即使没有外部计算 sidecar 也必须继续尝试，否则「无 Office 环境」
+/// 会被误判为「无法重算」。
+fn betteroffice_standalone_available() -> bool {
+    crate::bo_calc::BoCalcConfig::from_env().enabled
 }
 
 fn execute_s1_formula_copy_with_recalculator<F>(
@@ -263,10 +270,11 @@ where
         }
     }
 
-    if !sidecar_available {
+    if !sidecar_available && !betteroffice_standalone_available() {
         return preserve_prepared_s1_formula_copy(
             prepared,
-            "未找到公式重算 sidecar；审核副本已保留，尚未计算公式".to_owned(),
+            "未找到公式重算 sidecar，且 betteroffice 未启用；审核副本已保留，尚未计算公式"
+                .to_owned(),
         );
     }
 
@@ -501,8 +509,11 @@ pub(crate) fn execute_s1_formula_copy_batch_with_manual_recovery(
             .iter()
             .map(|(_, candidate): &(usize, PreparedS1FormulaCopy)| candidate.batch_pair())
             .collect::<Vec<_>>();
-        match crate::s1_recalculation::recalculate_s1_formula_copy_batch(sidecar_path, &pairs, "lo")
-        {
+        match crate::s1_recalculation::recalculate_s1_formula_copy_batch(
+            Some(sidecar_path),
+            &pairs,
+            "lo",
+        ) {
             Ok(reports) if reports.len() == prepared.len() => {
                 for ((index, candidate), report) in prepared.into_iter().zip(reports) {
                     let outcome = match report {
@@ -2035,6 +2046,24 @@ mod tests {
         fs::remove_dir_all(directory).expect("remove formula-copy test directory");
     }
 
+    /// betteroffice 是纯 Rust 引擎：启用时「无 sidecar」不得再被判定为
+    /// 无法重算——这正是「不强制要求 Excel/WPS/LibreOffice」的路由前提。
+    #[test]
+    fn betteroffice_enabled_is_not_blocked_by_a_missing_sidecar() {
+        // 关闭 → 需要 sidecar（旧语义）。
+        let previous = std::env::var_os("PYTOOLS_BO_CALC");
+        std::env::set_var("PYTOOLS_BO_CALC", "off");
+        assert!(!super::betteroffice_standalone_available());
+        std::env::set_var("PYTOOLS_BO_CALC", "auto");
+        assert!(super::betteroffice_standalone_available());
+        std::env::remove_var("PYTOOLS_BO_CALC");
+        assert!(super::betteroffice_standalone_available(), "缺省即启用");
+        match previous {
+            Some(value) => std::env::set_var("PYTOOLS_BO_CALC", value),
+            None => std::env::remove_var("PYTOOLS_BO_CALC"),
+        }
+    }
+
     #[test]
     fn manual_recalc_copy_path_runs_runtime_formula_and_value_validation() {
         let directory = temporary_directory();
@@ -2050,12 +2079,21 @@ mod tests {
             .expect("build synthetic S1 capability plan");
         let modifier = passed_umya_modifier_for(&plan.edit_plan);
 
+        // 语义锚点：betteroffice 关闭（PYTOOLS_BO_CALC=off）且无 sidecar 时，
+        // 仍必须是「待人工重算」；betteroffice 启用时该前置条件不再成立
+        // （纯 Rust 引擎不依赖外部 sidecar），由下方独立测试覆盖。
+        let previous = std::env::var_os("PYTOOLS_BO_CALC");
+        std::env::set_var("PYTOOLS_BO_CALC", "off");
         let outcome = execute_s1_formula_copy_with_manual_recovery(
             &target, &template, &output, None, None, None, &modifier, "auto",
-        )
-        .expect("execute and preserve validated cacheless copy");
+        );
+        match previous {
+            Some(value) => std::env::set_var("PYTOOLS_BO_CALC", value),
+            None => std::env::remove_var("PYTOOLS_BO_CALC"),
+        }
+        let outcome = outcome.expect("execute and preserve validated cacheless copy");
         let S1FormulaCopyOutcome::WaitingManualRecalc(report) = outcome else {
-            panic!("missing sidecar must remain a waiting-manual-recalculation result");
+            panic!("missing sidecar must remain a waiting-manual-recalculation result when betteroffice is off");
         };
         assert_eq!(report.audit_copy, output);
         assert_eq!(report.formula_cells_prepared, 1);

@@ -2620,9 +2620,11 @@ fn run_s1_audit_directory(arguments: S1AuditDirectoryArgs) -> Result<()> {
         // Linux：整批一次 LibreOffice 会话（recalculate-batch，rules/13 §4.5）
         // ——单次引擎启动完成全部工作簿转换；批次失败或单本缺结果时，该本
         // 回退到旧的逐本 sidecar 路径（每本各自启动 LibreOffice）。
+        // Linux（无 COM）：betteroffice 可在无 sidecar 时独立批量重算，
+        // 因此批量入口不再要求 sidecar 存在——sidecar 仅作为回退目标。
         let mut batch_reports = if !cfg!(windows) {
-            match recalculation_sidecar.as_deref() {
-                Some(sidecar) => {
+            {
+                {
                     let pairs = accepted_inputs
                         .iter()
                         .enumerate()
@@ -2643,7 +2645,11 @@ fn run_s1_audit_directory(arguments: S1AuditDirectoryArgs) -> Result<()> {
                         })
                         .collect::<anyhow::Result<Vec<(std::path::PathBuf, std::path::PathBuf)>>>(
                         )?;
-                    match recalculate_s1_formula_copy_batch(sidecar, &pairs, "auto") {
+                    match recalculate_s1_formula_copy_batch(
+                        recalculation_sidecar.as_deref(),
+                        &pairs,
+                        "auto",
+                    ) {
                         Ok(reports) => Some(reports),
                         Err(error) => {
                             eprintln!(
@@ -2653,7 +2659,6 @@ fn run_s1_audit_directory(arguments: S1AuditDirectoryArgs) -> Result<()> {
                         }
                     }
                 }
-                None => None,
             }
         } else {
             None
@@ -2693,9 +2698,7 @@ fn run_s1_audit_directory(arguments: S1AuditDirectoryArgs) -> Result<()> {
                 Ok(report)
             } else {
                 recalculate_s1_formula_copy(
-                    recalculation_sidecar
-                        .as_deref()
-                        .context("Linux 缺少公式重算 sidecar")?,
+                    recalculation_sidecar.as_deref(),
                     &original_copy,
                     &output_copy,
                     "auto",

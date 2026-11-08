@@ -4,6 +4,8 @@
 //! The input to this module is already a separate formula audit copy. It never
 //! edits the submitted source workbook or the manifest's original audit copy.
 
+use rayon::prelude::*;
+
 use anyhow::{bail, ensure, Context, Result};
 use serde_json::Value;
 use std::{
@@ -343,7 +345,7 @@ impl S1RecalculationSession {
                 });
         }
         self.engine_request = "lo".to_owned();
-        recalculate_s1_formula_copy(&self.sidecar_path, input_path, output_path, "lo")
+        recalculate_s1_formula_copy(Some(&self.sidecar_path), input_path, output_path, "lo")
             .with_context(|| format!("Office COM 热会话失败（{error:#}），LibreOffice 回退也失败"))
     }
 
@@ -844,7 +846,7 @@ pub fn validate_s1_formula_cache_mode(
 /// 复核，保证检查不因批量化而减少。返回与 pairs 等长的结果数组：成功项
 /// 为 Some(报告)，失败项为 None（GUI 将保留待人工重算副本）。
 pub fn recalculate_s1_formula_copy_batch(
-    sidecar_path: impl AsRef<Path>,
+    sidecar_path: Option<&Path>,
     pairs: &[(PathBuf, PathBuf)],
     engine_request: &str,
 ) -> Result<Vec<Option<S1RecalculationReport>>> {
@@ -862,22 +864,28 @@ pub fn recalculate_s1_formula_copy_batch(
     let mut betteroffice_reasons: Vec<Option<String>> = (0..pairs.len()).map(|_| None).collect();
     let mut pending_pairs: Vec<(usize, PathBuf, PathBuf)> = Vec::new();
     if bo_config.enabled && engine_request == "auto" {
-        for (index, (input, output)) in pairs.iter().enumerate() {
-            match recalculate_with_betteroffice(input, output, &bo_config) {
+        // betteroffice 是进程内纯 Rust：按本并行（每本独立 Workbook，无共享
+        // 可变状态）。大簿是瓶颈，并发放在外层；线程数取可用核数与本数较小者。
+        let results: Vec<std::result::Result<S1RecalculationReport, String>> = pairs
+            .par_iter()
+            .map(|(input, output)| {
+                recalculate_with_betteroffice(input, output, &bo_config)
+                    .map_err(|error| format!("{error:#}"))
+            })
+            .collect();
+        for (index, result) in results.into_iter().enumerate() {
+            match result {
                 Ok(report) => betteroffice_outcomes[index] = Some(report),
-                Err(error) => {
-                    let reason = format!("{error:#}");
+                Err(reason) => {
                     if !bo_config.fallback_available() {
                         return Err(anyhow::anyhow!(
                             "betteroffice 校验区域重算不可采用且未配置可用回退：{reason}"
                         ));
                     }
                     betteroffice_reasons[index] = Some(format!("betteroffice 回退（{reason}）"));
+                    let (input, output) = &pairs[index];
                     pending_pairs.push((index, input.clone(), output.clone()));
                 }
-            }
-            if pending_pairs.is_empty() && betteroffice_outcomes.iter().all(Option::is_some) {
-                break;
             }
         }
         if pending_pairs.is_empty() {
@@ -889,8 +897,12 @@ pub fn recalculate_s1_formula_copy_batch(
             pending_pairs.push((index, input.clone(), output.clone()));
         }
     }
-    let sidecar_path = fs::canonicalize(sidecar_path.as_ref())
-        .with_context(|| format!("读取公式重算 sidecar：{}", sidecar_path.as_ref().display()))?;
+    // 仅剩被 betteroffice 拒绝的工作簿需要外部引擎。
+    let sidecar_path = sidecar_path.context(
+        "betteroffice 校验区域重算不可用，且未配置公式重算 sidecar（Excel COM / LibreOffice）",
+    )?;
+    let sidecar_path = fs::canonicalize(sidecar_path)
+        .with_context(|| format!("读取公式重算 sidecar：{}", sidecar_path.display()))?;
     ensure!(sidecar_path.is_file(), "公式重算 sidecar 不是文件");
     for (input, output) in pairs {
         ensure!(
@@ -1027,7 +1039,7 @@ fn unique_pairs_file(pairs: &[(PathBuf, PathBuf)]) -> Result<PathBuf> {
 pub const S1_CALC_ENGINES: [&str; 4] = ["auto", "excel", "wps", "lo"];
 
 pub fn recalculate_s1_formula_copy(
-    sidecar_path: impl AsRef<Path>,
+    sidecar_path: Option<&Path>,
     input_path: impl AsRef<Path>,
     output_path: impl AsRef<Path>,
     engine_request: &str,
@@ -1052,8 +1064,12 @@ pub fn recalculate_s1_formula_copy(
             }
         }
     }
-    let sidecar_path = fs::canonicalize(sidecar_path.as_ref())
-        .with_context(|| format!("读取公式重算 sidecar：{}", sidecar_path.as_ref().display()))?;
+    // 至此 betteroffice 不可用；没有 sidecar 就没有任何可用引擎。
+    let sidecar_path = sidecar_path.context(
+        "betteroffice 校验区域重算不可用，且未配置公式重算 sidecar（Excel COM / LibreOffice）",
+    )?;
+    let sidecar_path = fs::canonicalize(sidecar_path)
+        .with_context(|| format!("读取公式重算 sidecar：{}", sidecar_path.display()))?;
     ensure!(sidecar_path.is_file(), "公式重算 sidecar 不是文件");
     let started = Instant::now();
     let (input_path, output_path, staging) =
@@ -1473,7 +1489,7 @@ mod tests {
         fs::write(&output, b"existing-output")?;
         let input_before = fs::read(&input)?;
 
-        let error = recalculate_s1_formula_copy(&sidecar, &input, &output, "auto")
+        let error = recalculate_s1_formula_copy(Some(&sidecar), &input, &output, "auto")
             .expect_err("existing output must be refused");
         assert!(format!("{error:#}").contains("拒绝覆盖 S1 重算输出"));
         assert_eq!(fs::read(&input)?, input_before);
@@ -1500,7 +1516,7 @@ mod tests {
         workbook.save(&input)?;
         let input_before = fs::read(&input)?;
 
-        let recalculation = recalculate_s1_formula_copy(&sidecar, &input, &output, "auto");
+        let recalculation = recalculate_s1_formula_copy(Some(&sidecar), &input, &output, "auto");
         assert_eq!(fs::read(&input)?, input_before);
         if recalculation.is_err() {
             assert!(

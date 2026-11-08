@@ -8842,7 +8842,7 @@ mod tests {
         // mapping configuration is opened for writing.
         let recalculated_path = run_directory.join("excel-recalculated-copy.xlsx");
         let recalculation = crate::s1_recalculation::recalculate_s1_formula_copy(
-            &sidecar,
+            Some(&sidecar),
             &audit_copy,
             &recalculated_path,
             "auto",
@@ -9104,6 +9104,10 @@ mod tests {
         };
         let store = S1RecoveryStore::new(state_dir);
         let mut current_work_stages = Vec::new();
+        // 本测试验证「有 sidecar / 无 sidecar」的混合语义；betteroffice 是
+        // 纯 Rust 独立引擎，会绕开该前提，故显式关闭以保留原测试契约。
+        let previous_bo = std::env::var_os("PYTOOLS_BO_CALC");
+        std::env::set_var("PYTOOLS_BO_CALC", "off");
         let output = execute_s1_f1_workflow_with_progress(
             &request,
             &accepted,
@@ -9244,6 +9248,10 @@ mod tests {
                 .is_some_and(|text| text.contains("待人工重算"))
         }));
 
+        match previous_bo {
+            Some(value) => std::env::set_var("PYTOOLS_BO_CALC", value),
+            None => std::env::remove_var("PYTOOLS_BO_CALC"),
+        }
         fs::remove_dir_all(root)?;
         Ok(())
     }
