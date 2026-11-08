@@ -1,0 +1,29 @@
+！10.基础数据-单位贷款202609.xlsx                             | hits    0 | subst 0 | float   0 | BO     362ms | COM    4309ms | betteroffice
+！100.金融基础数据采集（单位存款）202608.xlsx                       | hits    0 | subst 0 | float   0 | BO     640ms | COM    1099ms | betteroffice
+！110.金融基础数据-存量个人存款202608.xlsx                        | hits    0 | subst 0 | float   0 | BO     231ms | COM     400ms | betteroffice
+！120.金融基础数据采集（代发工资）202608.xlsx                       | hits    0 | subst 0 | float   0 | BO     151ms | COM     263ms | betteroffice
+！130.互联网金融业务信息（季度）202608.xlsx                        | hits    0 | subst 0 | float   0 | BO      39ms | COM     260ms | betteroffice
+！130.互联网金融业务信息（月度）202608.xlsx                        | hits    0 | subst 0 | float   0 | BO      31ms | COM     203ms | betteroffice
+！140.养老产业贷款信息202608.xlsx                             | hits    0 | subst 0 | float   0 | BO      86ms | COM     533ms | betteroffice
+！140.数字经济产业贷款信息202608.xlsx                           | hits    0 | subst 0 | float   0 | BO      56ms | COM     471ms | betteroffice
+！140.普惠贷款信息202608.xlsx                               | hits    0 | subst 0 | float   0 | BO      91ms | COM     546ms | betteroffice
+！140.科技贷款信息202608.xlsx                               | hits    0 | subst 0 | float   0 | BO     130ms | COM     697ms | betteroffice
+！140.绿色贷款信息202608.xlsx                               | hits    0 | subst 0 | float   0 | BO      61ms | COM     479ms | betteroffice
+！20.融基础数据-个人贷款202609.xlsx                            | hits    0 | subst 0 | float   0 | BO     380ms | COM     863ms | betteroffice
+！30.存量专项贷款一批报文202608.xlsx                            | hits    0 | subst 0 | float   0 | BO      30ms | COM     203ms | betteroffice
+！40.金融基础数据采集（委托贷款）202608.xlsx                        | 失败态不一致 | BO_ok=true COM_ok=false
+！50.金融基础数据-票据业务202608.xlsx                           | hits    0 | subst 0 | float   0 | BO     462ms | COM    3848ms | betteroffice
+！60.金融基础数据采集（单位贷款置换旧债发生额）202608.xlsx                 | hits    0 | subst 0 | float   0 | BO      42ms | COM     278ms | betteroffice
+！61.存量专项贷款二批报文202608.xlsx                            | hits    0 | subst 0 | float   0 | BO      34ms | COM     205ms | betteroffice
+！70.金融基础数据采集（债券业务）202608.xlsx                        | hits    0 | subst 0 | float   0 | BO     613ms | COM     772ms | betteroffice
+！80.金融基础数据采集（股权和特定目的载体投资）202608.xlsx                 | hits    0 | subst 0 | float   0 | BO     449ms | COM     612ms | betteroffice
+！90.金融基础数据采集（同业业务）202608.xlsx                        | hits    0 | subst 0 | float   0 | BO     705ms | COM     652ms | betteroffice
+
+完全对齐（含仅浮点）：19
+  逐字段完全相同：19
+  仅浮点文本差异：0
+双方计算前拦截：0
+实质差异：0
+失败态不一致：1
+==> 19/20 通过（实质差异 0 且失败态一致）
+Error: 对拍未通过：0 个实质差异、1 个失败态不一致

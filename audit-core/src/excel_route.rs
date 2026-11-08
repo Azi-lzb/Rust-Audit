@@ -259,7 +259,10 @@ fn s1_f01_openpyxl_backend(platform: &str, feature: &str) -> anyhow::Result<Arc<
 }
 
 /// 把已渲染的工作簿交 openpyxl worker 做整簿往返（openpyxl 独立序列化）。
-pub fn fast_roundtrip_via_openpyxl(output: &std::path::Path, request_id: &str) -> anyhow::Result<()> {
+pub fn fast_roundtrip_via_openpyxl(
+    output: &std::path::Path,
+    request_id: &str,
+) -> anyhow::Result<()> {
     use anyhow::Context;
     let platform = runtime_platform();
     let capability = openpyxl_capability(&platform, "S3-F05")?;

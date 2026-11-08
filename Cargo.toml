@@ -8,6 +8,10 @@ members = [
     "sidecar/lo-convert",
     "audit-core",
 ]
+exclude = [
+    "vendor/betteroffice-xlsx-model",
+    "vendor/betteroffice-xlsx-calc",
+]
 
 [workspace.package]
 edition = "2021"
@@ -19,6 +23,8 @@ anyhow = "1"
 # libdbus/GTK 系统依赖）；仅 audit-core 的 Linux 目标启用。
 ashpd = { version = "0.13", default-features = false, features = ["file_chooser", "tokio"] }
 axum = "0.8"
+betteroffice-xlsx = { version = "0.5.1", default-features = false }
+betteroffice-xlsx-calc = { version = "0.5.1", default-features = false }
 calamine = "=0.37.0"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 clap = { version = "4", features = ["derive"] }
@@ -49,3 +55,9 @@ windows-sys = { version = "0.61", features = [
 ] }
 zip = "6"
 
+# vendor 修改版 betteroffice（见 vendor/VENDOR_NOTES.md）：
+# content_range() 内容范围 + 记忆化、重算预算运行时可配。
+# 版本保持 0.5.1，[patch.crates-io] 以 path 替换，--offline 构建通过。
+[patch.crates-io]
+betteroffice-xlsx-model = { path = "vendor/betteroffice-xlsx-model" }
+betteroffice-xlsx-calc = { path = "vendor/betteroffice-xlsx-calc" }

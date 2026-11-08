@@ -1,0 +1,202 @@
+[
+  {
+    "template": "！10.基础数据-单位贷款202609.xlsx",
+    "ok": true,
+    "engine": "Excel.Application",
+    "recalc_elapsed_ms": 4309,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！100.金融基础数据采集（单位存款）202608.xlsx",
+    "ok": true,
+    "engine": "Excel.Application",
+    "recalc_elapsed_ms": 1099,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！110.金融基础数据-存量个人存款202608.xlsx",
+    "ok": true,
+    "engine": "Excel.Application",
+    "recalc_elapsed_ms": 400,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！120.金融基础数据采集（代发工资）202608.xlsx",
+    "ok": true,
+    "engine": "Excel.Application",
+    "recalc_elapsed_ms": 263,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！130.互联网金融业务信息（季度）202608.xlsx",
+    "ok": true,
+    "engine": "Excel.Application",
+    "recalc_elapsed_ms": 260,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！130.互联网金融业务信息（月度）202608.xlsx",
+    "ok": true,
+    "engine": "Excel.Application",
+    "recalc_elapsed_ms": 203,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！140.养老产业贷款信息202608.xlsx",
+    "ok": true,
+    "engine": "Excel.Application",
+    "recalc_elapsed_ms": 533,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！140.数字经济产业贷款信息202608.xlsx",
+    "ok": true,
+    "engine": "Excel.Application",
+    "recalc_elapsed_ms": 471,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！140.普惠贷款信息202608.xlsx",
+    "ok": true,
+    "engine": "Excel.Application",
+    "recalc_elapsed_ms": 546,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！140.科技贷款信息202608.xlsx",
+    "ok": true,
+    "engine": "Excel.Application",
+    "recalc_elapsed_ms": 697,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！140.绿色贷款信息202608.xlsx",
+    "ok": true,
+    "engine": "Excel.Application",
+    "recalc_elapsed_ms": 479,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！20.融基础数据-个人贷款202609.xlsx",
+    "ok": true,
+    "engine": "Excel.Application",
+    "recalc_elapsed_ms": 863,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！30.存量专项贷款一批报文202608.xlsx",
+    "ok": true,
+    "engine": "Excel.Application",
+    "recalc_elapsed_ms": 203,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！40.金融基础数据采集（委托贷款）202608.xlsx",
+    "ok": false,
+    "engine": "",
+    "recalc_elapsed_ms": 0,
+    "scan_status": "FAILED",
+    "hits": 0,
+    "cells": [],
+    "error": "Office COM 热会话失败（重算改变公式 存量委托贷款!C15），LibreOffice 回退也失败: 启动 LibreOffice 重算失败: program not found"
+  },
+  {
+    "template": "！50.金融基础数据-票据业务202608.xlsx",
+    "ok": true,
+    "engine": "Excel.Application",
+    "recalc_elapsed_ms": 3848,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！60.金融基础数据采集（单位贷款置换旧债发生额）202608.xlsx",
+    "ok": true,
+    "engine": "Excel.Application",
+    "recalc_elapsed_ms": 278,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！61.存量专项贷款二批报文202608.xlsx",
+    "ok": true,
+    "engine": "Excel.Application",
+    "recalc_elapsed_ms": 205,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！70.金融基础数据采集（债券业务）202608.xlsx",
+    "ok": true,
+    "engine": "Excel.Application",
+    "recalc_elapsed_ms": 772,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！80.金融基础数据采集（股权和特定目的载体投资）202608.xlsx",
+    "ok": true,
+    "engine": "Excel.Application",
+    "recalc_elapsed_ms": 612,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  },
+  {
+    "template": "！90.金融基础数据采集（同业业务）202608.xlsx",
+    "ok": true,
+    "engine": "Excel.Application",
+    "recalc_elapsed_ms": 652,
+    "scan_status": "COMPLETED",
+    "hits": 0,
+    "cells": [],
+    "error": null
+  }
+]

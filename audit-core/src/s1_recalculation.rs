@@ -132,7 +132,81 @@ impl S1RecalculationSession {
         self.owned_excel_cleanup_succeeded
     }
 
+    /// S1-F01 校验区域重算的引擎路由入口。
+    ///
+    /// 优先级（用户确认 2026-11-08）：**betteroffice（纯 Rust）→ COM（Windows）
+    /// → LibreOffice（Linux）→ 明确报错**。betteroffice 拒绝（预算耗尽 /
+    /// #NAME? / 循环引用 / 打开失败）时按 `PYTOOLS_BO_CALC_FALLBACK` 回退，
+    /// 回退原因写进报告 engine 字段留痕；`FALLBACK=none` 时明确失败，绝不静默
+    /// 采用受限结果。
     pub fn recalculate(
+        &mut self,
+        input_path: impl AsRef<Path>,
+        output_path: impl AsRef<Path>,
+    ) -> Result<S1RecalculationReport> {
+        let bo_config = crate::bo_calc::BoCalcConfig::from_env();
+        let mut bo_fallback_reason: Option<String> = None;
+        if bo_config.enabled {
+            match self.recalculate_betteroffice(
+                input_path.as_ref(),
+                output_path.as_ref(),
+                &bo_config,
+            ) {
+                Ok(report) => return Ok(report),
+                Err(error) => {
+                    let reason = format!("{error:#}");
+
+                    if !self.bo_fallback_allowed(&bo_config) {
+                        bail!("betteroffice 校验区域重算不可采用且未配置可用回退：{reason}");
+                    }
+                    bo_fallback_reason = Some(format!("betteroffice 回退（{reason}）"));
+                }
+            }
+        }
+        let mut report = self.recalculate_platform(input_path, output_path)?;
+        if let Some(reason) = bo_fallback_reason {
+            report.engine = format!("{}；{}", report.engine, reason);
+        }
+        Ok(report)
+    }
+
+    /// whether the configured fallback can serve this platform at all.
+    fn bo_fallback_allowed(&self, config: &crate::bo_calc::BoCalcConfig) -> bool {
+        if !config.fallback_available() {
+            return false;
+        }
+        // 用户显式选定单一引擎（excel/wps/lo）时不额外插入 betteroffice 回退链，
+        // 保持既有语义：lo 直接走 LibreOffice，excel/wps 走原生 COM。
+        self.engine_request == "auto"
+    }
+
+    /// betteroffice 首选尝试：在工作副本上原地重算，成功后按既有验证器校验
+    /// 并原子发布（与 COM/LO 同一条 finish_recalculation 路径）。
+    fn recalculate_betteroffice(
+        &mut self,
+        input_path: &Path,
+        output_path: &Path,
+        config: &crate::bo_calc::BoCalcConfig,
+    ) -> Result<S1RecalculationReport> {
+        let started = Instant::now();
+        let (input, output, destination_staging) =
+            prepare_recalculation_paths(input_path, output_path)?;
+        let candidate = destination_staging.path().join("recalculated.xlsx");
+        std::fs::copy(&input, &candidate).with_context(|| {
+            format!("为 betteroffice 重算准备工作副本：{}", candidate.display())
+        })?;
+        let outcome = crate::bo_calc::recalculate(&candidate, config)?;
+        let report = serde_json::json!({
+            "status": "recalculated",
+            "engine": outcome.application,
+        });
+        let mut report = finish_recalculation(&input, &output, &candidate, report, started)?;
+        report.elapsed_ms = started.elapsed().as_millis();
+        Ok(report)
+    }
+
+    /// 平台引擎分支（COM / LibreOffice）——也是 betteroffice 拒绝后的回退目标。
+    fn recalculate_platform(
         &mut self,
         input_path: impl AsRef<Path>,
         output_path: impl AsRef<Path>,
@@ -1105,19 +1179,36 @@ pub fn s1_recalculated_filename(index: usize, source_path: impl AsRef<Path>) -> 
     Ok(format!("{index:04}-{safe}-recalculated.xlsx"))
 }
 
+/// betteroffice（纯 Rust 计算引擎）的报告名。vendor 版计算引擎作为首选
+/// 路由后，实际引擎不再只有 Office COM / LibreOffice 三选一。
+const BETTEROFFICE_ENGINE: &str = "betteroffice (pure Rust)";
+
+fn is_betteroffice_engine(engine: &str) -> bool {
+    engine.split('；').next().map(str::trim) == Some(BETTEROFFICE_ENGINE)
+}
+
 fn validate_s1_engine(engine: &str) -> Result<()> {
+    if is_betteroffice_engine(engine) {
+        // 回退实现串（"…；betteroffice 回退（原因）"）也归此分支：
+        // 结果来自被接受的平台引擎，回退原因仅作留痕。
+        return Ok(());
+    }
     #[cfg(windows)]
     ensure!(
         engine == "Excel.Application"
             || engine == "ket.Application"
             || engine == "KET.Application"
-            || engine == "LibreOffice",
-        "S1 Windows 公式重算实际引擎不受支持：“{engine}”，仅接受 Microsoft Excel COM、WPS 表格 COM 或 LibreOffice"
+            || engine == "LibreOffice"
+            || engine.starts_with("Excel.Application；")
+            || engine.starts_with("ket.Application；")
+            || engine.starts_with("KET.Application；")
+            || engine.starts_with("LibreOffice；"),
+        "S1 Windows 公式重算实际引擎不受支持：“{engine}”，仅接受 betteroffice、Microsoft Excel COM、WPS 表格 COM 或 LibreOffice"
     );
     #[cfg(not(windows))]
     ensure!(
-        engine == "LibreOffice",
-        "S1 Linux 公式重算要求 LibreOffice Calc；sidecar 实际使用“{engine}”，拒绝将其结果作为审核输入"
+        engine == "LibreOffice" || engine.starts_with("LibreOffice；"),
+        "S1 Linux 公式重算要求 LibreOffice Calc 或 betteroffice；sidecar 实际使用“{engine}”，拒绝将其结果作为审核输入"
     );
     Ok(())
 }

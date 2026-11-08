@@ -10,6 +10,7 @@
 
 pub mod acceptance_runner;
 pub mod app_settings;
+pub mod bo_calc;
 pub mod central_csv;
 pub mod conditional_format;
 pub mod config_update;

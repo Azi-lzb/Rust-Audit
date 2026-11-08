@@ -6,6 +6,8 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+betteroffice-xlsx.workspace = true
+betteroffice-xlsx-calc.workspace = true
 axum.workspace = true
 chrono.workspace = true
 clap.workspace = true

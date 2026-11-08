@@ -13,6 +13,38 @@
 
 **openpyxl 路由换架构压缩 37.3s → 4.6s（2026-11-08 第五轮，用户确认换架构）**：逐段计时（AUDIT_S3F5_TIMING）定位 apply=19-28s / validate=6.8-8.2s。两处纯收益优化：①验证器输入侧缓存（同批次 8 表单 plan.input 字节相同，`(path,size,mtime)` 复用值转储/保真快照/差分样式，validate 9-11s→6.8-8.2s）；②worker 惰性加载（`data_only=True` 整簿二次加载只有 copy_range 需要，改为按需，S3-F05 省每表 ~10s）。但墙钟仍 37s——12 核跑 8 个 Python 进程 + 8 个 Rust 验证线程已近满载，且开销在数千次逐格 Python 赋值。实测证明瓶颈在逐格操作而非 openpyxl 本身（**整簿往返仅 0.75-0.88s/份**）。按用户决策换架构：新增 `fast_render` worker 协议（`mode="fast_roundtrip"`）——Rust 侧完成 FAST 回填，worker 只做「openpyxl 加载→保存」往返，包由 openpyxl 自己的序列化器重建（保持与 FAST 直改字节的实现独立性），并保留样式表完整性校验与源哈希不变校验。路由：`edit_engine=openpyxl` → `FastRenderMode::OpenpyxlRoundtrip`；auto/ooxml → `Direct`。**结果：openpyxl 路由 37.3s → 4.6-5.0s（8 表全批次，单表 2.3s，降 8×），快于旧 audit OPENPYXL 11.2s 的 2.2×；FAST 直出维持 1.7-2.0s；三方逐格仍 0 差异、输入 SHA-256 不变；76/76 + 278/278。**
 
+
+**S1-F01 校验区域重算：betteroffice 优先路由（2026-11-08）**
+
+按 Rust-Tools 已验收的同源改造（919750e/925630b/a23b2ca）移植：
+
+- **vendor**：`vendor/betteroffice-xlsx-{model,calc}` 0.5.1 修改版（Apache-2.0，修改点见 `vendor/VENDOR_NOTES.md`）；根 `Cargo.toml` 用 `[patch.crates-io]` path 替换，版本保持 0.5.1，两目录入 `workspace.exclude`；`--offline` 构建通过，`Cargo.lock` 中两条已无 source/checksum。
+- **bo_calc**：新增 `audit-core/src/bo_calc.rs`（等价 pytools-core 实现）——open → 设预算 → N 轮 `recalculate_all` → save → 统计受限/错误格；`now_serial` 显式注入（系统时钟→Excel 1900 序列号）；默认 2 轮；`strip_style_only_cells` 同步移植到 `crates/ooxml-patch`。
+- **路由**：`S1RecalculationSession::recalculate` 改为 **betteroffice → COM → LibreOffice → 明确报错**；`PYTOOLS_BO_CALC_FALLBACK=none` 时拒绝静默采用受限结果；回退原因拼入报告 `engine`（如 `Excel.Application；betteroffice 回退（重算预算耗尽（1329 个公式格未求值…））`）。引擎白名单扩充为接受 betteroffice 及其回退串。
+- **配置**（与 Rust-Tools 同名）：`PYTOOLS_BO_CALC`（auto/off）、`PYTOOLS_BO_CALC_MAX_VISITS`、`PYTOOLS_BO_CALC_ROUNDS`（默认 2，上限 5）、`PYTOOLS_BO_CALC_STRIP_STYLE`（默认 off）、`PYTOOLS_BO_CALC_FALLBACK`（auto/com/libreoffice/none）。
+
+**20 模板双路由对拍**（`audit-core/examples/s1f1_bo_parity.rs`，只走「重算→扫描校验区域」以隔离引擎变量）：
+
+| 结果 | 数量 |
+| --- | ---: |
+| 实质差异 0（逐字段完全相同） | **19 / 20** |
+| 失败态不一致 | 1（！40 委托贷款） |
+
+- **！40 说明**：betteroffice 侧字节级未改任何公式（`C15`/`W7` 重算前后完全一致）；COM 侧被既有守卫 `重算改变公式`（`native_recalculation.rs`，`f2eed96` 引入，本任务未改）拦下——Excel 保存时把 shared formula 从属格展开。属既有 COM 侧行为，非本任务回归。
+- 校验区域扫描有效（！40 命中 `W7 = #DIV/0!`）；其余模板 hits=0 为真实业务状态（双路由一致）。
+
+**三条配置分支实测**：
+
+| 分支 | 结果 |
+| --- | --- |
+| `PYTOOLS_BO_CALC=off` | ✅ 纯 COM（engine=Excel.Application，3950ms） |
+| `MAX_VISITS=10` | ✅ 预算耗尽→自动回退 COM，engine 留痕 `betteroffice 回退（重算预算耗尽（1329 个公式格未求值…））` |
+| `FALLBACK=none` + 预算不足 | ✅ 明确报错，不静默采用受限结果 |
+
+**性能**（重算段，20 模板合计）：betteroffice **4.80s** vs COM **16.69s**，**快 3.5×**；单模板 30-705ms vs 203-4309ms。
+
+**回归**：audit-core lib **281/281**（+3 bo_calc 测试）、excel-editor 76、excel-reader 26、excel-writer 1、ooxml-patch 22，全绿。`s1_audit_directory_cli` 2 个集成测试失败为**既有失败**（已用 HEAD 版本源码复现确认，与本任务无关）。
+
 **FAST 渲染器热点压缩至 1.7s（2026-11-08 第四轮，反超旧 audit）**：逐段计时（AUDIT_S3F5_TIMING=1）定位：每机构渲染仅 ~650ms（已快于 Python），**全部墙钟时间在模板编译 41.8s**——`xml_attr`/`cell_text` 每格每次调用都 `Regex::new`，全模板数十万次编译占编译期 99%。修复：属性正则按名缓存（Mutex<HashMap>）、`<v>`/`<t>` 提升为 `OnceLock<Regex>` 静态 → **compile 41.8s→890ms（47×），每机构 650ms→121-146ms（5×），全批次 40.6s→1.7s**。solo 三方逐格 0 差异保持、输入 SHA-256 不变、278/278。终态对比：**Rust 1.7s vs 旧 audit FAST_OOXML 5.4s（快 3.2×）/ OPENPYXL 11.2s（快 6.6×）/ 自身 EditPlan 路线 513-601s（快 ~300×）**。
 
 **FAST_OOXML 移植 Rust + 性能定论（2026-11-08 第三轮）**：逐段计时定论（CLI developer-view）：S3-F05 耗时 >99% 在 EditPlan 编辑管线+重验证器（read 133ms/planning 510ms 可忽略；EditPlan 路由每表单 133-145s），"逐格计划"架构本身是热点，Rust 实现快慢无关。按用户指示**整体移植旧 audit `fast_ooxml.py`（1335 行）算法为 Rust 新模块 `s3_fast_ooxml.rs`+`s3_fast_ooxml_render.rs`**：模板编译一次（CompiledSheet 行结构/keep_cols/indicator_rows/new_dimension + 无表头/无数据列空占位表跳过）→ 每机构纯字符串重建 sheetData（编译行内容复用+计划目标覆盖，无逐格扫描）→ SheetPlan 删表/降级隐藏（公式引用迭代收敛 + definedNames owner 判定/localSheetId 重映射/越界丢弃 + 保留表公式名称引用否决救回）→ 一次落盘 + 轻量完整性校验。语义锚点修正：Python `EMBEDDED_CONFIG_SHEETS=("使用说明","转表设置")`——报表清单是保留页（此前 EditPlan 路由误删）。路由：`edit_engine` auto/ooxml → FAST 渲染（fail-closed、机构级并行保留）；openpyxl → 编辑计划不变。**solo 三方验证逐格 0 差异（两跑/vs openpyxl/vs Python 基线）、输入 SHA-256 不变；耗时 513-601s（初始）→ 141-144s（批量化+并行）→ 40.6/40.7s（FAST 移植），与旧 audit 同数量级（旧 OPENPYXL 11.2s / FAST 5.4s）**。excel-editor 76/76、audit-core lib 278/278。

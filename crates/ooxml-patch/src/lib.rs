@@ -5175,3 +5175,277 @@ mod comment_vml_restore_tests {
         Ok(())
     }
 }
+
+/// cells whose stored content is formatting only (no value, no formula): the
+/// kind a spreadsheet editor writes when a column is styled down to its last
+/// row. Removing them shrinks the package's stored-cell extent, which pure-Rust
+/// calculation engines use to bound whole-column references.
+#[derive(Debug, Default, Clone, serde::Serialize)]
+pub struct StyleOnlyCellsStrippedReport {
+    pub worksheet_parts: Vec<String>,
+    pub style_only_cells_removed: usize,
+    pub rows_touched: usize,
+}
+
+/// Remove style-only cells from every worksheet part of `source`, writing a
+/// new package to `output`. Values, formulas, inline strings, row attributes
+/// (heights/styles), merges, conditional formatting and validations are kept
+/// untouched: the removed cells hold no content a calculation could read.
+/// Refuses to overwrite an existing output; the source package must pass the
+/// header-package safety checks.
+pub fn strip_style_only_cells(
+    source: impl AsRef<Path>,
+    output: impl AsRef<Path>,
+) -> Result<StyleOnlyCellsStrippedReport> {
+    let source = source.as_ref();
+    let output = output.as_ref();
+    let canonical_source = fs::canonicalize(source).context("resolve source workbook")?;
+    ensure!(
+        source != output && (!output.exists() || fs::canonicalize(output)? != canonical_source),
+        "style-only stripping requires a distinct output path"
+    );
+    ensure!(
+        !output.exists(),
+        "style-only stripping refuses to overwrite an existing output"
+    );
+    validate_header_package(source)
+        .context("validate style-only stripping input package safety")?;
+
+    let worksheet_parts = sheet_parts(source)?;
+    let mut input_zip = ZipArchive::new(fs::File::open(source)?)?;
+    let mut replacements = BTreeMap::new();
+    let mut report = StyleOnlyCellsStrippedReport::default();
+    for (_, worksheet_part) in worksheet_parts {
+        let xml = read_zip_part(&mut input_zip, &worksheet_part)?;
+        let xml = String::from_utf8(xml).with_context(|| "worksheet part is not UTF-8")?;
+        let (patched, removed, rows) = strip_style_only_cells_xml(&xml)?;
+        report.style_only_cells_removed += removed;
+        report.rows_touched += rows;
+        if removed > 0 {
+            report.worksheet_parts.push(worksheet_part.clone());
+            replacements.insert(worksheet_part, patched);
+        }
+    }
+
+    write_replacement_package(&mut input_zip, output, &replacements)?;
+    Ok(report)
+}
+
+/// XML-level worker: drop every `<c>` that stores neither a formula, a value,
+/// nor an inline string. Returns (new xml, cells removed, rows that lost cells).
+fn strip_style_only_cells_xml(xml: &str) -> Result<(String, usize, usize)> {
+    let mut out = String::with_capacity(xml.len());
+    let mut removed = 0usize;
+    let mut rows_touched = 0usize;
+    let mut rest = xml;
+    while let Some(row_start) = find_row_start(rest) {
+        let row_open_end = rest[row_start..]
+            .find('>')
+            .map(|offset| row_start + offset + 1)
+            .ok_or_else(|| anyhow::anyhow!("worksheet row tag is not terminated"))?;
+        let self_closing = rest[..row_open_end].ends_with("/>");
+        // `row_tail_start` is the offset just past the row element (past the
+        // `</row>` close tag for an expanded row, the tag end for a
+        // self-closing one), so the loop never re-emits what it already wrote.
+        let (row_body, row_tail_start) = if self_closing {
+            ("", row_open_end)
+        } else {
+            let close = find_local_element_end(rest, row_open_end, "row")
+                .ok_or_else(|| anyhow::anyhow!("worksheet row is not terminated"))?;
+            let close_end = rest[close..]
+                .find('>')
+                .map(|offset| close + offset + 1)
+                .ok_or_else(|| anyhow::anyhow!("worksheet row close tag is not terminated"))?;
+            (&rest[row_open_end..close], close_end)
+        };
+        let (new_body, removed_in_row, _cells_before) = strip_cells_in_row(row_body)?;
+        out.push_str(&rest[..row_start]);
+        if removed_in_row > 0 {
+            // Rebuild the row with its original attributes and the reduced
+            // body; keep the element even when it loses every cell so row
+            // heights and row styles survive.
+            let open_tag = &rest[row_start..row_open_end];
+            if self_closing {
+                out.push_str(open_tag);
+            } else {
+                // `open_tag` already ends with '>': appending another one would
+                // emit `>>` and break the element.
+                out.push_str(open_tag);
+                out.push_str(&new_body);
+                out.push_str("</row>");
+            }
+            rows_touched += 1;
+        } else {
+            out.push_str(&rest[row_start..row_tail_start]);
+        }
+        rest = &rest[row_tail_start..];
+        removed += removed_in_row;
+    }
+    out.push_str(rest);
+    Ok((out, removed, rows_touched))
+}
+
+/// find the next row element start (`<row ...>` or `<ns:row ...>`), skipping
+/// lookalikes such as `<rows>`; returns the absolute offset into `xml`.
+fn find_row_start(xml: &str) -> Option<usize> {
+    find_local_element_start(xml, "row")
+}
+
+/// find the closing tag (`</row>` or `</ns:row>`) for `local`, starting the
+/// scan at `from`; returns the absolute offset of the `</`.
+fn find_local_element_end(xml: &str, from: usize, local: &str) -> Option<usize> {
+    let mut search_from = from;
+    while let Some(relative) = xml[search_from..].find("</") {
+        let absolute = search_from + relative;
+        let mut cursor = absolute + 2;
+        while cursor < xml.len()
+            && (xml.as_bytes()[cursor].is_ascii_alphanumeric() || xml.as_bytes()[cursor] == b'_')
+        {
+            cursor += 1;
+        }
+        let local_matched = if cursor < xml.len() && xml.as_bytes()[cursor] == b':' {
+            cursor += 1;
+            let local_start = cursor;
+            while cursor < xml.len()
+                && (xml.as_bytes()[cursor].is_ascii_alphanumeric()
+                    || xml.as_bytes()[cursor] == b'_')
+            {
+                cursor += 1;
+            }
+            &xml[local_start..cursor] == local
+        } else {
+            &xml[absolute + 2..cursor] == local
+        };
+        if local_matched {
+            return Some(absolute);
+        }
+        search_from = absolute + 2;
+    }
+    None
+}
+
+/// drop style-only `<c>` elements from one row body; returns the new body,
+/// how many cells were removed, and how many cells the row had.
+fn strip_cells_in_row(row_body: &str) -> Result<(String, usize, usize)> {
+    let mut kept = String::with_capacity(row_body.len());
+    let mut removed = 0usize;
+    let mut total = 0usize;
+    let mut rest = row_body;
+    while let Some(start) = find_cell_start(rest) {
+        let open_end = rest[start..]
+            .find('>')
+            .map(|offset| start + offset + 1)
+            .ok_or_else(|| anyhow::anyhow!("worksheet cell tag is not terminated"))?;
+        let self_closing = rest[..open_end].ends_with("/>");
+        let (block, tail_start) = if self_closing {
+            (&rest[start..open_end], open_end)
+        } else {
+            let close = find_local_element_end(rest, open_end, "c")
+                .ok_or_else(|| anyhow::anyhow!("worksheet cell is not terminated"))?;
+            let close_end = rest[close..]
+                .find('>')
+                .map(|offset| close + offset + 1)
+                .ok_or_else(|| anyhow::anyhow!("worksheet cell close tag is not terminated"))?;
+            (&rest[start..close_end], close_end)
+        };
+        kept.push_str(&rest[..start]);
+        total += 1;
+        let has_content = find_local_element_start(block, "f").is_some()
+            || find_local_element_start(block, "v").is_some()
+            || find_local_element_start(block, "is").is_some();
+        if has_content {
+            kept.push_str(block);
+        } else {
+            removed += 1;
+        }
+        rest = &rest[tail_start..];
+    }
+    kept.push_str(rest);
+    Ok((kept, removed, total))
+}
+
+/// find the next `<c ` / `<c>` cell element start in `xml`.
+fn find_cell_start(xml: &str) -> Option<usize> {
+    find_local_element_start(xml, "c")
+}
+
+/// find the next element whose local tag name equals `local`, whatever prefix
+/// it carries; returns the absolute offset of the `<`.
+fn find_local_element_start(xml: &str, local: &str) -> Option<usize> {
+    let bytes = xml.as_bytes();
+    let mut search_from = 0usize;
+    while let Some(relative) = xml[search_from..].find('<') {
+        let absolute = search_from + relative;
+        let mut cursor = absolute + 1;
+        // optional namespace prefix
+        while cursor < bytes.len()
+            && (bytes[cursor].is_ascii_alphanumeric() || bytes[cursor] == b'_')
+        {
+            cursor += 1;
+        }
+        let local_matched = if cursor < bytes.len() && bytes[cursor] == b':' {
+            cursor += 1;
+            let local_start = cursor;
+            while cursor < bytes.len()
+                && (bytes[cursor].is_ascii_alphanumeric() || bytes[cursor] == b'_')
+            {
+                cursor += 1;
+            }
+            &xml[local_start..cursor] == local
+        } else {
+            &xml[absolute + 1..cursor] == local
+        };
+        if !local_matched {
+            search_from = absolute + 1;
+            continue;
+        }
+        if cursor < bytes.len()
+            && matches!(bytes[cursor], b' ' | b'>' | b'/' | b'\t' | b'\n' | b'\r')
+        {
+            return Some(absolute);
+        }
+        search_from = absolute + 1;
+    }
+    None
+}
+
+/// rewrite `source`'s package to `output`, swapping in `replacements`.
+fn write_replacement_package(
+    input_zip: &mut ZipArchive<fs::File>,
+    output: &Path,
+    replacements: &BTreeMap<String, String>,
+) -> Result<()> {
+    if let Some(parent) = output
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent)?;
+    }
+    let file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(output)
+        .with_context(|| format!("create stripped copy {}", output.display()))?;
+    let mut writer = ZipWriter::new(file);
+    for index in 0..input_zip.len() {
+        let mut entry = input_zip.by_index(index)?;
+        let name = entry.name().to_owned();
+        let mut options = SimpleFileOptions::default().compression_method(entry.compression());
+        if let Some(modified) = entry.last_modified() {
+            options = options.last_modified_time(modified);
+        }
+        if entry.is_dir() {
+            writer.add_directory(name, options)?;
+        } else {
+            writer.start_file(&name, options)?;
+            if let Some(bytes) = replacements.get(&name) {
+                writer.write_all(bytes.as_bytes())?;
+            } else {
+                std::io::copy(&mut entry, &mut writer)?;
+            }
+        }
+    }
+    writer.finish()?;
+    Ok(())
+}
+
