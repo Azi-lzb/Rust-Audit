@@ -608,8 +608,12 @@ where
     let fast_template = if fast {
         let bytes = std::fs::read(&template.path)
             .with_context(|| format!("读取金融表单模板：{}", template.path.display()))?;
+        let t_compile = std::time::Instant::now();
         let compiled =
             crate::s3_fast_ooxml::compile_template(&bytes).context("FAST_OOXML 模板编译失败")?;
+        if std::env::var_os("AUDIT_S3F5_TIMING").is_some() {
+            eprintln!("[s3f5-fast] compile={}ms", t_compile.elapsed().as_millis());
+        }
         let mut base_indexes: HashSet<String> = HashSet::new();
         base_indexes.insert("0".to_owned());
         let mut colors: HashSet<u32> = HashSet::new();
@@ -681,10 +685,13 @@ where
                         sender.send(format!("[{}/{}] {label}：执行编辑并验证", index + 1, total));
                     if let Some((compiled, bank)) = fast_template.as_ref() {
                         let started = std::time::Instant::now();
+                        let timing = std::env::var_os("AUDIT_S3F5_TIMING").is_some();
                         let input = fast_input_from_edits(&institution.edits)?;
+                        let t_input = started.elapsed().as_millis();
                         let output =
                             crate::s3_fast_ooxml_render::render_org(compiled, bank, &input)
                                 .map_err(|error| anyhow::anyhow!("{error:#}"))?;
+                        let t_render = started.elapsed().as_millis();
                         fast_write_zip(
                             &staged_output,
                             &output.part_order,
@@ -694,6 +701,17 @@ where
                             &output.content_types_xml,
                         )
                         .map_err(|error| anyhow::anyhow!("{error:#}"))?;
+                        if timing {
+                            eprintln!(
+                                "[s3f5-fast] {} input={}ms render={}ms zip={}ms total={}ms filled={}",
+                                institution.institution_code,
+                                t_input,
+                                t_render,
+                                started.elapsed().as_millis() - t_render,
+                                started.elapsed().as_millis(),
+                                output.filled
+                            );
+                        }
                         return Ok(EditExecutionReport {
                             engine: EngineId::OoxmlPatch,
                             input: template_path.clone(),

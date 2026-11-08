@@ -68,13 +68,23 @@ pub struct CompiledTemplate {
 // ---------------------------------------------------------------------------
 
 pub fn xml_attr(text: &str, name: &str) -> String {
-    let pattern = format!(r#"{name}="([^"]*)""#);
-    if let Ok(re) = regex::Regex::new(&pattern) {
-        if let Some(caps) = re.captures(text) {
-            return caps[1].to_owned();
-        }
-    }
-    String::new()
+    // 属性名来自固定小集合；按名缓存编译产物（模板编译期调用数十万次，
+    // 每次 Regex::new 曾占模板编译 40s 的绝大部分）
+    static ATTR_RE_CACHE: std::sync::OnceLock<std::sync::Mutex<HashMap<String, regex::Regex>>> =
+        std::sync::OnceLock::new();
+    let cache = ATTR_RE_CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
+    let re = {
+        let mut guard = cache.lock().expect("attr regex cache");
+        guard
+            .entry(name.to_owned())
+            .or_insert_with(|| {
+                regex::Regex::new(&format!(r#"{name}="([^"]*)""#)).expect("attr regex compile")
+            })
+            .clone()
+    };
+    re.captures(text)
+        .map(|caps| caps[1].to_owned())
+        .unwrap_or_default()
 }
 
 pub fn col_number(cell_ref: &str) -> u32 {
@@ -104,25 +114,22 @@ fn cell_text(cell_xml: Option<&String>, shared: &[String]) -> String {
     let Some(cell_xml) = cell_xml else {
         return String::new();
     };
+    static VALUE_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    static INLINE_T_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     let cell_type = xml_attr(cell_xml, "t");
-    let value = regex::Regex::new(r"<v>(.*?)</v>")
-        .ok()
-        .and_then(|re| re.captures(cell_xml))
-        .map(|caps| caps[1].to_owned());
+    let value_re = VALUE_RE.get_or_init(|| regex::Regex::new(r"<v>(.*?)</v>").expect("v regex"));
+    let value = value_re.captures(cell_xml).map(|caps| caps[1].to_owned());
     let text = match cell_type.as_str() {
         "s" => value
             .and_then(|v| v.parse::<usize>().ok())
             .and_then(|index| shared.get(index))
             .cloned()
             .unwrap_or_default(),
-        "inlineStr" => regex::Regex::new(r"<t[^>]*>(.*?)</t>")
-            .ok()
-            .map(|re| {
-                re.captures_iter(cell_xml)
-                    .map(|caps| caps[1].to_owned())
-                    .collect::<String>()
-            })
-            .unwrap_or_default(),
+        "inlineStr" => INLINE_T_RE
+            .get_or_init(|| regex::Regex::new(r"<t[^>]*>(.*?)</t>").expect("t regex"))
+            .captures_iter(cell_xml)
+            .map(|caps| caps[1].to_owned())
+            .collect::<String>(),
         _ => value.unwrap_or_default(),
     };
     decode_xml_entities(&text)
