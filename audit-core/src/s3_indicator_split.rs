@@ -5,10 +5,12 @@
 use crate::s3_execution_compare::{
     indicator_split_fill_color_index, vba_color_index_rgb, S3AlertBand,
 };
+use std::sync::Arc;
+
 use anyhow::{ensure, Context, Result};
 use chrono::Local;
 use excel_editor::{
-    inspect_xlsx_profile, CellValue as EditCellValue, EditExecutionReport, EditOperation,
+    inspect_xlsx_profile, CellValue as EditCellValue, EditExecutionReport, EditOperation, EngineId,
     ExcelEditPlan, ExcelModifier, PreservationRequirement, SheetVisibility, WorkbookFormat,
     WorkbookProfile,
 };
@@ -413,12 +415,112 @@ pub fn plan_indicator_comparison_split(
 /// from the configured financial-form template. All workbooks are first
 /// written into a private sibling directory and published as one directory
 /// rename only after every Excel-Core edit succeeds.
+/// 高级设置 edit_engine：auto/ooxml → FAST_OOXML 渲染路径；openpyxl → 编辑计划。
+pub fn fast_render_enabled() -> bool {
+    crate::app_settings::AppSettings::load()
+        .edit_engine
+        .as_str()
+        != "openpyxl"
+}
+
+use crate::s3_fast_ooxml_render::write_zip as fast_write_zip;
+
+fn parse_a1_cell(cell: &str) -> (u32, u32) {
+    // A1 → (行, 列)；FAST 渲染只需要数字坐标
+    let letters: String = cell
+        .chars()
+        .take_while(|ch| ch.is_ascii_alphabetic())
+        .collect();
+    let digits: String = cell
+        .chars()
+        .skip_while(|ch| ch.is_ascii_alphabetic())
+        .collect();
+    let mut column = 0u32;
+    for ch in letters.chars() {
+        column = column * 26 + (ch.to_ascii_uppercase() as u32 - b'A' as u32 + 1);
+    }
+    (digits.parse().unwrap_or(0), column)
+}
+
+fn fast_input_from_edits(
+    edits: &[S3IndicatorSplitEdit],
+) -> anyhow::Result<crate::s3_fast_ooxml_render::OrgRenderInput> {
+    use crate::s3_fast_ooxml_render::{CellFill, OrgRenderInput};
+    let mut input = OrgRenderInput::default();
+    for edit in edits {
+        match edit {
+            S3IndicatorSplitEdit::DeleteSheet { sheet }
+            | S3IndicatorSplitEdit::HideSheet { sheet } => {
+                input.delete_candidates.push(sheet.clone());
+            }
+            S3IndicatorSplitEdit::DeleteColumn { .. } => {}
+            S3IndicatorSplitEdit::HideRow { sheet, row } => {
+                input
+                    .sheets
+                    .entry(sheet.clone())
+                    .or_default()
+                    .hidden_rows
+                    .insert(*row as u32);
+            }
+            S3IndicatorSplitEdit::SetCellValue { sheet, cell, value } => {
+                let (row, column) = parse_a1_cell(cell);
+                let converted =
+                    editor_cell_value(value).map_err(|error| anyhow::anyhow!("{error:#}"))?;
+                input
+                    .sheets
+                    .entry(sheet.clone())
+                    .or_default()
+                    .cells
+                    .entry((row, column))
+                    .or_default()
+                    .value = Some(converted);
+            }
+            S3IndicatorSplitEdit::SetNumberFormat {
+                sheet,
+                cell,
+                format,
+            } => {
+                let (row, column) = parse_a1_cell(cell);
+                input
+                    .sheets
+                    .entry(sheet.clone())
+                    .or_default()
+                    .cells
+                    .entry((row, column))
+                    .or_default()
+                    .num_fmt = Some(format.clone());
+            }
+            S3IndicatorSplitEdit::SetCellFillColor { sheet, cell, argb } => {
+                let (row, column) = parse_a1_cell(cell);
+                let rgb = u32::from_str_radix(
+                    argb.trim_start_matches('#').get(2..).unwrap_or("000000"),
+                    16,
+                )
+                .unwrap_or(0);
+                input
+                    .sheets
+                    .entry(sheet.clone())
+                    .or_default()
+                    .cells
+                    .entry((row, column))
+                    .or_default()
+                    .fill_rgb = Some(rgb);
+            }
+        }
+    }
+    // 删空表/隐藏空行语义已由计划承载（plan_organization 生成显式操作）
+    input.hide_empty_rows = false;
+    input.delete_empty_sheets = false;
+    Ok(input)
+}
+
 pub fn execute_indicator_comparison_split(
     comparison_path: impl AsRef<Path>,
     financial_template_path: impl AsRef<Path>,
     common_config_path: impl AsRef<Path>,
     output_root: impl AsRef<Path>,
     modifier: &ExcelModifier,
+    fast: bool,
 ) -> Result<S3IndicatorSplitExecutionReport> {
     execute_indicator_comparison_split_with_progress(
         comparison_path,
@@ -426,6 +528,7 @@ pub fn execute_indicator_comparison_split(
         common_config_path,
         output_root,
         modifier,
+        fast,
         |_| {},
     )
 }
@@ -436,6 +539,7 @@ pub fn execute_indicator_comparison_split_with_progress<F>(
     common_config_path: impl AsRef<Path>,
     output_root: impl AsRef<Path>,
     modifier: &ExcelModifier,
+    fast: bool,
     mut on_progress: F,
 ) -> Result<S3IndicatorSplitExecutionReport>
 where
@@ -501,6 +605,37 @@ where
         workbook_profile.format == WorkbookFormat::Xlsx,
         "S3-F05 金融表单模板目前仅支持 XLSX"
     );
+    let fast_template = if fast {
+        let bytes = std::fs::read(&template.path)
+            .with_context(|| format!("读取金融表单模板：{}", template.path.display()))?;
+        let compiled =
+            crate::s3_fast_ooxml::compile_template(&bytes).context("FAST_OOXML 模板编译失败")?;
+        let mut base_indexes: HashSet<String> = HashSet::new();
+        base_indexes.insert("0".to_owned());
+        let mut colors: HashSet<u32> = HashSet::new();
+        colors.insert(3);
+        colors.insert(6);
+        for band in &alert_bands {
+            if let Ok(value) = band.fill_color.parse::<u32>() {
+                colors.insert(value);
+            }
+        }
+        for sheet in compiled.sheets.values() {
+            for style in sheet.base_style_by_col.values() {
+                base_indexes.insert(if style.is_empty() {
+                    "0".to_owned()
+                } else {
+                    style.clone()
+                });
+            }
+        }
+        let bank =
+            crate::s3_fast_ooxml::StyleBank::new(&compiled.styles_xml, &base_indexes, &colors)
+                .context("FAST_OOXML 样式编译失败")?;
+        Some((Arc::new(compiled), Arc::new(bank)))
+    } else {
+        None
+    };
     let final_directory = next_output_directory(&output_root)?;
     let staging = S3IndicatorSplitStagingDirectory::create(&output_root)?;
     let edit_started = Instant::now();
@@ -520,6 +655,7 @@ where
         for (index, institution) in plan.organizations.iter().enumerate() {
             let staged_output = staging.path().join(&institution.output_file_name);
             let modifier = &modifier;
+            let fast_template = fast_template.as_ref();
             let template_path = &template.path;
             let profile = &workbook_profile;
             let sender = progress_tx.clone();
@@ -543,6 +679,30 @@ where
                 .and_then(|edit_plan| {
                     let _ =
                         sender.send(format!("[{}/{}] {label}：执行编辑并验证", index + 1, total));
+                    if let Some((compiled, bank)) = fast_template.as_ref() {
+                        let started = std::time::Instant::now();
+                        let input = fast_input_from_edits(&institution.edits)?;
+                        let output =
+                            crate::s3_fast_ooxml_render::render_org(compiled, bank, &input)
+                                .map_err(|error| anyhow::anyhow!("{error:#}"))?;
+                        fast_write_zip(
+                            &staged_output,
+                            &output.part_order,
+                            &output.parts,
+                            &output.workbook_xml,
+                            &output.workbook_rels_xml,
+                            &output.content_types_xml,
+                        )
+                        .map_err(|error| anyhow::anyhow!("{error:#}"))?;
+                        return Ok(EditExecutionReport {
+                            engine: EngineId::OoxmlPatch,
+                            input: template_path.clone(),
+                            output: staged_output.clone(),
+                            elapsed_ms: started.elapsed().as_millis(),
+                            route_decisions: Vec::new(),
+                            attempts: Vec::new(),
+                        });
+                    }
                     modifier
                         .execute(&edit_plan)
                         .map_err(|error| anyhow::anyhow!("{error:#}"))
@@ -1734,6 +1894,7 @@ mod tests {
             &common_path,
             &output_root,
             &modifier,
+            false,
         )
         .expect_err("an empty backend registry cannot claim S3-F05 succeeded");
         assert!(format!("{error:#}").contains("NoEligibleBackend"));

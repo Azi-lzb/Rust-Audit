@@ -57,6 +57,8 @@ pub mod s3_current_value_check;
 pub mod s3_execution_compare;
 pub mod s3_explanation_export;
 pub mod s3_explanation_feedback;
+pub mod s3_fast_ooxml;
+pub mod s3_fast_ooxml_render;
 pub mod s3_indicator_split;
 pub mod template;
 pub mod unit_conversion;

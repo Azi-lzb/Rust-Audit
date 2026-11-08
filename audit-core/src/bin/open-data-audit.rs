@@ -1379,6 +1379,7 @@ fn run_s3_generate_financial_forms(arguments: S3GenerateFinancialFormsArgs) -> R
         &arguments.common_config,
         &arguments.output_directory,
         &modifier,
+        audit_core::s3_indicator_split::fast_render_enabled(),
     ) {
         Ok(report) => report,
         Err(error) => {
