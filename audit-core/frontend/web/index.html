@@ -2623,6 +2623,8 @@ function renderAdvanced(){
       '<select class="gen-select" id="setBoCalcFallback" onchange="setBoCalcFallback(this.value)">'
       +['auto','com','libreoffice','none'].map(function(v){return '<option value="'+v+'"'+(boFallback===v?' selected':'')+'>'+v+'</option>';}).join('')
       +'</select>'),
+    row('重算公式文本守卫','开启时逐格比对重算前后的公式文本，防止引擎篡改/丢失公式；关闭只跳过这一层比对，公式数量、缓存完整性与结果可读性检查始终保留。出现「重算改变公式」类报错且确认是引擎等价规范化（共享公式引用、TRUE/FALSE 字面量、表名引号）造成时可临时关闭核对。',
+      toggle('setRecalcFormulaGuard',s.recalcFormulaGuard!==false)),
   ].join('');
   const rowsCentralForm=[
     row('生成文件方式','由 Excel 文件修改引擎填充并生成金融表单工作簿；不计算公式。','<span>Excel 文件修改引擎</span>'),
@@ -2854,6 +2856,12 @@ async function setBoCalcStripStyle(on){
   try{const next=await bridge.api.update({boCalcStripStyle:!!on});if(next&&typeof next==='object')state=next;}
   catch(e){await refresh();showToast(e&&e.message?e.message:String(e));return;}
   showToast('校验计算剥离样式空格：'+(on?'开启':'关闭'));
+}
+async function setRecalcFormulaGuard(on){
+  if(state&&state.busy)return;
+  try{const next=await bridge.api.update({recalcFormulaGuard:!!on});if(next&&typeof next==='object')state=next;}
+  catch(e){await refresh();showToast(e&&e.message?e.message:String(e));return;}
+  showToast('重算公式文本守卫：'+(on?'开启':'关闭（公式数量与缓存检查仍生效）'));
 }
 async function setBoCalcFallback(value){
   if(state&&state.busy)return;

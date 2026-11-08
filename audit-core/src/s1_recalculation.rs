@@ -1227,10 +1227,22 @@ fn validate_recalculated_copy(input: &Path, output: &Path) -> Result<()> {
         .with_context(|| format!("重开重算后的 S1 公式副本：{}", output.display()))?;
     let source = source.workbook;
     let result = result.workbook;
-    ensure!(
-        excel_reader::formula_texts_equivalent_after_recalculation(&source, &result),
-        "S1 重算修改了工作表结构、公式位置或公式文本（不含 LibreOffice 对 TRUE/FALSE 字面量的等价规范化）"
-    );
+    // 第一层（可关闭）：逐格公式文本/位置比对。高级设置
+    // recalcFormulaGuard=false 时跳过——引擎的等价规范化（shared ref、
+    // 布尔字面量、表名引号）会产生假阳性，把整簿判死。
+    if crate::app_settings::AppSettings::load().recalc_formula_guard_enabled() {
+        ensure!(
+            excel_reader::formula_texts_equivalent_after_recalculation(&source, &result),
+            "S1 重算修改了工作表结构、公式位置或公式文本（不含 LibreOffice 对 TRUE/FALSE 字面量的等价规范化）；
+             如确认是引擎等价规范化导致的假阳性，可在高级设置关闭「重算公式文本守卫」（默认开启）"
+        );
+    } else {
+        eprintln!(
+            "S1-F01 警告：重算公式文本一致性守卫已在高级设置中关闭（{}）；             公式数量、缓存节点与结果可读性检查仍然生效",
+            output.display()
+        );
+    }
+    // 以下三层始终启用：公式数量、缓存节点完整性、结果可读性。
     let formula_count = source
         .sheets
         .iter()
@@ -1424,6 +1436,52 @@ mod tests {
             "0002-个人贷款_2026-recalculated.xlsx"
         );
         assert!(s1_recalculated_filename(0, "sample.xlsx").is_err());
+    }
+
+    /// 公式文本守卫的可配置性：默认开启；关闭只影响第一层（文本比对），
+    /// 公式数量/缓存/结果三层检查仍在 validate_recalculated_copy 中无条件执行。
+    #[test]
+    fn formula_text_guard_defaults_on_and_is_configurable() {
+        use crate::app_settings::AppSettings;
+        let _guard = crate::app_settings::AUDIT_STATE_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let state = std::env::temp_dir().join(format!(
+            "audit_recalc_guard_{}",
+            std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::env::set_var("AUDIT_STATE_DIR", &state);
+
+        // 默认：开启（未设置键）。
+        assert!(AppSettings::load().recalc_formula_guard_enabled());
+
+        // 显式关闭。
+        AppSettings::store_preferences(
+            "auto",
+            "auto",
+            [("recalcFormulaGuard".to_owned(), serde_json::json!(false))]
+                .into_iter()
+                .collect(),
+        )
+        .expect("store guard preference");
+        assert!(!AppSettings::load().recalc_formula_guard_enabled());
+
+        // 再开回来。
+        AppSettings::store_preferences(
+            "auto",
+            "auto",
+            [("recalcFormulaGuard".to_owned(), serde_json::json!(true))]
+                .into_iter()
+                .collect(),
+        )
+        .expect("restore guard preference");
+        assert!(AppSettings::load().recalc_formula_guard_enabled());
+
+        std::env::remove_var("AUDIT_STATE_DIR");
+        let _ = std::fs::remove_dir_all(&state);
     }
 
     #[test]
