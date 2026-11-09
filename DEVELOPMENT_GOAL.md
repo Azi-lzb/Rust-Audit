@@ -28,7 +28,25 @@
 | #NAME? 拒绝分支 | ✅ 拒绝 | `1 个公式格求值为 #NAME?（betteroffice 未实现的函数）`；触发路径是**未定义名称**（GEOMEAN/UNIQUE 已被实现或静默降级） |
 | 真实带 VBA 的 xlsm | ✅ **通过** | `统计工具-大集中工具v3.3.8.xlsm`（38 表 / 3106 公式 / `vbaProject.bin` 713728 B）：重算成功、无 #NAME?、**VBA 部件逐字节保留** |
 | 3 轮以上收敛 | ✅ 已收敛 | ！100 / ！90 / ！50 三模板：round1 有变化 → round2 changed=0 → round3/4/5 恒 0 |
-| WPS COM 回退分支 | ⚠️ **部分验证** | WPS COM（ket.Application v12.0）可打开并成功 CalculateFull + SaveAs，产物 46 部件、551 公式可读；但**未构造出「Excel 打不开而 WPS 能开」的触发场景**（repair 已把可修的都修了，剩下的是真损坏） |
+| WPS COM 引擎 | ✅ **核心能力已验**（异常转移路径未构造样本） | WPS COM（ket.Application v12.0）实测可打开、CalculateFull、SaveAs，产物 46 部件 / 551 公式可读。**两种接入方式**：①未安装 Excel 时 `ExcelComSession::create` 的候选列表 `[Excel.Application, ket.Application, KET.Application]` 按序跳过 Excel，**WPS 直接作为首选 COM 引擎**（不是"回退"）；②装了 Excel 但 `Workbooks.Open` 失败时，`should_retry_with_wps` 关闭 Excel 会话、切 WPS 重试。②这条异常转移路径未构造样本（repair 已覆盖已知全部 Excel 拒开原因，真损坏则 WPS 同样打不开） |
+
+**Windows 重算引擎完整优先级**（代码实证，`native_recalculation.rs:31` +
+`s1_recalculation.rs:692`）：
+
+```
+betteroffice（纯 Rust，默认）
+  ↓ 拒绝（预算耗尽 / #NAME? / 循环引用 / 打不开）
+Excel.Application（若已安装；未安装则候选列表直接跳过）
+  ↓ 已安装但 Workbooks.Open 失败 → should_retry_with_wps 显式切 WPS
+ket.Application / KET.Application（WPS）
+  ↓ 也失败
+LibreOffice（Windows 通常未安装）
+  ↓
+明确报错（不静默）
+```
+
+日常使用不依赖任何 Office 软件：20 个真实模板在 betteroffice 下单路由全部通过，
+只有 betteroffice 拒绝时才需要 COM/WPS/LibreOffice 兜底。
 
 **Linux glibc 2.28 端到端**：20 模板 betteroffice **20/20 全部成功**，与 Windows 逐字段完全相同（实质差异 0）——此前 Linux 侧 ！40/！70 失败的真因是
 `recalculate_with_betteroffice` 与 sidecar session 分支仍用**未规范化的 input** 作比对基准，
