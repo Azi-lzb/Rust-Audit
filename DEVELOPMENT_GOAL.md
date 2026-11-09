@@ -19,6 +19,40 @@
 
 
 
+
+
+**发行包预填配置路径（2026-11-09）**
+
+目标：用户只需选「源数据目录」，模板与外部文件自动识别，不必在多个配置框里挑文件。
+
+- 打包已含 `config-real/`（全量 6 份 + 外部数据；S1S2 版 2 份）。启动时
+  `resolve_default_config_path` 找到 `<exe 目录>/config-real`，`AppState::new`
+  据此推导其余配置的绝对路径并预填到界面（S1 historyConfig、S3 四项配置）。
+- **新增重定位**：`apply_preferences_to_state` 遇到失效的保存路径时，按「同文件名」
+  在 `<exe 目录>/config-real/` 下重新定位，用户整体移动发布包后无需重选。
+  实测：删掉旧目录后启动 → historyConfig 自动指向新位置的 config-real。
+- 实测首次启动（无 settings.json）：6 项配置全部预填到包内路径；S1S2 包里
+  S3 配置为空（预期，包内无 S3 配置）。
+
+回归：audit-core lib 283/283。
+
+**S1-F3 恢复功能整体删除（2026-11-09，用户确认）**
+
+多重兜底（betteroffice → COM/WPS → LibreOffice）下重算失败已属罕见，S1-F3
+「从审核副本汇总校验核查表」入口不再需要，按用户要求**整体删除**（不只是隐藏）：
+
+- 前端：删除恢复按钮/警告/面板、`renderS1F3RecoveryEntry` / `toggleS1F3RecoveryPanel`
+  / `startS1F3Recovery` 三个函数、CSS 规则、引导条目、标题映射，以及「组合设置」
+  页的 S1-F3/F4 说明与 profile DAG 工具行
+- 后端：删除 `start_s1_f3_workflow` / `list_s1_f3_tasks` 两个 API 路由及其实现、
+  `run_s1_f3_worker` 系列、`s1_f3_publish_stage`、`apply_s1_f3_recovery_state`，
+  以及 `s1F3Recovery*` / `s1F3LostCopy*` 状态字段（`get_state` 不再每次扫描磁盘）
+- 测试：删除 5 个 S1-F3 专属测试；`write_s1_f3_recovery_fixture` 保留（S1-F01 测试仍在用）
+- **保留**：S1-F01 重算失败时的「审核副本已保留，等待人工重算」日志提示与副本
+  （必要的失败兜底，用户可自行在 Excel 中重算；只是不再有界面入口回收）
+
+回归：audit-core lib **283/283**（-5 为删除的 S1-F3 测试）。
+
 **未验证项全部补齐（2026-11-09）**
 
 | 原未验证项 | 结果 | 证据 |

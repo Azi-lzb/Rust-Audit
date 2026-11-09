@@ -407,11 +407,6 @@ impl AppState {
             "selectedFiles": [],
             "s1F1Preflight": {},
             "s1F1OutputPath": "",
-            "s1F3RecoveryTasks": [],
-            "s1F3PendingCount": 0,
-            "s1F3LostCopyTasks": [],
-            "s1F3LostCopyCount": 0,
-            "s1F3RecoveryError": "",
             "historyConfig": history_config,
             "extraFiles": [],
             "mixedTemplates": [],
@@ -532,10 +527,7 @@ impl AppState {
     }
 
     fn get_state(&self) -> Value {
-        let recovery = S1RecoveryStore::user_default()
-            .and_then(|store| Ok((store.pending_tasks()?, store.lost_copy_tasks()?)));
         let mut ui = self.lock();
-        apply_s1_f3_recovery_state(&mut ui.value, recovery);
         let mut value = ui.value.clone();
         if let Some(started_at) = ui.started_at {
             if value["periodProgress"]["status"] == "running" {
@@ -547,27 +539,6 @@ impl AppState {
     }
 }
 
-fn apply_s1_f3_recovery_state(
-    state: &mut Value,
-    recovery: Result<(Vec<S1RecoveryTaskSummary>, Vec<S1RecoveryTaskSummary>)>,
-) {
-    match recovery {
-        Ok((pending, lost_copies)) => {
-            state["s1F3PendingCount"] = json!(pending.len());
-            state["s1F3RecoveryTasks"] = json!(pending);
-            state["s1F3LostCopyCount"] = json!(lost_copies.len());
-            state["s1F3LostCopyTasks"] = json!(lost_copies);
-            state["s1F3RecoveryError"] = json!("");
-        }
-        Err(error) => {
-            state["s1F3PendingCount"] = json!(0);
-            state["s1F3RecoveryTasks"] = json!([]);
-            state["s1F3LostCopyCount"] = json!(0);
-            state["s1F3LostCopyTasks"] = json!([]);
-            state["s1F3RecoveryError"] = json!(format!("{error:#}"));
-        }
-    }
-}
 
 /// Run the local-only frontend/API service. It never binds to a LAN address.
 pub fn serve_web_ui(port: u16, config_path: PathBuf) -> Result<()> {
@@ -805,8 +776,6 @@ fn dispatch_api(
         "remove_extra_file" => remove_extra_file(state, args),
         "inspect_template_formulas" => inspect_template_formulas(state),
         "start_dag_flow" => start_dag_flow(state, args),
-        "list_s1_f3_tasks" => list_s1_f3_tasks(state),
-        "start_s1_f3_workflow" => start_s1_f3_workflow(state, args),
         "start_central_comparison" => start_central_comparison(state),
         "start_central_explanation_export" => start_central_explanation_export(state),
         "import_central_explanation_feedback" => {
@@ -1850,420 +1819,12 @@ fn start_s1_f1_workflow(state: &AppState, args: &[Value]) -> std::result::Result
     Ok(json!({"accepted": true}))
 }
 
-fn list_s1_f3_tasks(state: &AppState) -> std::result::Result<Value, ApiError> {
-    let snapshot = state.get_state();
-    if !snapshot["s1F3RecoveryError"]
-        .as_str()
-        .unwrap_or_default()
-        .is_empty()
-    {
-        return Err(ApiError::internal(format!(
-            "读取 S1-F3 持久化任务失败：{}",
-            snapshot["s1F3RecoveryError"].as_str().unwrap_or_default()
-        )));
-    }
-    Ok(snapshot["s1F3RecoveryTasks"].clone())
-}
 
-fn start_s1_f3_workflow(state: &AppState, args: &[Value]) -> std::result::Result<Value, ApiError> {
-    let task_started = Instant::now();
-    let run_id = arg_string(args, 0)
-        .filter(|value| !value.trim().is_empty())
-        .map(str::to_owned)
-        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "S1-F3 缺少恢复 run_id"))?;
-    let file_id = arg_string(args, 1)
-        .filter(|value| !value.trim().is_empty())
-        .map(str::to_owned)
-        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "S1-F3 缺少恢复 file_id"))?;
-    let store = S1RecoveryStore::user_default()
-        .map_err(|error| ApiError::internal(format!("初始化 S1-F3 恢复任务失败：{error:#}")))?;
-    let pending = store
-        .pending_tasks()
-        .map_err(|error| ApiError::internal(format!("扫描 S1-F3 恢复任务失败：{error:#}")))?;
-    if !pending
-        .iter()
-        .any(|task| task.run_id == run_id && task.file_id == file_id)
-    {
-        return Err(ApiError::new(
-            StatusCode::CONFLICT,
-            "所选 S1-F3 任务已完成、副本不可用或不再等待恢复；请刷新任务列表",
-        ));
-    }
-    {
-        let mut ui = state.lock();
-        if ui.value["busy"] == true {
-            return Err(ApiError::new(
-                StatusCode::CONFLICT,
-                "已有任务正在运行，请完成后再使用 S1-F3",
-            ));
-        }
-        ui.value["busy"] = json!(true);
-        clear_run_summary(&mut ui.value);
-        ui.value["status"] = json!("正在验证 S1-F3 人工重算副本并恢复审核……");
-        ui.value["currentWork"] = json!({"feature":"S1-F03","stage":"加载恢复清单"});
-        push_log(
-            &mut ui.value,
-            format!("S1-F3 开始恢复：run_id={run_id}，file_id={file_id}"),
-        );
-    }
-    let worker_state = state.clone();
-    let worker_run_id = run_id.clone();
-    let worker_file_id = file_id.clone();
-    if let Err(error) = thread::Builder::new()
-        .name("audit-s1-f3-recovery".to_owned())
-        .spawn(move || run_s1_f3_worker(worker_state, worker_run_id, worker_file_id, task_started))
-    {
-        let mut ui = state.lock();
-        ui.value["busy"] = json!(false);
-        ui.value["status"] = json!("S1-F3 启动失败");
-        push_error_log(&mut ui.value, format!("启动 S1-F3 失败：{error}"));
-        return Err(ApiError::internal(format!("启动 S1-F3 失败：{error}")));
-    }
-    Ok(json!({"accepted": true}))
-}
 
-fn s1_recovery_result_path(manifest: &S1RecoveryManifest, input_sha256: &str) -> PathBuf {
-    let run_hash = format!("{:x}", Sha256::digest(manifest.run_id.as_bytes()));
-    let run_key = &run_hash[..32];
-    let input_key = input_sha256.get(..32).unwrap_or(input_sha256);
-    manifest
-        .run_directory
-        .join(format!("汇总核查表校验_恢复_{run_key}_{input_key}.xlsx"))
-}
 
-fn run_s1_f3_worker(state: AppState, run_id: String, file_id: String, task_started: Instant) {
-    run_s1_f3_worker_with_store_started(
-        state,
-        run_id,
-        file_id,
-        S1RecoveryStore::user_default(),
-        task_started,
-    );
-}
 
-fn run_s1_f3_worker_with_store(
-    state: AppState,
-    run_id: String,
-    file_id: String,
-    store_result: Result<S1RecoveryStore>,
-) {
-    run_s1_f3_worker_with_store_started(state, run_id, file_id, store_result, Instant::now());
-}
 
-fn run_s1_f3_worker_with_store_started(
-    state: AppState,
-    run_id: String,
-    file_id: String,
-    store_result: Result<S1RecoveryStore>,
-    task_started: Instant,
-) {
-    let mut active_workbook = String::new();
-    let result = (|| -> Result<(S1RecoveryManifest, PathBuf, S1ResultWriteSummary)> {
-        let store = store_result
-            .as_ref()
-            .map_err(|error| anyhow::anyhow!("初始化 S1-F3 恢复状态目录：{error:#}"))?;
-        let mut manifest = store.load(&run_id)?;
-        let file_index = manifest
-            .files
-            .iter()
-            .position(|file| file.file_id == file_id)
-            .context("S1-F3 恢复清单中不存在所选工作簿")?;
-        ensure!(
-            manifest.files[file_index].status.is_pending(),
-            "所选 S1-F3 工作簿已不处于待恢复状态"
-        );
-        active_workbook = manifest.files[file_index].source_file.display().to_string();
-        s1_f3_publish_stage(&state, &active_workbook, "验证审核副本与模板配置");
-        manifest.files[file_index].status = S1RecoveryStatus::ReadyToResume;
-        manifest.files[file_index].reason = Some("正在验证人工重算后的审核副本".to_owned());
-        store.save(&mut manifest)?;
 
-        let audit_copy = manifest.files[file_index]
-            .audit_copy
-            .clone()
-            .context("S1-F3 任务缺少审核副本路径")?;
-        ensure!(
-            audit_copy.is_file(),
-            "S1-F3 审核副本不存在：{}",
-            audit_copy.display()
-        );
-        let template = &manifest.files[file_index].template_file;
-        ensure!(
-            template.is_file(),
-            "S1-F3 模板文件不存在：{}",
-            template.display()
-        );
-        ensure!(
-            file_sha256(template)? == manifest.files[file_index].template_sha256,
-            "S1-F3 模板内容已变化；为避免按新规则审核旧副本，任务保持待恢复"
-        );
-        if let Some(config) = manifest.mapping_config.as_deref() {
-            ensure!(
-                config.is_file(),
-                "S1-F3 映射配置不存在：{}",
-                config.display()
-            );
-            ensure!(
-                manifest.mapping_config_sha256.as_deref() == Some(file_sha256(config)?.as_str()),
-                "S1-F3 映射配置内容已变化；为避免按新配置审核旧副本，任务保持待恢复"
-            );
-        }
-
-        let (
-            current_fingerprint,
-            current_normalized_fingerprint,
-            current_semantic_fingerprint,
-            formula_count,
-        ) = workbook_recovery_fingerprints(&audit_copy)?;
-        ensure!(formula_count > 0, "S1-F3 副本中没有可验证的公式");
-        let expected_fingerprint = manifest.files[file_index]
-            .formula_fingerprint
-            .as_deref()
-            .context("S1-F3 恢复任务缺少原始公式指纹，无法验证公式完整性")?;
-        let expected_normalized_fingerprint = manifest.files[file_index]
-            .formula_fingerprint_normalized
-            .as_deref();
-        validate_recovery_fingerprints(
-            expected_fingerprint,
-            expected_normalized_fingerprint,
-            manifest.files[file_index]
-                .audit_copy_semantic_fingerprint
-                .as_deref(),
-            &current_fingerprint,
-            &current_normalized_fingerprint,
-            &current_semantic_fingerprint,
-        )?;
-        let cache_inventory = excel_reader::inspect_formula_cache_nodes(&audit_copy)
-            .context("检查 S1-F3 副本公式缓存节点")?;
-        ensure!(
-            cache_inventory.formula_cell_count == formula_count,
-            "S1-F3 副本公式数量与 OOXML 公式缓存清单不一致"
-        );
-        if !cache_inventory.missing_cache_cells.is_empty() {
-            manifest.files[file_index].status = S1RecoveryStatus::WaitingManualRecalc;
-            manifest.files[file_index].reason = Some(format!(
-                "公式缓存仍缺失 {} 个，示例：{}!{}；请重新计算、保存并关闭副本后重试。",
-                cache_inventory.missing_cache_cells.len(),
-                cache_inventory.missing_cache_cells[0].sheet_name,
-                cache_inventory.missing_cache_cells[0].cell
-            ));
-            store.save(&mut manifest)?;
-            bail!(
-                "{}",
-                manifest.files[file_index]
-                    .reason
-                    .as_deref()
-                    .unwrap_or_default()
-            );
-        }
-        let recalculated_workbook = {
-            s1_f3_publish_stage(&state, &active_workbook, "读取人工重算后的公式结果");
-            excel_reader::read_workbook_with_unknown_error_tokens_as_text(&audit_copy)
-                .context("读取 S1-F3 人工重算副本的公式结果")?
-                .workbook
-        };
-        let result_coverage = excel_reader::formula_result_value_coverage(&recalculated_workbook);
-        if result_coverage.formula_cell_count != formula_count
-            || result_coverage.typed_result_cell_count != formula_count
-            || !result_coverage.missing_result_cells.is_empty()
-        {
-            let example = result_coverage
-                .missing_result_cells
-                .first()
-                .map(|location| format!("{}!{}", location.sheet_name, location.cell))
-                .unwrap_or_else(|| {
-                    format!(
-                        "公式 {} 个，可读结果 {} 个",
-                        result_coverage.formula_cell_count, result_coverage.typed_result_cell_count
-                    )
-                });
-            let reason = format!(
-                "公式缓存节点存在，但仍有公式结果无法读取（{}）；请在 Excel 中强制完整重算、保存并关闭副本后重试。",
-                example
-            );
-            manifest.files[file_index].status = S1RecoveryStatus::WaitingManualRecalc;
-            manifest.files[file_index].reason = Some(reason.clone());
-            store.save(&mut manifest)?;
-            bail!("{reason}");
-        }
-
-        let config = manifest.mapping_config.as_deref();
-        let preflight =
-            s1_f1_template_preflight(template, config).context("重新载入原 S1-F1 模板审核规则")?;
-        ensure!(
-            preflight.health_passed,
-            "S1-F3 原模板体检未通过，不能恢复审核"
-        );
-        let item = S1F1AcceptedSource {
-            source: manifest.files[file_index].source_file.clone(),
-            template: template.clone(),
-            preflight: Arc::new(preflight),
-        };
-        let org = organisation_from_name(&item.source);
-        let metadata = S1FormulaMetadata {
-            period: manifest.period.clone(),
-            batch_id: manifest.batch_id.clone(),
-            audit_time: manifest.audit_time.clone(),
-            org_code: org.0,
-            org_name: org.1,
-        };
-        let extracted = extract_s1_audit_copy(
-            &item,
-            &item.source,
-            &audit_copy,
-            &manifest.conditional_format_source,
-            &metadata,
-        )
-        .context("复用 S1-F1 公式和条件格式审核提取")?;
-        manifest.files[file_index].formula_issues = extracted.formula_issues;
-        manifest.files[file_index].conditional_issues = extracted.conditional_issues;
-        manifest.files[file_index].conditional_diagnostics = extracted.diagnostics;
-        manifest.files[file_index].issues_extracted = true;
-        manifest.files[file_index].audit_partial = extracted.partial;
-        manifest.files[file_index].recalculation_engine = Some("manual_recalculation".to_owned());
-        manifest.files[file_index].reason = extracted.reason;
-        manifest.files[file_index].status = S1RecoveryStatus::ReadyToResume;
-        store.save(&mut manifest)?;
-
-        s1_f3_publish_stage(&state, &active_workbook, "汇总审核异常并写入最终结果");
-        let summary = match write_s1_recovery_manifest_result(&store, &mut manifest) {
-            Ok(summary) => summary,
-            Err(error) => {
-                manifest.files[file_index].status = S1RecoveryStatus::ResumeFailed;
-                manifest.files[file_index].reason = Some(format!(
-                    "审核提取已保存，但结果工作簿生成失败；可以重试 S1-F3：{error:#}"
-                ));
-                store.save(&mut manifest)?;
-                return Err(error).context("S1-F3 写入恢复后的最终结果工作簿");
-            }
-        };
-        manifest.result_path = Some(summary.path.clone());
-        for file in &mut manifest.files {
-            if file.issues_extracted
-                && matches!(
-                    file.status,
-                    S1RecoveryStatus::ReadyToResume | S1RecoveryStatus::ResumeFailed
-                )
-            {
-                file.status = if file.audit_partial {
-                    S1RecoveryStatus::Partial
-                } else {
-                    S1RecoveryStatus::Completed
-                };
-            }
-        }
-        store.save(&mut manifest)?;
-        Ok((manifest, summary.path.clone(), summary))
-    })();
-
-    let mut ui = state.lock();
-    ui.value["busy"] = json!(false);
-    ui.value["currentWork"] = Value::Null;
-    match result {
-        Ok((manifest, result_path, summary)) => {
-            ui.value["s1F1OutputPath"] = json!(result_path.to_string_lossy());
-            ui.value["status"] = json!(format!(
-                "S1-F3 恢复完成：结果已保存到 {}；剩余待处理 {} 个",
-                result_path.display(),
-                manifest
-                    .files
-                    .iter()
-                    .filter(|file| file.status.is_pending())
-                    .count()
-            ));
-            ui.value["s1F1Preflight"] = json!({
-                "status": "recovered",
-                "runId": manifest.run_id,
-                "resultPath": result_path,
-                "formulaIssues": summary.formula_issue_count,
-                "conditionalIssues": summary.conditional_issue_count,
-                "historyRows": summary.history_rows,
-                "totalIssues": summary.total_issue_count,
-                "manualRecalculation": true,
-                "cacheValidation": "formula text unchanged except for equivalent LibreOffice TRUE/FALSE literal serialization; all formula cache nodes are present and each result is readable by Calamine; result freshness depends on the selected calculation engine recalculating and saving the workbook",
-                "auditInputValidation": if manifest.files.iter().any(|file| file.file_id == file_id && file.audit_copy_semantic_fingerprint.is_some()) { "non-formula cell values, conditional formatting, merged ranges and defined names match the pre-recalculation snapshot; LibreOffice style IDs/default serialization are normalized" } else { "legacy recovery manifest: non-formula input snapshot unavailable; formula integrity was checked" }
-            });
-            push_log(
-                &mut ui.value,
-                format!("S1-F3 结果文件：{}", result_path.display()),
-            );
-            push_detail_log(
-                &mut ui.value,
-                format!(
-                    "S1-F3 使用已保存的审核副本恢复：公式异常={}；条件格式异常={}；输出={}。未重新读取原始报表、匹配模板、复制公式或调用自动重算引擎。",
-                    summary.formula_issue_count,
-                    summary.conditional_issue_count,
-                    result_path.display()
-                ),
-            );
-            publish_run_summary(
-                &mut ui.value,
-                "S1-F03",
-                format!(
-                    "恢复工作簿 {}；公式异常 {} 条；条件格式异常 {} 条；结果文件 {}；剩余待处理 {} 个；总耗时 {}。",
-                    active_workbook,
-                    summary.formula_issue_count,
-                    summary.conditional_issue_count,
-                    result_path.display(),
-                    manifest.files.iter().filter(|file| file.status.is_pending()).count(),
-                    format_elapsed(task_started.elapsed())
-                ),
-            );
-        }
-        Err(error) => {
-            let reason = format!("{error:#}");
-            if let Ok(store) = store_result.as_ref() {
-                if let Ok(mut manifest) = store.load(&run_id) {
-                    if let Some(file) = manifest
-                        .files
-                        .iter_mut()
-                        .find(|file| file.file_id == file_id)
-                    {
-                        if file.status == S1RecoveryStatus::ReadyToResume {
-                            file.status = S1RecoveryStatus::ResumeFailed;
-                        }
-                        if file.reason.as_deref() == Some("正在验证人工重算后的审核副本")
-                        {
-                            file.reason = Some(reason.clone());
-                        }
-                        let _ = store.save(&mut manifest);
-                    }
-                }
-            }
-            ui.value["status"] = json!(format!("S1-F3 恢复未完成：{reason}"));
-            push_log(
-                &mut ui.value,
-                format!("S1-F3 恢复失败，可在修复后重试：{reason}"),
-            );
-            publish_run_summary(
-                &mut ui.value,
-                "S1-F03",
-                format!(
-                    "恢复工作簿 {}；任务失败；结果未生成；总耗时 {}；原因：{reason}。",
-                    if active_workbook.is_empty() {
-                        "未能从恢复清单定位"
-                    } else {
-                        active_workbook.as_str()
-                    },
-                    format_elapsed(task_started.elapsed())
-                ),
-            );
-        }
-    }
-}
-
-fn s1_f3_publish_stage(state: &AppState, workbook: &str, stage: &str) {
-    let mut ui = state.lock();
-    ui.value["currentWork"] = json!({
-        "feature": "S1-F03",
-        "workbook": workbook,
-        "stage": stage,
-    });
-    push_log(
-        &mut ui.value,
-        format!("S1-F03 文件={} 阶段={stage}", workbook),
-    );
-}
 
 fn s1_f1_end_to_end_total_us(task_started: Instant) -> u128 {
     task_started.elapsed().as_micros()
@@ -3346,6 +2907,16 @@ struct PreparedS1ManifestResult {
     conditional_issue_count: usize,
     history_rows: usize,
     total_issue_count: usize,
+}
+
+/// S1-F01 失败保留副本的恢复结果路径（仍在 S1-F01 的失败保留流程中使用）。
+fn s1_recovery_result_path(manifest: &S1RecoveryManifest, input_sha256: &str) -> PathBuf {
+    let run_hash = format!("{:x}", Sha256::digest(manifest.run_id.as_bytes()));
+    let run_key = &run_hash[..32];
+    let input_key = input_sha256.get(..32).unwrap_or(input_sha256);
+    manifest
+        .run_directory
+        .join(format!("汇总核查表校验_恢复_{run_key}_{input_key}.xlsx"))
 }
 
 fn prepare_s1_manifest_result(manifest: &S1RecoveryManifest) -> Result<PreparedS1ManifestResult> {
@@ -8315,10 +7886,10 @@ impl IntoResponse for ApiError {
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_s1_f3_recovery_state, browse_dir, cached_s1_f1_template_preflight,
+        browse_dir, cached_s1_f1_template_preflight,
         execute_s1_f1_workflow_with_progress, extract_s1_audit_copy_with_conditional_extractor,
         format_elapsed, progress_value, publish_run_summary, push_log, render_index,
-        require_complete_com_display_scan, run_s1_f1_for_acceptance, run_s1_f3_worker_with_store,
+        require_complete_com_display_scan, run_s1_f1_for_acceptance,
         s1_f1_current_sheet, s1_f1_template_preflight, write_s1_recovery_manifest_result, AppState,
         S1F1AcceptedSource, S1F1OutputDirectoryGuard, S1F1PreflightRequest, LOG_CAPACITY,
     };
@@ -8608,57 +8179,6 @@ mod tests {
         assert_eq!(invalid.status, StatusCode::BAD_REQUEST);
     }
 
-    #[test]
-    fn s1_f3_state_payload_tracks_persisted_tasks_empty_state_and_read_errors() {
-        let task = S1RecoveryTaskSummary {
-            run_id: "run-01".to_owned(),
-            file_id: "file-01".to_owned(),
-            source_file: PathBuf::from("机构甲.xlsx"),
-            audit_copy: Some(PathBuf::from("run-01/机构甲-审核副本.xlsx")),
-            status: "WAITING_MANUAL_RECALC",
-            reason: Some("等待人工重新计算".to_owned()),
-            updated_at: "2026-10-29T12:00:00Z".to_owned(),
-        };
-        let mut state = json!({});
-        let lost_copy = S1RecoveryTaskSummary {
-            run_id: "run-02".to_owned(),
-            file_id: "file-lost".to_owned(),
-            source_file: PathBuf::from("机构乙.xlsx"),
-            audit_copy: Some(PathBuf::from("run-02/机构乙-审核副本.xlsx")),
-            status: "FAILED",
-            reason: Some("待恢复任务的审核副本已丢失或路径无效".to_owned()),
-            updated_at: "2026-10-29T12:01:00Z".to_owned(),
-        };
-
-        apply_s1_f3_recovery_state(&mut state, Ok((vec![task], vec![lost_copy])));
-        assert_eq!(state["s1F3PendingCount"], 1);
-        assert_eq!(state["s1F3RecoveryTasks"][0]["run_id"], "run-01");
-        assert_eq!(state["s1F3RecoveryTasks"][0]["file_id"], "file-01");
-        assert_eq!(state["s1F3LostCopyCount"], 1);
-        assert_eq!(state["s1F3LostCopyTasks"][0]["status"], "FAILED");
-        assert_eq!(state["s1F3RecoveryError"], "");
-
-        apply_s1_f3_recovery_state(&mut state, Ok((Vec::new(), Vec::new())));
-        assert_eq!(state["s1F3PendingCount"], 0);
-        assert!(state["s1F3RecoveryTasks"].as_array().unwrap().is_empty());
-        assert_eq!(state["s1F3LostCopyCount"], 0);
-        assert!(state["s1F3LostCopyTasks"].as_array().unwrap().is_empty());
-        assert_eq!(state["s1F3RecoveryError"], "");
-
-        apply_s1_f3_recovery_state(
-            &mut state,
-            Err(anyhow::anyhow!("corrupt recovery manifest")),
-        );
-        assert_eq!(state["s1F3PendingCount"], 0);
-        assert!(state["s1F3RecoveryTasks"].as_array().unwrap().is_empty());
-        assert_eq!(state["s1F3LostCopyCount"], 0);
-        assert!(state["s1F3LostCopyTasks"].as_array().unwrap().is_empty());
-        assert!(state["s1F3RecoveryError"]
-            .as_str()
-            .unwrap()
-            .contains("corrupt recovery manifest"));
-    }
-
     fn recovery_result_issue(source_file: &Path, audit_file: &Path) -> Issue {
         Issue {
             issue_id: "S1-RECOVERY-001".to_owned(),
@@ -8692,29 +8212,6 @@ mod tests {
             institution_feedback: String::new(),
             auditor_opinion: String::new(),
         }
-    }
-
-    fn write_s1_f3_recovery_fixture(
-        path: &Path,
-        cached_result: Option<&str>,
-    ) -> anyhow::Result<()> {
-        let mut workbook = Workbook::new();
-        let worksheet = workbook.add_worksheet();
-        worksheet.set_name("检查表")?;
-        worksheet.write_formula(
-            0,
-            0,
-            "=IF(TRUE,\"错误|公式核查|测试指标|测试异常\",\"通过\")",
-        )?;
-        if let Some(result) = cached_result {
-            worksheet.set_formula_result(0, 0, result);
-        }
-        worksheet.write_string(0, 1, "目标字段")?;
-        workbook.define_name("校验区域", "='检查表'!$A$1")?;
-        workbook.define_name("条件格式区域", "='检查表'!$A$1")?;
-        workbook.define_name("表结构区域", "='检查表'!$B$1")?;
-        workbook.save(path)?;
-        Ok(())
     }
 
     #[test]
@@ -8813,189 +8310,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires local read-only S1-F1 workbooks/configuration and Windows Excel COM"]
-    #[cfg(windows)]
-    fn real_s1_f3_recalculates_and_resumes_a_real_s1_f1_audit_copy() -> anyhow::Result<()> {
-        let source = required_s1_real_path("AUDIT_S1_REAL_SOURCE")?;
-        let template = required_s1_real_path("AUDIT_S1_REAL_TEMPLATE")?;
-        let external = required_s1_real_path("AUDIT_S1_REAL_EXTERNAL")?;
-        let mapping = required_s1_real_path("AUDIT_S1_REAL_MAPPING")?;
-        let sidecar = required_s1_real_path("AUDIT_S1_REAL_SIDECAR")?;
-        let original_hashes = [
-            file_sha256(&source)?,
-            file_sha256(&template)?,
-            file_sha256(&external)?,
-            file_sha256(&mapping)?,
-        ];
-
-        let temp = S1F3RealProbeDirectory::create()?;
-        let output_directory = temp.0.join("output");
-        let run_id = "s1-f3-real-resume";
-        let run_directory = output_directory.join(run_id);
-        let state_directory = temp.0.join("state");
-        fs::create_dir_all(&run_directory)?;
-
-        let audit_copy = run_directory.join("real-s1-f1-audit-copy.xlsx");
-        let modifier = crate::excel_route::production_modifier("S1-F3 real workbook recovery")?.0;
-        let manual_copy = crate::s1_formula_copy::execute_s1_formula_copy_with_manual_recovery(
-            &source,
-            &template,
-            &audit_copy,
-            Some(&mapping),
-            Some(&external),
-            None,
-            &modifier,
-            "auto",
-        )?;
-        let (formula_fingerprint, normalized_fingerprint, semantic_fingerprint, formula_count) =
-            match manual_copy {
-                S1FormulaCopyOutcome::WaitingManualRecalc(report) => {
-                    anyhow::ensure!(
-                        report.audit_copy == audit_copy,
-                        "S1-F1 did not preserve the expected independent audit copy"
-                    );
-                    workbook_recovery_fingerprints(&report.audit_copy)?
-                }
-                S1FormulaCopyOutcome::Recalculated(_) => {
-                    anyhow::bail!("S1-F1 unexpectedly recalculated without a sidecar")
-                }
-            };
-        anyhow::ensure!(formula_count > 0, "real S1-F1 copy has no formulas");
-
-        // Model the user opening the saved S1-F1 copy in Excel, forcing a full
-        // recalculation, saving it, and closing Excel. The sidecar writes a
-        // separate temporary output; only that output is copied back over this
-        // disposable audit copy. No source, template, external workbook or
-        // mapping configuration is opened for writing.
-        let recalculated_path = run_directory.join("excel-recalculated-copy.xlsx");
-        let recalculation = crate::s1_recalculation::recalculate_s1_formula_copy(
-            Some(&sidecar),
-            &audit_copy,
-            &recalculated_path,
-            "auto",
-        )?;
-        anyhow::ensure!(
-            recalculation.engine == "Excel.Application",
-            "Windows real S1-F3 acceptance expected Excel COM; got {}",
-            recalculation.engine
-        );
-        fs::copy(&recalculated_path, &audit_copy)?;
-        let audit_copy_hash = file_sha256(&audit_copy)?;
-
-        let mut recovery_file = S1RecoveryFile::new(
-            source.clone(),
-            template.clone(),
-            file_sha256(&template)?,
-            Some(audit_copy.clone()),
-            S1RecoveryStatus::WaitingManualRecalc,
-        );
-        recovery_file.formula_fingerprint = Some(formula_fingerprint);
-        recovery_file.formula_fingerprint_normalized = Some(normalized_fingerprint);
-        recovery_file.audit_copy_semantic_fingerprint = Some(semantic_fingerprint);
-        recovery_file.reason = Some("真实样本 S1-F1 副本已由 Excel COM 重算并保存".to_owned());
-        let file_id = recovery_file.file_id.clone();
-        let mut manifest = S1RecoveryManifest::new(
-            run_id,
-            output_directory,
-            run_directory,
-            "2026-07",
-            "s1-f3-real-resume",
-            "2026-10-29 00:00:00",
-            Some(mapping.clone()),
-            Some(file_sha256(&mapping)?),
-            Vec::new(),
-            Vec::new(),
-            vec![recovery_file],
-        );
-        manifest.external_data = Some(external.clone());
-        let first_store = S1RecoveryStore::new(&state_directory);
-        first_store.save(&mut manifest)?;
-
-        // Construct a fresh store to cover the persisted-task path used after
-        // an application restart, then invoke the same worker as the GUI.
-        let restarted_store = S1RecoveryStore::new(&state_directory);
-        let state = test_state();
-        {
-            let mut ui = state.lock();
-            ui.value["busy"] = json!(true);
-        }
-        run_s1_f3_worker_with_store(
-            state.clone(),
-            run_id.to_owned(),
-            file_id,
-            Ok(restarted_store.clone()),
-        );
-
-        let ui = state.lock();
-        anyhow::ensure!(ui.value["busy"] == false, "S1-F3 worker remained busy");
-        anyhow::ensure!(
-            ui.value["s1F1Preflight"]["status"] == "recovered",
-            "S1-F3 real-workbook recovery failed: {}",
-            ui.value["status"]
-        );
-        let result_path = ui.value["s1F1OutputPath"]
-            .as_str()
-            .context("S1-F3 did not publish the real-workbook result path")?
-            .to_owned();
-        drop(ui);
-
-        let completed = restarted_store.load(run_id)?;
-        anyhow::ensure!(
-            matches!(
-                completed.files[0].status,
-                S1RecoveryStatus::Completed | S1RecoveryStatus::Partial
-            ),
-            "unexpected S1-F3 completion state: {}",
-            completed.files[0].status.as_str()
-        );
-        anyhow::ensure!(completed.files[0].issues_extracted);
-        anyhow::ensure!(restarted_store.pending_tasks()?.is_empty());
-        anyhow::ensure!(completed.result_path.as_deref() == Some(Path::new(&result_path)));
-        anyhow::ensure!(Path::new(&result_path).is_file());
-        anyhow::ensure!(file_sha256(&audit_copy)? == audit_copy_hash);
-        anyhow::ensure!(
-            [
-                file_sha256(&source)?,
-                file_sha256(&template)?,
-                file_sha256(&external)?,
-                file_sha256(&mapping)?,
-            ] == original_hashes,
-            "S1-F3 changed a source workbook, template, external workbook or mapping config"
-        );
-
-        let output = excel_reader::read_workbook(&result_path)?;
-        let result_sheet = output
-            .sheets
-            .iter()
-            .find(|sheet| sheet.name == crate::s1_result_workbook::S1_RESULT_SHEET)
-            .context("S1-F3 real result workbook is missing the audit result sheet")?;
-        anyhow::ensure!(
-            result_sheet
-                .values
-                .get("A1")
-                .and_then(|cell| cell["value"].as_str())
-                == Some("工作簿名")
-                && result_sheet
-                    .values
-                    .get("M1")
-                    .and_then(|cell| cell["value"].as_str())
-                    == Some("审核意见"),
-            "S1-F3 real result workbook does not have the expected 13-column output headers"
-        );
-
-        eprintln!(
-            "real S1-F3 recovery passed: engine={}, formula_cells={}, formula_issues={}, conditional_issues={}, diagnostics={}, status={}",
-            recalculation.engine,
-            formula_count,
-            completed.files[0].formula_issues.len(),
-            completed.files[0].conditional_issues.len(),
-            completed.files[0].conditional_diagnostics.len(),
-            completed.files[0].status.as_str()
-        );
-        Ok(())
-    }
-
-    #[test]
     fn conditional_extraction_failure_keeps_formula_findings_as_partial_result(
     ) -> anyhow::Result<()> {
         let suffix = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
@@ -9077,6 +8391,30 @@ mod tests {
             super::s1_conditional_format_workbook(source, audit_copy, "unknown"),
             source
         );
+    }
+
+    /// 生成 S1-F01 测试样本（含校验区域/条件格式区域/表结构区域三个命名区域）。
+    fn write_s1_f3_recovery_fixture(
+        path: &Path,
+        cached_result: Option<&str>,
+    ) -> anyhow::Result<()> {
+        let mut workbook = Workbook::new();
+        let worksheet = workbook.add_worksheet();
+        worksheet.set_name("检查表")?;
+        worksheet.write_formula(
+            0,
+            0,
+            "=IF(TRUE,\"错误|公式核查|测试指标|测试异常\",\"通过\")",
+        )?;
+        if let Some(result) = cached_result {
+            worksheet.set_formula_result(0, 0, result);
+        }
+        worksheet.write_string(0, 1, "目标字段")?;
+        workbook.define_name("校验区域", "='检查表'!$A$1")?;
+        workbook.define_name("条件格式区域", "='检查表'!$A$1")?;
+        workbook.define_name("表结构区域", "='检查表'!$B$1")?;
+        workbook.save(path)?;
+        Ok(())
     }
 
     #[test]
@@ -9282,397 +8620,6 @@ mod tests {
             Some(value) => std::env::set_var("PYTOOLS_BO_CALC", value),
             None => std::env::remove_var("PYTOOLS_BO_CALC"),
         }
-        fs::remove_dir_all(root)?;
-        Ok(())
-    }
-
-    #[test]
-    fn s1_f3_worker_resumes_cached_copy_after_store_restart_and_publishes_real_result(
-    ) -> anyhow::Result<()> {
-        let suffix = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
-        let root = std::env::temp_dir().join(format!("audit_s1_f3_worker_{suffix}"));
-        let output_dir = root.join("output");
-        let run_dir = output_dir.join("run-01");
-        let state_dir = root.join("state");
-        fs::create_dir_all(&run_dir)?;
-
-        let source = root.join("机构甲_测试报表.xlsx");
-        let template = root.join("template.xlsx");
-        let audit_copy = run_dir.join("机构甲_测试报表_审核副本.xlsx");
-        write_s1_f3_recovery_fixture(&source, None)?;
-        write_s1_f3_recovery_fixture(&template, None)?;
-        // This synthetic cache represents a workbook that the user has already
-        // recalculated and saved. It verifies the S1-F3 resume stage only; it
-        // does not stand in for Excel/LibreOffice recalculation acceptance.
-        write_s1_f3_recovery_fixture(&audit_copy, Some("错误|公式核查|测试指标|测试异常"))?;
-        let source_sha256 = file_sha256(&source)?;
-        let template_sha256 = file_sha256(&template)?;
-        let audit_copy_sha256 = file_sha256(&audit_copy)?;
-
-        let (formula_fingerprint, normalized_fingerprint, semantic_fingerprint, formula_count) =
-            workbook_recovery_fingerprints(&audit_copy)?;
-        assert_eq!(formula_count, 1);
-        let mut recovery_file = S1RecoveryFile::new(
-            source.clone(),
-            template.clone(),
-            template_sha256.clone(),
-            Some(audit_copy.clone()),
-            S1RecoveryStatus::WaitingManualRecalc,
-        );
-        recovery_file.formula_fingerprint = Some(formula_fingerprint);
-        recovery_file.formula_fingerprint_normalized = Some(normalized_fingerprint);
-        recovery_file.audit_copy_semantic_fingerprint = Some(semantic_fingerprint);
-        let file_id = recovery_file.file_id.clone();
-        let mut manifest = S1RecoveryManifest::new(
-            "s1-f3-worker-restart-test",
-            output_dir,
-            run_dir,
-            "2026-07",
-            "s1-f3-worker-test",
-            "2026-10-29 12:00:00",
-            None,
-            None,
-            Vec::new(),
-            Vec::new(),
-            vec![recovery_file],
-        );
-        let first_store = S1RecoveryStore::new(&state_dir);
-        first_store.save(&mut manifest)?;
-        assert_eq!(first_store.pending_tasks()?.len(), 1);
-
-        // A newly constructed store represents a fresh application process.
-        let restarted_store = S1RecoveryStore::new(&state_dir);
-        let state = test_state();
-        {
-            let mut ui = state.lock();
-            ui.value["busy"] = json!(true);
-        }
-        run_s1_f3_worker_with_store(
-            state.clone(),
-            "s1-f3-worker-restart-test".to_owned(),
-            file_id,
-            Ok(restarted_store.clone()),
-        );
-
-        let ui = state.lock();
-        assert_eq!(ui.value["busy"], false);
-        assert_eq!(ui.value["s1F1Preflight"]["status"], "recovered");
-        assert_eq!(ui.value["s1F1Preflight"]["formulaIssues"], 1);
-        assert_eq!(ui.value["s1F1Preflight"]["conditionalIssues"], 0);
-        drop(ui);
-
-        let completed = restarted_store.load("s1-f3-worker-restart-test")?;
-        assert_eq!(completed.files[0].status, S1RecoveryStatus::Completed);
-        assert!(completed.files[0].issues_extracted);
-        assert_eq!(completed.files[0].formula_issues.len(), 1);
-        assert!(completed.files[0].conditional_issues.is_empty());
-        assert!(restarted_store.pending_tasks()?.is_empty());
-
-        let result_path = completed.result_path.context("恢复后缺少结果路径")?;
-        assert!(result_path.is_file());
-        let output = excel_reader::read_workbook(&result_path)?;
-        let result_sheet = output
-            .sheets
-            .iter()
-            .find(|sheet| sheet.name == crate::s1_result_workbook::S1_RESULT_SHEET)
-            .context("恢复结果缺少本期审核结果工作表")?;
-        assert!(result_sheet.values.len() > 13);
-        assert_eq!(
-            result_sheet
-                .values
-                .get("A1")
-                .and_then(|cell| cell["value"].as_str()),
-            Some("工作簿名")
-        );
-        assert_eq!(
-            result_sheet
-                .values
-                .get("M1")
-                .and_then(|cell| cell["value"].as_str()),
-            Some("审核意见")
-        );
-        assert!(result_sheet.values.values().any(|value| matches!(
-            value["value"].as_str(),
-            Some(text) if text.contains("测试异常")
-        )));
-
-        // F3 reads the original report and saved audit copy but never edits either.
-        assert_eq!(file_sha256(&source)?, source_sha256);
-        assert_eq!(file_sha256(&template)?, template_sha256);
-        assert_eq!(file_sha256(&audit_copy)?, audit_copy_sha256);
-
-        fs::remove_dir_all(root)?;
-        Ok(())
-    }
-
-    #[test]
-    fn s1_f3_worker_keeps_missing_cache_task_pending_without_publishing_result(
-    ) -> anyhow::Result<()> {
-        let suffix = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
-        let root = std::env::temp_dir().join(format!("audit_s1_f3_missing_cache_{suffix}"));
-        let output_dir = root.join("output");
-        let run_dir = output_dir.join("run-01");
-        let state_dir = root.join("state");
-        fs::create_dir_all(&run_dir)?;
-
-        let source = root.join("机构乙_测试报表.xlsx");
-        let template = root.join("template.xlsx");
-        let calculated_copy = run_dir.join("calculated-before-cache-clear.xlsx");
-        let audit_copy = run_dir.join("机构乙_测试报表_审核副本.xlsx");
-        write_s1_f3_recovery_fixture(&source, None)?;
-        write_s1_f3_recovery_fixture(&template, None)?;
-        write_s1_f3_recovery_fixture(&calculated_copy, Some("错误|公式核查|测试指标|测试异常"))?;
-        ooxml_patch::clear_formula_caches_for_recalculation(&calculated_copy, &audit_copy)?;
-        let (formula_fingerprint, normalized_fingerprint, semantic_fingerprint, formula_count) =
-            workbook_recovery_fingerprints(&audit_copy)?;
-        assert_eq!(formula_count, 1);
-        assert_eq!(
-            excel_reader::inspect_formula_cache_nodes(&audit_copy)?
-                .missing_cache_cells
-                .len(),
-            1
-        );
-        let audit_copy_sha256 = file_sha256(&audit_copy)?;
-
-        let mut recovery_file = S1RecoveryFile::new(
-            source,
-            template.clone(),
-            file_sha256(&template)?,
-            Some(audit_copy.clone()),
-            S1RecoveryStatus::WaitingManualRecalc,
-        );
-        recovery_file.formula_fingerprint = Some(formula_fingerprint);
-        recovery_file.formula_fingerprint_normalized = Some(normalized_fingerprint);
-        recovery_file.audit_copy_semantic_fingerprint = Some(semantic_fingerprint);
-        let file_id = recovery_file.file_id.clone();
-        let mut manifest = S1RecoveryManifest::new(
-            "s1-f3-missing-cache-test",
-            output_dir,
-            run_dir.clone(),
-            "2026-07",
-            "s1-f3-missing-cache-test",
-            "2026-10-29 12:00:00",
-            None,
-            None,
-            Vec::new(),
-            Vec::new(),
-            vec![recovery_file],
-        );
-        let store = S1RecoveryStore::new(&state_dir);
-        store.save(&mut manifest)?;
-
-        let state = test_state();
-        {
-            let mut ui = state.lock();
-            ui.value["busy"] = json!(true);
-        }
-        run_s1_f3_worker_with_store(
-            state.clone(),
-            "s1-f3-missing-cache-test".to_owned(),
-            file_id,
-            Ok(store.clone()),
-        );
-
-        let ui = state.lock();
-        assert_eq!(ui.value["busy"], false);
-        assert!(ui.value["status"]
-            .as_str()
-            .unwrap()
-            .contains("公式缓存仍缺失"));
-        drop(ui);
-
-        let pending = store.pending_tasks()?;
-        assert_eq!(pending.len(), 1);
-        assert_eq!(pending[0].status, "WAITING_MANUAL_RECALC");
-        assert!(pending[0]
-            .reason
-            .as_deref()
-            .is_some_and(|reason| reason.contains("公式缓存仍缺失")));
-        let waiting = store.load("s1-f3-missing-cache-test")?;
-        assert!(waiting.result_path.is_none());
-        assert!(!waiting.files[0].issues_extracted);
-        assert_eq!(
-            waiting.files[0].status,
-            S1RecoveryStatus::WaitingManualRecalc
-        );
-        assert_eq!(file_sha256(&audit_copy)?, audit_copy_sha256);
-        assert_eq!(
-            fs::read_dir(&run_dir)?
-                .filter_map(Result::ok)
-                .filter(|entry| entry
-                    .file_name()
-                    .to_string_lossy()
-                    .contains("汇总核查表校验_恢复_"))
-                .count(),
-            0
-        );
-
-        fs::remove_dir_all(root)?;
-        Ok(())
-    }
-
-    #[test]
-    fn s1_f3_worker_reports_corrupt_copy_and_preserves_it_for_repair() -> anyhow::Result<()> {
-        let suffix = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
-        let root = std::env::temp_dir().join(format!("audit_s1_f3_corrupt_copy_{suffix}"));
-        let output_dir = root.join("output");
-        let run_dir = output_dir.join("run-01");
-        let state_dir = root.join("state");
-        fs::create_dir_all(&run_dir)?;
-
-        let source = root.join("机构丙_测试报表.xlsx");
-        let template = root.join("template.xlsx");
-        let audit_copy = run_dir.join("机构丙_测试报表_审核副本.xlsx");
-        write_s1_f3_recovery_fixture(&source, None)?;
-        write_s1_f3_recovery_fixture(&template, None)?;
-        write_s1_f3_recovery_fixture(&audit_copy, Some("错误|公式核查|测试指标|测试异常"))?;
-        let (formula_fingerprint, normalized_fingerprint, semantic_fingerprint, formula_count) =
-            workbook_recovery_fingerprints(&audit_copy)?;
-        assert_eq!(formula_count, 1);
-        let corrupt_bytes = b"not an xlsx workbook; retain for manual repair";
-        fs::write(&audit_copy, corrupt_bytes)?;
-
-        let mut recovery_file = S1RecoveryFile::new(
-            source,
-            template.clone(),
-            file_sha256(&template)?,
-            Some(audit_copy.clone()),
-            S1RecoveryStatus::WaitingManualRecalc,
-        );
-        recovery_file.formula_fingerprint = Some(formula_fingerprint);
-        recovery_file.formula_fingerprint_normalized = Some(normalized_fingerprint);
-        recovery_file.audit_copy_semantic_fingerprint = Some(semantic_fingerprint);
-        let file_id = recovery_file.file_id.clone();
-        let mut manifest = S1RecoveryManifest::new(
-            "s1-f3-corrupt-copy-test",
-            output_dir,
-            run_dir,
-            "2026-07",
-            "s1-f3-corrupt-copy-test",
-            "2026-10-29 12:00:00",
-            None,
-            None,
-            Vec::new(),
-            Vec::new(),
-            vec![recovery_file],
-        );
-        let store = S1RecoveryStore::new(&state_dir);
-        store.save(&mut manifest)?;
-
-        let state = test_state();
-        {
-            let mut ui = state.lock();
-            ui.value["busy"] = json!(true);
-        }
-        run_s1_f3_worker_with_store(
-            state.clone(),
-            "s1-f3-corrupt-copy-test".to_owned(),
-            file_id,
-            Ok(store.clone()),
-        );
-
-        let ui = state.lock();
-        assert_eq!(ui.value["busy"], false);
-        assert!(ui.value["status"]
-            .as_str()
-            .unwrap()
-            .contains("S1-F3 恢复未完成"));
-        drop(ui);
-
-        let manifest = store.load("s1-f3-corrupt-copy-test")?;
-        assert_eq!(manifest.files[0].status, S1RecoveryStatus::ResumeFailed);
-        assert!(manifest.files[0]
-            .reason
-            .as_deref()
-            .is_some_and(|reason| reason.contains("读取审核副本完整性指纹")));
-        assert!(manifest.result_path.is_none());
-        assert!(!manifest.files[0].issues_extracted);
-        assert_eq!(fs::read(&audit_copy)?, corrupt_bytes);
-        let pending = store.pending_tasks()?;
-        assert_eq!(pending.len(), 1);
-        assert_eq!(pending[0].status, "RESUME_FAILED");
-        assert!(excel_reader::read_workbook(&audit_copy).is_err());
-
-        fs::remove_dir_all(root)?;
-        Ok(())
-    }
-
-    #[test]
-    fn s1_f3_result_publication_is_idempotent_across_store_restart() -> anyhow::Result<()> {
-        let suffix = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
-        let root = std::env::temp_dir().join(format!("audit_s1_f3_publish_{suffix}"));
-        let run_dir = root.join("output/run");
-        fs::create_dir_all(&run_dir)?;
-        let source = root.join("source.xlsx");
-        let audit_copy = run_dir.join("audit-copy.xlsx");
-        let mut file = S1RecoveryFile::new(
-            source.clone(),
-            root.join("template.xlsx"),
-            "template-hash".to_owned(),
-            Some(audit_copy.clone()),
-            S1RecoveryStatus::ReadyToResume,
-        );
-        file.issues_extracted = true;
-        file.formula_issues
-            .push(recovery_result_issue(&source, &audit_copy));
-        let mut manifest = S1RecoveryManifest::new(
-            "recovery-publish-test",
-            root.join("output"),
-            run_dir.clone(),
-            "2026-07",
-            "recovery-test",
-            "2026-10-29 12:00:00",
-            None,
-            None,
-            Vec::new(),
-            Vec::new(),
-            vec![file],
-        );
-        let store = S1RecoveryStore::new(root.join("state"));
-        store.save(&mut manifest)?;
-
-        let first = write_s1_recovery_manifest_result(&store, &mut manifest)?;
-        let first_bytes = fs::read(&first.path)?;
-        assert_eq!(first.formula_issue_count, 1);
-        assert_eq!(first.total_issue_count, 1);
-        assert!(excel_reader::read_workbook(&first.path).is_ok());
-
-        let restarted_store = S1RecoveryStore::new(root.join("state"));
-        let mut restored = restarted_store.load("recovery-publish-test")?;
-        let second = write_s1_recovery_manifest_result(&restarted_store, &mut restored)?;
-        assert_eq!(first.path, second.path);
-        assert_eq!(fs::read(&second.path)?, first_bytes);
-        let published_results = fs::read_dir(&run_dir)?
-            .filter_map(Result::ok)
-            .map(|entry| entry.path())
-            .filter(|path| {
-                path.extension().and_then(|extension| extension.to_str()) == Some("xlsx")
-                    && path
-                        .file_name()
-                        .is_some_and(|name| name.to_string_lossy().contains("_恢复_"))
-            })
-            .count();
-        assert_eq!(published_results, 1);
-
-        restored.files[0].formula_issues[0].detail = "修订后的审核结论".to_owned();
-        restarted_store.save(&mut restored)?;
-        let revised = write_s1_recovery_manifest_result(&restarted_store, &mut restored)?;
-        assert_ne!(revised.path, first.path);
-        assert_eq!(fs::read(&first.path)?, first_bytes);
-        assert_eq!(
-            fs::read_dir(&run_dir)?
-                .filter_map(Result::ok)
-                .map(|entry| entry.path())
-                .filter(|path| {
-                    path.extension().and_then(|extension| extension.to_str()) == Some("xlsx")
-                        && path
-                            .file_name()
-                            .is_some_and(|name| name.to_string_lossy().contains("_恢复_"))
-                })
-                .count(),
-            2,
-            "a changed issue set gets a separate report without overwriting the previous result"
-        );
         fs::remove_dir_all(root)?;
         Ok(())
     }
@@ -10136,9 +9083,10 @@ mod tests {
         assert!(!served_markup.contains("id=\"s1F3RecoveryButton\""));
         assert!(!served_markup.contains("id=\"dagExtrasCard\""));
         assert!(!served_markup.contains("data-tab=\"combine\""));
-        assert!(served.contains("s1F3LostCopyTasks"));
-        assert!(served.contains("warning.hidden=warningMessages.length===0"));
-        assert!(served.contains("请重新运行 S1-F1"));
+        // S1-F3 恢复功能已整体删除（多重兜底下不再需要）：界面与 API 均不可达。
+        assert!(!served.contains("s1F3LostCopyTasks"));
+        assert!(!served.contains("start_s1_f3_workflow"));
+        assert!(!served.contains("list_s1_f3_tasks"));
         assert!(served.contains("window.bridge = { api: api }"));
         assert!(super::ORIGINAL_HTML.contains("bridge.api.start_central_comparison()"));
         assert!(super::ORIGINAL_HTML.contains("bridge.api.start_central_explanation_export()"));

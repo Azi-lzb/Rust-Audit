@@ -393,7 +393,6 @@ body.collect-legacy-locked .egg-btn{display:none}
 .dag-extras-card{display:flex;flex-direction:column;gap:10px}
 .s1-recovery-panel{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2)}
 .s1-recovery-panel[hidden]{display:none}
-#s1F3RecoveryButton[hidden]{display:none!important}
 #toast{position:fixed;left:50%;bottom:88px;transform:translateX(-50%) translateY(8px);z-index:90;background:#0c1626;color:#e8f0fb;font-size:12.5px;line-height:1.5;padding:10px 16px;border-radius:10px;border:1px solid rgba(255,255,255,.16);box-shadow:0 6px 18px rgba(0,0,0,.28);opacity:0;visibility:hidden;pointer-events:none;transition:opacity .18s,visibility .18s,transform .18s}
 #toast.show{opacity:1;visibility:visible;transform:translateX(-50%) translateY(0)}
 .settings-content{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
@@ -1824,8 +1823,7 @@ async function loadSettingsData(){
   CFG.dirty=false;CFG.saving=false;
   CFG.selModule=-1;CFG.selFlow=null;CFG.selStep=-1;CFG.emptyFlows=[];CFG.origCombinePlanId='';
   hideSettingsFeedback();
-  /* 常规与高级设置直接读取后端状态（修改即即时保存）；组合工作表（S1-F3/F4）
-     业务暂缓，该页保留为准确的静态说明，不再要求 DAG 编辑器接口。 */
+  /* 常规与高级设置直接读取后端状态（修改即即时保存）。 */
   CFG.data={combineDeferred:true};
   CFG.draft={customModules:[],customFlows:[],flowDisplay:{},combineSheetsPlans:[],activeCombineSheetsPlanId:''};
   CFG.tab='general';
@@ -2053,8 +2051,6 @@ const GUIDE_FLOWS=[
   {n:'S3F3',editionSystem:'S3',name:'机构说明 ⇨ 说明文件',scenario:'将机构反馈的变动原因批量回写至同一份说明文件，方便集中审核。',prep:'选择或导出目标说明文件，并准备机构填报完成的说明文件。',steps:'① 确认“说明文件.xlsx”；② 点击“机构说明 ⇨ 说明文件”；③ 批量选择机构反馈文件。',output:'目标说明文件会原地更新；同目录会保留导入前时间戳备份。',tip:'按机构代码、机构名称、指标代码、指标名称、数据值和增减额匹配；存在冲突时不自动覆盖。'},
   {n:'S3F4',editionSystem:'S3',name:'本期数值核对',scenario:'按本期数值核对规则检查一份专用单期数据文件，覆盖多频度、多批次的跨表核对。',source:'大集中系统 → 指标查询：导出本次需要比较的指标，例如日报 1 批、月报 1 批。若要核对其他批次，还需在 3.2 配置中增加相应校验公式。',prep:'选择单个本期数值核对文件（CSV/XLSX/XLS）和输出目录。',steps:'① 选择本期数值核对文件（CSV/XLSX/XLS）；② 核对输出目录；③ 点击“本期数值核对”。',output:'输出目录下的“数值核对结果_时间戳.xlsx”。',tip:'不会使用“两期数据”的本期文件；规则由大集中通用配置和“3.2大集中本期数值核对_配置.xlsx”维护，引用上期 {...} 的规则已停用。'},
   {n:'S3F5',editionSystem:'S3',name:'比较文件 ⇨ 金融表单',scenario:'将比较文件按机构拆分并回填至内嵌金融表单，生成便于查看的机构工作簿。',prep:'选择或确认“比较文件.xlsx”和输出目录。',steps:'① 选择比较文件；② 核对输出目录；③ 点击“比较文件 ⇨ 金融表单”。',output:'输出目录下“指标比较拆分_时间戳”文件夹中的机构金融表单。',tip:'表单模板和转表规则在“3.3大集中指标比较拆分_配置.xlsx”中维护。'},
-  {n:'S1F3',editionSystem:'S1',name:'组合工作表（核查表）',egg:true,scenario:'文件名规范、需要把同一机构的多类报表（如个人贷款和单位贷款）合成一本，供制作联合模板或跨表核查。',prep:'源文件主名第一个下划线前必须是机构全称。',steps:'① 选择源数据目录；② 需要时勾选递归；③ 点击“组合工作表（核查表）”。',output:'每家机构一本合并工作簿。',tip:'同名工作表只保留先复制的一张；本流程不需要模板、外部文件或数据期。'},
-  {n:'S1F4',editionSystem:'S1',name:'组合工作表（按配置）',egg:true,scenario:'按配置方案对工作表分组。',prep:'此功能及其配置入口暂未开放。',steps:'当前不可执行。',output:'无。',tip:'配置入口已从设置导航中移除。'},
   {n:'S1F5',editionSystem:'S1',name:'制作联合模板',egg:true,scenario:'需要把多个模板的独有工作表合并成一本“联合模板”，集中存放集中系统数据、参照表等公共依赖工作表，供跨表核查或制作模板时使用；这是低频的模板制作动作。',prep:'准备一个“基准模板”（包含集中系统数据、参照表等公共依赖工作表）和若干要并入的模板文件。',steps:'① 点击主界面“制作联合模板”按钮；② 阅读中文说明并确认；③ 第 1 步选择“基准模板”；④ 第 2 步批量选择“并入模板”；⑤ 等待制作完成。',output:'基准模板同级的“联合模板”目录：联合模板文件与“联合模板检查报告”。',tip:'基准模板只会另存为最终联合模板，原文件不修改；同名工作表保留先出现的一张，后续跳过；本动作不使用页面路径，也不会自动识别模板，不要将普通业务模板误选为基准模板。'},
 ];
 /* 设置中心卡片标题条：点击收起/展开卡片内容（事件委托，重渲染后仍有效）。 */
@@ -3009,7 +3005,6 @@ function renderFlows(){
   const customs=customFlowList().filter(f=>defaults.indexOf(f.name)<0);
   const selected=CFG.selFlow;
   let html='<div class="studio-head"><div><h3 class="studio-title">流程编排</h3><p class="studio-desc">从功能库加入步骤，按顺序组成一个可执行流程。选择步骤后在右侧设置输出和失败处理。</p></div><div class="studio-actions"><button class="btn tiny danger" onclick="askResetEditorPart(\'flows\')">恢复初始流程</button></div></div>';
-  html+='<div class="gen-card"><div class="gen-row"><div class="gen-row-left"><div class="gen-row-name">隐藏 DAG 工具</div><div class="gen-row-desc">组合与模板制作不属于日常审核主流程；使用主页面当前的数据和输出目录。</div></div><div class="gen-row-right"><button class="btn tiny" onclick="startDagMerge()">组合联合核查表</button><button class="btn tiny" onclick="startDagFlow(\'dag:组合工作表\')">组合工作表</button><button class="btn tiny" onclick="createTemplateMerge()">制作联合模板</button></div></div></div>';
   html+='<div class="flow-studio"><aside class="studio-panel"><div class="studio-panel-head"><b>流程列表</b><span>选择一个流程</span></div><div class="flow-list"><p class="flow-list-label">常用流程</p>';
   defaults.forEach((n,i)=>{html+='<button class="flow-list-item'+(selected&&selected.isDefault&&selected.name===n?' active':'')+'" onclick="selectFlow('+i+',true)">'+esc(n)+'</button>';});
   html+='<p class="flow-list-label">自定义流程</p>';
@@ -3550,7 +3545,6 @@ let confirmAllFiles=[];
 // 只转换确认框显示名称；执行前检查仍使用原有动作名称。
 const RUN_DISPLAY_LABELS={
   '汇总核查表校验':'S1F1 汇总核查表校验','汇总校验结果说明':'S1F2 汇总校验结果说明',
-  '组合工作表（核查表）':'S1F3 组合工作表（核查表）','组合工作表（按配置）':'S1F4 组合工作表（按配置）',
   '执行报表规则':'S2F1 执行报表规则','大集中执行比较':'S3F1 两期数据 ⇨ 比较文件',
   '导出选定指标说明':'S3F2 比较文件 ⇨ 说明文件','本期数值核对':'S3F4 本期数值核对',
   '指标比较拆分':'S3F5 比较文件 ⇨ 金融表单'
@@ -4172,50 +4166,6 @@ function startAuditPrimary(){
 function startAuditSummary(){
   return startDagFlow('dag:汇总校验结果说明');
 }
-function renderS1F3RecoveryEntry(s){
-  const button=document.getElementById('s1F3RecoveryButton'),panel=document.getElementById('s1F3RecoveryPanel'),select=document.getElementById('s1F3TaskSelect');
-  if(!button||!panel||!select)return;
-  const warning=document.getElementById('s1F3RecoveryWarning'),recoveryError=String(s&&s.s1F3RecoveryError||'');
-  const lostCopies=Array.isArray(s&&s.s1F3LostCopyTasks)?s.s1F3LostCopyTasks:[];
-  const warningMessages=[];
-  if(recoveryError)warningMessages.push('S1-F3 待恢复任务读取失败，系统暂时无法刷新恢复入口：'+recoveryError);
-  if(lostCopies.length){
-    const details=lostCopies.map(task=>{
-      const path=String(task.source_file||task.sourceFile||'');
-      const reason=String(task.reason||'审核副本已丢失或路径无效');
-      return (path.split(/[\\/]/).pop()||path)+'：'+reason;
-    });
-    warningMessages.push('有 '+lostCopies.length+' 个 S1-F3 审核副本已丢失，无法恢复；请重新运行 S1-F1。\n'+details.join('\n'));
-  }
-  if(warning){warning.hidden=warningMessages.length===0;warning.textContent=warningMessages.join('\n')}
-  const tasks=Array.isArray(s&&s.s1F3RecoveryTasks)?s.s1F3RecoveryTasks:[];
-  button.hidden=tasks.length===0;
-  button.disabled=!!(s&&s.busy);
-  button.textContent='S1-F3 从审核副本汇总校验核查表（待处理：'+tasks.length+'）';
-  const previous=select.value;
-  select.innerHTML=tasks.map((task,index)=>{
-    const path=String(task.source_file||task.sourceFile||'');
-    const status=String(task.status||'WAITING_MANUAL_RECALC');
-    const label=(index+1)+'. '+(path.split(/[\\/]/).pop()||path)+' · '+status;
-    return '<option value="'+esc(String(task.run_id||task.runId)+'|'+String(task.file_id||task.fileId))+'">'+esc(label)+'</option>';
-  }).join('');
-  if(tasks.some(task=>String(task.run_id||task.runId)+'|'+String(task.file_id||task.fileId)===previous))select.value=previous;
-  if(tasks.length===0)panel.hidden=true;
-  const start=document.getElementById('s1F3StartButton');if(start)start.disabled=!!(s&&s.busy);
-}
-function toggleS1F3RecoveryPanel(){
-  const panel=document.getElementById('s1F3RecoveryPanel');if(panel)panel.hidden=!panel.hidden;
-}
-async function startS1F3Recovery(){
-  const select=document.getElementById('s1F3TaskSelect'),value=select&&select.value;
-  if(!value){alert('没有可恢复的审核副本');return}
-  const [runId,fileId]=value.split('|');
-  const instructions='请确认所选审核副本已完成强制重新计算并保存，且已关闭工作簿。\n\nS1-F3 会验证公式文本、公式结果缓存、非公式输入数据、条件格式和命名区域未被改动，并核对审核配置；通过后复用 S1-F1 的异常提取和核查表输出。它不会重新处理源报表或再次调用 Excel/LibreOffice。\n\n现在开始恢复？';
-  if(!confirm(instructions))return;
-  try{await bridge.api.start_s1_f3_workflow(runId,fileId)}
-  catch(e){alert('S1-F3 启动失败：'+((e&&e.message)?e.message:String(e)))}
-  await refresh();
-}
 function startDagMerge(){setMergeMode(true,false);startDagFlow('dag:组合联合核查表')}
 async function copyLog(){
   const log=document.getElementById('log');
@@ -4494,7 +4444,6 @@ async function refresh(){
   }
   setConnectionLost(false);
   state=s;
-  renderS1F3RecoveryEntry(s);
   applyDistributionProfile();
   if(s.appInfo){document.title=s.appInfo.title;document.getElementById('appVersion').textContent=s.appInfo.title}
   // 背景颜色以后端保存的设置为准（localStorage 仅用于启动前预应用，避免闪白）。
@@ -4676,16 +4625,9 @@ function flowDesignerSetMode(mode){
   BUSINESS_FLOW_EDITOR.mode='normal';renderDagFlowComposer()
 }
 async function renderDagFlowComposer(){
+  /* 组合工作表功能已移除（S1-F1/F2 覆盖当前业务范围）。 */
   const pane=document.getElementById('settingsPane');
-  pane.innerHTML='<div class="advanced-zone">'
-    +'<div class="gen-card"><p class="gen-card-title">组合工作表功能暂缓开放</p>'
-    +'<div class="gen-row"><div class="gen-row-left"><div class="gen-row-name">业务状态</div>'
-    +'<div class="gen-row-desc">组合工作表（S1-F3/F4）业务当前处于暂缓状态：不提供创建、运行或删除入口。</div></div></div>'
-    +'<div class="gen-row"><div class="gen-row-left"><div class="gen-row-name">既有能力</div>'
-    +'<div class="gen-row-desc">逐笔统计系统的 S1-F1（汇总核查表校验）、S1-F2（汇总校验结果说明）与人工重算恢复已按独立功能提供，不依赖本页。</div></div></div>'
-    +'<div class="gen-row"><div class="gen-row-left"><div class="gen-row-name">后续计划</div>'
-    +'<div class="gen-row-desc">组合工作表业务恢复时间待定；恢复时本页将替换为方案与流程管理界面。</div></div></div>'
-    +'</div></div>';
+  if(pane)pane.innerHTML='<div class="advanced-zone"><div class="gen-card"><p class="gen-card-title">该页面已停用</p></div></div>';
 }
 function openCustomDagEditor(id){DAG_EDITOR.selected=id;DAG_EDITOR.draft=null;openSettingsWorkbench();setTimeout(()=>setSettingsTab('dag'),0)}
 async function renderDagModuleCatalog(){

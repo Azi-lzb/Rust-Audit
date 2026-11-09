@@ -109,3 +109,4 @@ probe/reports/wps_route/
 probe/reports/mutation_test/
 probe/reports/safety_test/
 probe/reports/refcheck/
+probe/reports/pkg_*

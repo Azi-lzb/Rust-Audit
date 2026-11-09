@@ -533,6 +533,17 @@ impl AppSettings {
 /// - 目录/文件：有效的记忆路径覆盖启动默认值；失效记忆不会清空已经存在的
 ///   启动默认路径；两者都无效时才清空该字段；
 /// - 未知键跳过（前向兼容）。
+/// 发行包整体移动后，把失效的配置路径按文件名重新定位到
+/// `<exe 目录>/config-real/`。找不到时返回 None，由调用方保留启动默认。
+fn relocate_bundled_config(trimmed: &str) -> Option<String> {
+    let file_name = std::path::Path::new(trimmed).file_name()?;
+    let executable = std::env::current_exe().ok()?;
+    let directory = executable.parent()?.join("config-real").join(file_name);
+    directory
+        .is_file()
+        .then(|| directory.to_string_lossy().into_owned())
+}
+
 pub fn apply_preferences_to_state(state: &mut serde_json::Value) {
     let preferences = AppSettings::load().preferences;
     let Some(state_object) = state.as_object_mut() else {
@@ -563,6 +574,13 @@ pub fn apply_preferences_to_state(state: &mut serde_json::Value) {
                 if valid {
                     state_object.insert(key.clone(), serde_json::Value::String(trimmed.to_owned()));
                 } else {
+                    // 包被整体移动后，旧绝对路径失效：按「同文件名」在
+                    // 可执行文件同级的 config-real/ 下重新定位，用户不必重选。
+                    if let Some(relocated) = relocate_bundled_config(trimmed) {
+                        state_object
+                            .insert(key.clone(), serde_json::Value::String(relocated));
+                        continue;
+                    }
                     let default_is_valid = state_object
                         .get(key)
                         .and_then(serde_json::Value::as_str)
