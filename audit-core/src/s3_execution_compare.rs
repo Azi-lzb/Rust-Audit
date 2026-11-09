@@ -23,7 +23,15 @@ const DBL_EPSILON: f64 = 2.22044604925031e-13;
 const REMARK_CURRENT_ONLY: &str = "本期有，上期无";
 const REMARK_PREVIOUS_ONLY: &str = "本期无，上期有";
 const REMARK_DIV_ZERO: &str = "除数为0";
-const REMARK_SHRINK_100: &str = "缩小100倍以上";
+/// 环比未命中任何警戒档时的备注。
+///
+/// 旧实现在这里直接写「缩小100倍以上」+ 整行填色，但 3.0 的「环比警戒」是
+/// 首档下限空（-∞）、末档上限空（+∞）的完整覆盖结构——正确配置下所有环比
+/// 都能命中某档，包括真正的"缩小/扩大 100 倍以上"（那是配置里的首/末档文字）。
+/// 因此走到这里必然意味着**配置区间有缺口**：可能是中间档断开，也可能缺了
+/// 顶部的开放档（此时连大幅"扩大"都会被说成"缩小"，方向都是反的）。
+/// 如实报告配置问题，不臆断业务结论。
+const REMARK_UNCONFIGURED_RANGE: &str = "环比未落入任何警戒区间，请完善警戒区间配置。";
 const S3_RESULT_COLUMN_WIDTHS: [u16; 22] = [
     10, 12, 10, 24, 10, 10, 12, 10, 32, 9, 9, 6, 6, 14, 14, 14, 12, 24, 24, 24, 40, 12,
 ];
@@ -236,8 +244,7 @@ pub fn load_execution_compare_config(
     //
     // 关键事实：3.1 工作簿里并没有「环比警戒」和「单位换算例外」工作表，这两张
     // 表只在 3.0 中。此前只读 3.1，导致警戒区间恒为空，每一行都落到
-    // "缩小100倍以上"兜底分支并整行涂色（2026-11 现场问题：S3-F01 备注的
-    // 环比警戒全部不对）。
+    // 兜底分支并整行涂色（2026-11 现场问题：S3-F01 备注的环比警戒全部不对）。
     for run_sheet in [
         find_sheet(&common_sheets, "运行参数"),
         find_sheet(&feature_sheets, "运行参数"),
@@ -313,13 +320,13 @@ pub fn load_execution_compare_config(
             }),
         );
     }
-    // 只有"表完全缺失"才算配置事故：那会让每一行都落到"缩小100倍以上"兜底
-    // 分支并整行涂色（2026-11 现场问题）。表存在但没有数据行时按旧口径放行
-    // （合成/精简配置的合法场景），命中不了区间就走既有兜底。
+    // 只有"表完全缺失"才算配置事故：那会让每一行都落到兜底分支（2026-11
+    // 现场问题）。表存在但没有数据行时按旧口径放行（合成/精简配置的合法场景），
+    // 命中不了区间的行会如实注明"请完善警戒区间配置"。
     ensure!(
         alert_sheet_present,
-        "3.0 大集中通用配置缺少“环比警戒”工作表：没有警戒区间时每一行都会被\
-         误判为“缩小100倍以上”，已停止本次比较"
+        "3.0 大集中通用配置缺少“环比警戒”工作表：没有警戒区间时每行的备注\
+         都只能是配置提示，已停止本次比较"
     );
 
     let indicator_sheet = find_sheet(&feature_sheets, "指标参照")
@@ -3079,9 +3086,10 @@ fn apply_alert_band(
         return;
     }
     let Some(band) = matching_alert_band(ratio, &config.alert_bands) else {
-        row.remark = REMARK_SHRINK_100.to_owned();
-        row.fill_color = Some(10);
-        row.fill_scope = "row".to_owned();
+        // 配置区间有缺口：只说明情况，不臆断"缩小100倍以上"，也不套用
+        // 该档的绿色整行填充（那是首档"降幅超出全部警戒档"的视觉语义，
+        // 用在这里会把配置问题伪装成业务告警）。
+        row.remark = REMARK_UNCONFIGURED_RANGE.to_owned();
         return;
     };
     row.remark = format_alert_remark(band);
@@ -3776,8 +3784,8 @@ mod tests {
         );
         let rows = build_base_comparison(&current, &previous, &config);
         assert!(
-            !rows[0].remark.contains("缩小100倍以上"),
-            "20% 增幅不应落到兜底分支，实际={:?}",
+            rows[0].remark.is_empty(),
+            "20% 增幅命中 [0,30) 档，该档无备注文字，实际={:?}",
             rows[0].remark
         );
         assert_eq!(rows[0].fill_color, None, "20% 档配置为不填充");
@@ -3798,6 +3806,57 @@ mod tests {
         assert_eq!(rows[0].fill_color, Some(43));
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// 环比未命中任何警戒档时，备注必须是"请完善警戒区间配置"这类配置提示，
+    /// 不能臆断为「缩小100倍以上」（缺顶部开放档时"扩大"也会被说成"缩小"，
+    /// 方向都是反的），也不能套用首档的绿色整行填充。
+    #[test]
+    fn unmatched_ratio_reports_configuration_gap_instead_of_shrink_remark() {
+        let current = dataset(
+            vec![record(
+                "0001",
+                "1234567",
+                "A",
+                "月",
+                "1",
+                CentralValue::Number(5000.0),
+            )],
+            "2026-08-31",
+        );
+        let previous = dataset(
+            vec![record(
+                "0001",
+                "1234567",
+                "A",
+                "月",
+                "1",
+                CentralValue::Number(1000.0),
+            )],
+            "2026-07-31",
+        );
+        let mut config = S3ExecutionCompareConfig {
+            target_unit: "亿元".to_owned(),
+            ..S3ExecutionCompareConfig::default()
+        };
+        // 区间只覆盖 [-10, 10)，400% 增幅落在缺口里。
+        config.alert_bands.push(S3AlertBand {
+            lower: "-10".to_owned(),
+            upper: "10".to_owned(),
+            remark_text: "小幅波动".to_owned(),
+            fill_color: "43".to_owned(),
+            ..S3AlertBand::default()
+        });
+
+        let rows = build_base_comparison(&current, &previous, &config);
+        assert_eq!(
+            rows[0].remark, "环比未落入任何警戒区间，请完善警戒区间配置。",
+            "未命中时必须如实提示配置缺口"
+        );
+        assert_eq!(
+            rows[0].fill_color, None,
+            "配置缺口不应套用首档的绿色整行填充"
+        );
     }
 
     #[test]
