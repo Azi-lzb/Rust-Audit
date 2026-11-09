@@ -375,7 +375,11 @@ impl AppState {
             "busy": false,
             "currentWork": Value::Null,
             "cancelRequested": false,
-            "status": "审核工具已启动；S1、S2、S3 入口已接入",
+            "status": if distribution_profile() == "s1s2" {
+                "审核工具已启动；S1、S2 入口已接入"
+            } else {
+                "审核工具已启动；S1、S2、S3 入口已接入"
+            },
             "log": [],
             "logVersion": 0,
             "lastRunSummary": Value::Null,
@@ -396,7 +400,7 @@ impl AppState {
             "developerAccess": {},
             "developerAccessMessage": "",
             "distributionUnlocked": false,
-            "distributionProfile": "s1s2s3",
+            "distributionProfile": distribution_profile(),
             "configUpdateSupported": crate::config_update::supported(),
             "configIssues": {},
             "sourceFiles": [],
@@ -632,6 +636,29 @@ fn router(state: AppState) -> Router {
         .route("/assets/app-icon.png", get(app_icon_png))
         .route("/api/{method}", post(call_api))
         .with_state(state)
+}
+
+/// 发行版档位：默认 S1+S2+S3 全量。
+///
+/// 用「可执行文件同级的 `edition-s1s2` 标记文件」切换为 S1+S2 版，
+/// 避免为两个版本分别构建（同一 exe，打包时放/不放标记文件即可）。
+/// 若标记文件内容为 `s1s2s3` 则仍按全量处理，便于日后扩展。
+fn distribution_profile() -> &'static str {
+    let Ok(executable) = std::env::current_exe() else {
+        return "s1s2s3";
+    };
+    let Some(directory) = executable.parent() else {
+        return "s1s2s3";
+    };
+    let marker = directory.join("edition-s1s2");
+    if !marker.is_file() {
+        return "s1s2s3";
+    }
+    match std::fs::read_to_string(&marker) {
+        Ok(text) if text.trim().eq_ignore_ascii_case("s1s2s3") => "s1s2s3",
+        Ok(_) => "s1s2",
+        Err(_) => "s1s2",
+    }
 }
 
 fn render_index() -> String {
@@ -10104,10 +10131,11 @@ mod tests {
         assert!(served_markup.contains("centralCrossCur:'central_data'"));
         assert!(served_markup.contains("本期数值核对文件（CSV/XLSX/XLS）"));
         assert!(!served_markup.contains("XLS/XLSX 尚未接通"));
-        assert!(served_markup.contains("id=\"s1F3RecoveryButton\" hidden"));
-        assert!(served_markup.contains("id=\"s1F3RecoveryPanel\" hidden"));
-        assert!(served_markup.contains("#s1F3RecoveryButton[hidden]{display:none!important}"));
-        assert!(served.contains("button.hidden=tasks.length===0"));
+        // S1-F3/F4/F5 已按 AGENTS.md 标记为 deferred 并从界面移除：
+        // 按钮节点不再输出，恢复入口的 JS 保留（有 null 保护，不再可达）。
+        assert!(!served_markup.contains("id=\"s1F3RecoveryButton\""));
+        assert!(!served_markup.contains("id=\"dagExtrasCard\""));
+        assert!(!served_markup.contains("data-tab=\"combine\""));
         assert!(served.contains("s1F3LostCopyTasks"));
         assert!(served.contains("warning.hidden=warningMessages.length===0"));
         assert!(served.contains("请重新运行 S1-F1"));

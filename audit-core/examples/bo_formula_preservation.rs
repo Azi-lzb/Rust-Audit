@@ -54,8 +54,7 @@ fn main() -> anyhow::Result<()> {
                         "{}!{}: {formula:?} -> {after_formula:?}",
                         before_sheet.name, cell
                     )),
-                    None => changed_cells
-                        .push(format!("{}!{}: 公式丢失", before_sheet.name, cell)),
+                    None => changed_cells.push(format!("{}!{}: 公式丢失", before_sheet.name, cell)),
                 }
             }
             // 反向：输出端新增的公式
@@ -74,7 +73,11 @@ fn main() -> anyhow::Result<()> {
         }
         println!(
             "{} | 公式 {formula_count:>5} | 文本改变 {} | changed_cells={} | {}ms",
-            if changed_cells.is_empty() { "一致" } else { "差异" },
+            if changed_cells.is_empty() {
+                "一致"
+            } else {
+                "差异"
+            },
             changed_cells.len(),
             outcome.changed_cells_total,
             outcome.calc_elapsed.as_millis(),

@@ -863,19 +863,6 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
     <div class="card actionbar">
       <button class="btn primary" id="auditPrimaryButton" data-action="dag:汇总核查表校验" onclick="startAuditPrimary()" title="执行模板匹配、表结构检查、公式复制与真实重算，输出公式和条件格式异常；自动重算失败时保留审核副本供恢复，原始文件不修改。">F1 汇总核查表校验</button>
       <button class="btn" id="auditSummaryButton" data-action="dag:汇总校验结果说明" onclick="startAuditSummary()" title="执行汇总校验结果说明">F2 汇总校验结果说明</button>
-      <button class="btn" id="s1F3RecoveryButton" hidden onclick="toggleS1F3RecoveryPanel()" title="仅在存在已保存的待人工重算审核副本时显示">S1-F3 从审核副本汇总校验核查表</button>
-      <div class="collect-tip" id="s1F3RecoveryWarning" hidden></div>
-      <div class="s1-recovery-panel" id="s1F3RecoveryPanel" hidden>
-        <label for="s1F3TaskSelect">选择已人工重算并保存的审核副本</label>
-        <select id="s1F3TaskSelect"></select>
-        <div class="collect-tip">开始前请先在 Excel 中按 Ctrl+Alt+F9，等待计算完成后 Ctrl+S 保存并关闭。此功能会检查公式文本和缓存节点；OOXML 无法证明缓存的新鲜度。</div>
-        <button class="btn primary" id="s1F3StartButton" onclick="startS1F3Recovery()">从所选副本恢复审核</button>
-      </div>
-      <div class="dag-extras-card" id="dagExtrasCard">
-        <button class="btn" onclick="startDagMerge()">F3 组合工作表（核查表）</button>
-        <button class="btn" onclick="startDagFlow('dag:组合工作表')">F4 组合工作表（按配置）</button>
-        <button class="btn" onclick="createTemplateMerge()">F5 制作联合模板</button>
-      </div>
     </div>
 
 
@@ -1064,7 +1051,6 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
         <button type="button" class="settings-tab-btn active" data-tab="general" onclick="setSettingsTab('general')">常规设置</button>
         <button type="button" class="settings-tab-btn" data-tab="guide" onclick="setSettingsTab('guide')">操作指引</button>
         <button type="button" class="settings-tab-btn" data-tab="updates" onclick="setSettingsTab('updates')">帮助与更新</button>
-        <button type="button" class="settings-tab-btn" data-tab="combine" onclick="setSettingsTab('combine')">组合设置</button>
         <button type="button" class="settings-tab-btn settings-advanced-item" data-tab="advanced" onclick="setSettingsTab('advanced')" ondblclick="toggleAdvancedLayout()" title="双击切换：按系统分类 / 按功能分类">高级设置</button>
       </nav>
       <div class="settings-content">
@@ -1958,7 +1944,7 @@ function showToast(text){
   showToast._timer=setTimeout(()=>t.classList.remove('show'),2200);
 }
 function setSettingsTab(tab){
-  if(tab!=='general'&&tab!=='guide'&&tab!=='updates'&&tab!=='combine'&&tab!=='advanced')tab='general';
+  if(tab!=='general'&&tab!=='guide'&&tab!=='updates'&&tab!=='advanced')tab='general';
   CFG.tab=tab;
   if(!CFG.data){showSettingsPaneLoading();return}
   document.querySelectorAll('#settingsNav .settings-tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));

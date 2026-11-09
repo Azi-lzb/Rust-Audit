@@ -6,7 +6,7 @@
 #     -p audit-core --bin open-data-audit
 #
 # 用法（在 Linux/WSL 中执行）：
-#   ./package-linux-deb.sh <binary> <product-dir> <version> [out-dir]
+#   ./package-linux-deb.sh <binary> <product-dir> <version> [out-dir] [full|s1s2] [docs-dir]
 #
 # 产物：open-data-audit_<version>_amd64.deb（无需用户安装 Python/Office/JVM）
 set -euo pipefail
@@ -15,6 +15,8 @@ BINARY="${1:?用法: package-linux-deb.sh <binary> <product-dir> <version> [out-
 PRODUCT_DIR="${2:?缺少产品资源目录（前端/配置模板等）}"
 VERSION="${3:?缺少版本号（如 0.1.0）}"
 OUT_DIR="${4:-./dist}"
+EDITION="${5:-full}"
+DOCS_DIR="${6:-}"
 
 [[ -f "$BINARY" ]] || { echo "二进制不存在：$BINARY" >&2; exit 2; }
 [[ -d "$PRODUCT_DIR" ]] || { echo "产品目录不存在：$PRODUCT_DIR" >&2; exit 3; }
@@ -23,6 +25,12 @@ command -v dpkg-deb >/dev/null || { echo "需要 dpkg-deb（apt install dpkg）"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
+case "$EDITION" in
+  full)  PKG_SUFFIX="" ;;
+  s1s2)  PKG_SUFFIX="-s1s2" ;;
+  *)     echo "未知 edition：$EDITION（可用 full / s1s2）" >&2; exit 6 ;;
+esac
+
 PKG_ROOT="$WORK/pkg"
 mkdir -p "$PKG_ROOT/DEBIAN" "$PKG_ROOT/opt/open-data-audit" \
          "$PKG_ROOT/usr/bin" "$PKG_ROOT/usr/share/applications"
@@ -30,10 +38,33 @@ mkdir -p "$PKG_ROOT/DEBIAN" "$PKG_ROOT/opt/open-data-audit" \
 install -m 0755 "$BINARY" "$PKG_ROOT/opt/open-data-audit/open-data-audit"
 cp -a "$PRODUCT_DIR"/. "$PKG_ROOT/opt/open-data-audit/"
 
+# 真实配置（S1S2 版只带 1./2.）与使用说明
+CONFIG_SRC="${CONFIG_SRC:-$(dirname "$BINARY")/../../../../audit-core/config-real}"
+PRODUCT_ROOT="$(dirname "$PRODUCT_DIR")"
+if [[ -d "$PRODUCT_ROOT/config-real" ]]; then
+  mkdir -p "$PKG_ROOT/opt/open-data-audit/config-real"
+  if [[ "$EDITION" == "s1s2" ]]; then
+    for name in '1.逐笔统计系统_配置.xlsx' '2.报表采集系统_配置.xlsx'; do
+      [[ -f "$PRODUCT_ROOT/config-real/$name" ]] &&         cp "$PRODUCT_ROOT/config-real/$name" "$PKG_ROOT/opt/open-data-audit/config-real/"
+    done
+    GUIDE="${DOCS_DIR:-$PRODUCT_ROOT/docs}/使用说明-S1S2版.docx"
+    [[ -f "$GUIDE" ]] && cp "$GUIDE" "$PKG_ROOT/opt/open-data-audit/使用说明.docx"
+  else
+    cp "$PRODUCT_ROOT/config-real"/*.xlsx "$PKG_ROOT/opt/open-data-audit/config-real/" 2>/dev/null || true
+    GUIDE="${DOCS_DIR:-$PRODUCT_ROOT/docs}/使用说明-全量版.docx"
+    [[ -f "$GUIDE" ]] && cp "$GUIDE" "$PKG_ROOT/opt/open-data-audit/使用说明.docx"
+  fi
+else
+  echo "警告：未找到 config-real，deb 将不含配置（PRODUCT_DIR 的上级目录）" >&2
+fi
+
 ln -s /opt/open-data-audit/open-data-audit "$PKG_ROOT/usr/bin/open-data-audit"
+if [[ "$EDITION" == "s1s2" ]]; then
+  printf 's1s2' > "$PKG_ROOT/opt/open-data-audit/edition-s1s2"
+fi
 
 cat > "$PKG_ROOT/DEBIAN/control" <<CONTROL
-Package: open-data-audit
+Package: open-data-audit${PKG_SUFFIX}
 Version: ${VERSION}
 Section: utils
 Priority: optional
@@ -57,7 +88,7 @@ fi
 echo "glibc 要求：${MAX_GLIBC:-unknown}（基线 2.28）"
 
 mkdir -p "$OUT_DIR"
-DEB="$OUT_DIR/open-data-audit_${VERSION}_amd64.deb"
+DEB="$OUT_DIR/open-data-audit${PKG_SUFFIX}_${VERSION}_amd64.deb"
 dpkg-deb --root-owner-group --build "$PKG_ROOT" "$DEB" >/dev/null
 echo "已生成：$DEB ($(du -h "$DEB" | cut -f1))"
 dpkg-deb --info "$DEB" | head -8

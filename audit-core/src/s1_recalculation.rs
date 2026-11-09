@@ -930,11 +930,7 @@ pub fn recalculate_s1_formula_copy_batch(
         }
     }
     // 仅剩被 betteroffice 拒绝的工作簿需要外部引擎。
-    let refusal_summary: Vec<String> = betteroffice_reasons
-        .iter()
-        .flatten()
-        .cloned()
-        .collect();
+    let refusal_summary: Vec<String> = betteroffice_reasons.iter().flatten().cloned().collect();
     let sidecar_missing = if refusal_summary.is_empty() {
         "betteroffice 校验区域重算不可用，且未配置公式重算 sidecar（Excel COM / LibreOffice）"
             .to_owned()
