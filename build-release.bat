@@ -23,11 +23,6 @@ set "OPENPYXL_WORKER_DIR=%PROJECT_ROOT%dist\libexec\audittools\openpyxl\worker"
 if not exist "%OPENPYXL_WORKER_DIR%" mkdir "%OPENPYXL_WORKER_DIR%"
 copy /y "%PROJECT_ROOT%crates\excel-editor\python\openpyxl_worker.py" "%OPENPYXL_WORKER_DIR%\openpyxl_worker.py" >nul
 if errorlevel 1 goto copy_failed
-if exist "%CARGO_TARGET_DIR%\release\VERSION_MANIFEST.json" (
-    copy /y "%CARGO_TARGET_DIR%\release\VERSION_MANIFEST.json" "%PROJECT_ROOT%dist\VERSION_MANIFEST.json" >nul
-) else (
-    copy /y "%PROJECT_ROOT%VERSION_MANIFEST.json" "%PROJECT_ROOT%dist\VERSION_MANIFEST.json" >nul
-)
 echo AuditTools Release EXE copied to %PROJECT_ROOT%dist.
 popd
 exit /b 0

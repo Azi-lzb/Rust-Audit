@@ -59,16 +59,17 @@ def table(doc: Document, headers: list[str], rows: list[list[str]]):
 
 def build_user_guide(path: Path, edition: str) -> None:
     doc = Document()
-    style_doc(doc, f"Open-Data-Audit 数据审核工具 使用说明（{edition}）")
+    style_doc(doc, f"审核工具（AuditTools）使用说明（{edition}）")
 
     para(doc, "本说明面向日常使用者，只介绍软件界面上能直接看到的操作。"
               "不需要安装 Excel、WPS、Python 或其它软件即可运行。"
               "原始报送文件在整个过程中不会被修改。", size=10)
 
     doc.add_heading("一、启动与界面", level=1)
-    numbered(doc, "解压全部文件到一个文件夹（不要只解压 exe 出来，配置文件要一起）。")
-    numbered(doc, "双击 run.bat（或直接双击 open-data-audit.exe）。")
+    numbered(doc, "解压全部文件到一个文件夹（不要只解压 exe 出来，配置文件和 libexec 文件夹要一起）。")
+    numbered(doc, "双击 AuditTools.exe 启动（命令行窗口请保持打开，关闭即退出程序）。")
     numbered(doc, "浏览器会自动打开操作界面。界面左侧是三个系统入口，右侧是当前系统的操作区。")
+    para(doc, f"版本：{edition}。界面标题与「关于」中显示产品版本号（如 V26.3.0.0）。", size=9)
 
     doc.add_heading("二、三个系统分别做什么", level=1)
     table(doc, ["系统", "用途", "典型任务"], [
@@ -163,7 +164,7 @@ def build_user_guide(path: Path, edition: str) -> None:
 
 def build_architecture(path: Path) -> None:
     doc = Document()
-    style_doc(doc, "Open-Data-Audit 功能架构表（开发者 / AI 参考）")
+    style_doc(doc, "审核工具（AuditTools）功能架构表（开发者 / AI 参考）")
 
     para(doc, "版本：2026-11-09　｜　用途：开发维护与 AI 辅助开发的权威索引。"
               "所有结论均以当前代码为准，不描述历史实现。", size=10)
@@ -269,7 +270,9 @@ def build_architecture(path: Path) -> None:
         ["对拍比较", "... --example s1f1_bo_parity --compare a.json b.json"],
         ["S3F5 三方验证", "python -I probe/verify_s3f5_engine_solo.py"],
         ["八功能对齐", "python tests/compare/rustaudit_alignment_p1.py --runs 2 --features all"],
-        ["Linux 构建(2.28)", "cargo zigbuild --release --target x86_64-unknown-linux-gnu.2.28 -p audit-core --bin open-data-audit"],
+        ["Linux 构建(2.28)", "cargo zigbuild --release --target x86_64-unknown-linux-gnu.2.28 -p audit-core --bin AuditTools"],
+        ["Windows 构建", "build-release.bat → dist\\AuditTools.exe"],
+        ["版本号", "VERSION_MANIFEST.json → product.version（YY.MAJOR.MINOR.PATCH）"],
         ["Linux deb", "./package-linux-deb.sh <binary> <product-dir> <version>"],
     ])
 

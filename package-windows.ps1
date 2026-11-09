@@ -6,9 +6,7 @@
 #
 # 布局（用户解压即可双击运行）：
 #   <root>/
-#     AuditTools.exe
-#     run.bat
-#     VERSION_MANIFEST.json     产品名称与版本（界面标题用）
+#     AuditTools.exe            双击即启动界面（无参数默认 serve）
 #     config-real/*.xlsx        真实配置（S1S2 版只含 1./2.）
 #     libexec/.../openpyxl_worker.py
 #     使用说明.docx
@@ -87,14 +85,8 @@ try {
     New-Item -ItemType Directory -Path $stageWorker -Force | Out-Null
 
     Copy-Item -LiteralPath (Join-Path $dist 'AuditTools.exe') -Destination $stage
-    $manifest = Join-Path $root 'VERSION_MANIFEST.json'
-    if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) {
-        throw "Required version manifest is missing: $manifest"
-    }
-    Copy-Item -LiteralPath $manifest -Destination $stage
     Copy-Item -LiteralPath (Join-Path $root 'crates\excel-editor\python\openpyxl_worker.py') `
         -Destination (Join-Path $stageWorker 'openpyxl_worker.py')
-    Copy-Item -LiteralPath (Join-Path $root 'run.bat') -Destination $stage
     Copy-Item -LiteralPath $guide -Destination (Join-Path $stage '使用说明.docx')
     foreach ($name in $includedConfigs) {
         Copy-Item -LiteralPath (Join-Path $configSource $name) -Destination $stageConfig

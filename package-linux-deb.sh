@@ -38,18 +38,6 @@ mkdir -p "$PKG_ROOT/DEBIAN" "$PKG_ROOT/opt/audittools" \
 install -m 0755 "$BINARY" "$PKG_ROOT/opt/audittools/AuditTools"
 cp -a "$PRODUCT_DIR"/. "$PKG_ROOT/opt/audittools/"
 
-# 产品版本清单：界面标题「审核工具 V<版本>」与配置更新版本表都读它
-# 优先用产品目录里已放的清单，其次找源码树根（调用方 cwd），最后从二进制位置推。
-if [[ -f "$PRODUCT_DIR/VERSION_MANIFEST.json" ]]; then
-  cp "$PRODUCT_DIR/VERSION_MANIFEST.json" "$PKG_ROOT/opt/audittools/VERSION_MANIFEST.json"
-elif [[ -f "VERSION_MANIFEST.json" ]]; then
-  cp "VERSION_MANIFEST.json" "$PKG_ROOT/opt/audittools/VERSION_MANIFEST.json"
-elif [[ -f "$(dirname "$BINARY")/../../../../VERSION_MANIFEST.json" ]]; then
-  cp "$(dirname "$BINARY")/../../../../VERSION_MANIFEST.json" "$PKG_ROOT/opt/audittools/VERSION_MANIFEST.json"
-else
-  echo "警告：未找到 VERSION_MANIFEST.json，将使用编译期内嵌版本" >&2
-fi
-
 # 真实配置（S1S2 版只带 1./2.）与使用说明
 CONFIG_SRC="${CONFIG_SRC:-$(dirname "$BINARY")/../../../../audit-core/config-real}"
 PRODUCT_ROOT="$(dirname "$PRODUCT_DIR")"
