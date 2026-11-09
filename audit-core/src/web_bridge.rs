@@ -7733,10 +7733,7 @@ fn push_log_entry(state: &mut Value, message: String, level: &str, detail: bool)
 /// 把「哪个编辑后端、哪个重算引擎、条件格式从哪读、是否发生回退」拼成一行，
 /// 避免用户只能从"慢"推断"是不是没用上 betteroffice"。设置里的
 /// 「显示详细运行日志」关闭时不会输出。
-fn s1_f1_technical_path(
-    request: &S1F1PreflightRequest,
-    output: &S1F1WorkflowOutput,
-) -> String {
+fn s1_f1_technical_path(request: &S1F1PreflightRequest, output: &S1F1WorkflowOutput) -> String {
     let mut parts: Vec<String> = Vec::new();
 
     // 1) 编辑后端：SOURCE 预检之后生成审核副本所用的引擎。
