@@ -21,6 +21,27 @@
 
 
 
+
+**高级设置文案纠错（2026-11-09）**
+
+用户指出「条件格式判定方式」标着 PYTHON 容易误解——实际是**内置 Rust 求值器**
+（`conditional_format.rs::evaluate_expression`），PYTHON 只是沿用旧 Python 实现的
+语义口径名。全量审计高级设置后修正 6 处：
+
+| 位置 | 原文案问题 | 修正 |
+| --- | --- | --- |
+| 条件格式判定方式（说明） | 「PYTHON=直读 OOXML 规则求值」暗示用 Python | 「规则求值（默认）=由内置 Rust 求值器…与旧 Python 实现口径一致」 |
+| 条件格式判定方式（下拉） | 选项直接显示 `PYTHON`/`COM_DISPLAY` | 显示「规则求值（内置 Rust）」/「COM_DISPLAY（Excel/WPS 显示色）」/「COM_EVALUATE（未实现）」；内部枚举值不变（兼容已存设置） |
+| 公式重算（只读行） | 写「原生 COM / LibreOffice（按设置）」，漏掉默认 betteroffice | 「betteroffice（内置）/ COM / LibreOffice（按设置）」 |
+| 条件格式（只读行） | 「OOXML 规则判断（内置）」 | 「Rust 规则求值（内置）」 |
+| 生成文件方式（S3-F05） | 写「由 Excel 文件修改引擎填充」，实际是自研 FAST 渲染器 | 「由内置 OOXML 渲染器按模板逐机构生成…ZIP 级直改、机构级并行」 |
+| S1-F01 公式重算引擎 | 只写 COM/LibreOffice，未提 betteroffice 优先 | 说明与「校验计算引擎」配合：默认 betteroffice，本下拉为回退链起点 |
+
+运行时可读文本同步修正（`COM_EVALUATE` 未实现的报错与设置更新日志），
+内部枚举值 `"PYTHON"` 保留不动以免破坏已保存设置。
+
+回归：audit-core lib 283/283。
+
 **发行包预填配置路径（2026-11-09）**
 
 目标：用户只需选「源数据目录」，模板与外部文件自动识别，不必在多个配置框里挑文件。

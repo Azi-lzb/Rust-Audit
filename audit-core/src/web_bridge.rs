@@ -539,7 +539,6 @@ impl AppState {
     }
 }
 
-
 /// Run the local-only frontend/API service. It never binds to a LAN address.
 pub fn serve_web_ui(port: u16, config_path: PathBuf) -> Result<()> {
     let runtime = Builder::new_multi_thread()
@@ -1818,13 +1817,6 @@ fn start_s1_f1_workflow(state: &AppState, args: &[Value]) -> std::result::Result
     }
     Ok(json!({"accepted": true}))
 }
-
-
-
-
-
-
-
 
 fn s1_f1_end_to_end_total_us(task_started: Instant) -> u128 {
     task_started.elapsed().as_micros()
@@ -3294,7 +3286,7 @@ fn execute_s1_f1_workflow(
         .to_owned();
     anyhow::ensure!(
         conditional_format_evaluator != "COM_EVALUATE",
-        "条件格式判定方式 COM_EVALUATE（Excel/WPS 公式引擎逐条求值）尚未在本产品实现；请在高级设置改用 PYTHON 或 COM_DISPLAY"
+        "条件格式判定方式「逐条公式求值」尚未在本产品实现；请在高级设置改用「规则求值（内置 Rust）」或 COM_DISPLAY"
     );
     let display_probe_enabled = conditional_format_evaluator == "COM_DISPLAY";
     let mut display_probe_opt: Option<
@@ -7397,7 +7389,7 @@ fn update_state(state: &AppState, args: &[Value]) -> std::result::Result<Value, 
                 if text == "COM_EVALUATE" {
                     return Err(ApiError::new(
                         StatusCode::BAD_REQUEST,
-                        "COM_EVALUATE（Excel/WPS 公式引擎逐条求值）尚未在本产品实现；可用 PYTHON（OOXML 规则求值）或 COM_DISPLAY（实际显示填充）",
+                        "COM_EVALUATE（Excel/WPS 公式引擎逐条求值）尚未在本产品实现；可用「规则求值（内置 Rust）」或 COM_DISPLAY（实际显示填充）",
                     ));
                 }
                 let validated =
@@ -7412,7 +7404,7 @@ fn update_state(state: &AppState, args: &[Value]) -> std::result::Result<Value, 
                         if text == "COM_DISPLAY" {
                             "COM_DISPLAY（Excel/WPS 实际显示填充）"
                         } else {
-                            "PYTHON（OOXML 规则求值）"
+                            "规则求值（内置 Rust）"
                         }
                     ),
                 );
@@ -7886,12 +7878,12 @@ impl IntoResponse for ApiError {
 #[cfg(test)]
 mod tests {
     use super::{
-        browse_dir, cached_s1_f1_template_preflight,
-        execute_s1_f1_workflow_with_progress, extract_s1_audit_copy_with_conditional_extractor,
-        format_elapsed, progress_value, publish_run_summary, push_log, render_index,
-        require_complete_com_display_scan, run_s1_f1_for_acceptance,
-        s1_f1_current_sheet, s1_f1_template_preflight, write_s1_recovery_manifest_result, AppState,
-        S1F1AcceptedSource, S1F1OutputDirectoryGuard, S1F1PreflightRequest, LOG_CAPACITY,
+        browse_dir, cached_s1_f1_template_preflight, execute_s1_f1_workflow_with_progress,
+        extract_s1_audit_copy_with_conditional_extractor, format_elapsed, progress_value,
+        publish_run_summary, push_log, render_index, require_complete_com_display_scan,
+        run_s1_f1_for_acceptance, s1_f1_current_sheet, s1_f1_template_preflight,
+        write_s1_recovery_manifest_result, AppState, S1F1AcceptedSource, S1F1OutputDirectoryGuard,
+        S1F1PreflightRequest, LOG_CAPACITY,
     };
     use crate::central_csv::EXPECTED_HEADERS;
     use crate::models::Issue;

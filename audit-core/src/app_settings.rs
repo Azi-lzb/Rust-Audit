@@ -27,7 +27,9 @@ pub(crate) static AUDIT_STATE_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex:
 pub const CALC_ENGINE_VALUES: [&str; 4] = ["auto", "excel", "wps", "libreoffice"];
 pub const EDIT_ENGINE_VALUES: [&str; 4] = ["auto", "ooxml", "openpyxl", "umya"];
 pub const S1_CONDITIONAL_FORMAT_SOURCE_VALUES: [&str; 2] = ["source", "audit_copy"];
-/// 条件格式判定方式：PYTHON=OOXML 规则求值（默认，与源生产一致）；
+/// 条件格式判定方式：PYTHON=由内置 Rust 求值器读 OOXML 规则判定（默认；
+/// 值名沿用旧 Python 实现的枚举，仅为兼容已保存设置，界面上显示为
+/// 「规则求值（内置 Rust）」）；
 /// COM_DISPLAY=Excel/WPS 实际显示填充作为触发事实（渲染基线）；
 /// COM_EVALUATE（公式引擎逐条求值）本产品尚未实现，选择即明确报错。
 pub const CONDITIONAL_FORMAT_EVALUATOR_VALUES: [&str; 3] =
@@ -370,7 +372,8 @@ impl AppSettings {
             .unwrap_or_default()
     }
 
-    /// 条件格式判定方式；缺省 PYTHON（OOXML 规则求值），与源生产默认一致。
+    /// 条件格式判定方式；缺省 PYTHON（内置 Rust 的 OOXML 规则求值），
+    /// 与旧实现口径一致。枚举值沿用旧名，界面显示为「规则求值（内置 Rust）」。
     pub fn conditional_format_evaluator(&self) -> &str {
         self.preferences
             .get("conditionalFormatEvaluator")
@@ -577,8 +580,7 @@ pub fn apply_preferences_to_state(state: &mut serde_json::Value) {
                     // 包被整体移动后，旧绝对路径失效：按「同文件名」在
                     // 可执行文件同级的 config-real/ 下重新定位，用户不必重选。
                     if let Some(relocated) = relocate_bundled_config(trimmed) {
-                        state_object
-                            .insert(key.clone(), serde_json::Value::String(relocated));
+                        state_object.insert(key.clone(), serde_json::Value::String(relocated));
                         continue;
                     }
                     let default_is_valid = state_object
