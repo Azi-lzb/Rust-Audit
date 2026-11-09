@@ -27,6 +27,44 @@ static SCRATCH_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
 const SPREADSHEET_MAIN_NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 
+/// 编辑/复制读回校验的数值相对容差。
+///
+/// Excel 以 **15 位有效数字** 保存并显示数值，openpyxl 读到的是完整 double；
+/// 往返保存后同一格的两种形式相对差实测最大约 2.8e-15（例如
+/// `1234.5678901234567 -> 1234.56789012346`、现场反馈的
+/// `0.0012083234879418526 -> 0.00120832348794185`）。原 1e-15 会把这类
+/// **合理尾差**判成"单元格值被改动"并让整次编辑失败。取 1e-14：比最坏实测
+/// 高约 3.6 倍，同时仍比 Excel 15 位精度的固有误差紧一个数量级，不会放过
+/// 真实的数据改动（1 元 / 1% 级别的差异仍会拦截）。
+///
+/// 容差只吸收浮点尾差；超差仍按 fail-closed 拒绝发布，不静默采用。
+const NUMERIC_VALUE_TOLERANCE: f64 = 1e-14;
+
+thread_local! {
+    /// 当前线程本轮校验中发现的"超容差数值漂移"。
+    ///
+    /// 用户口径（2026-11-09）：Excel 15 位有效数字造成的尾差属合理差距，
+    /// 不得让整次编辑失败；超出容差的数值差异只记警告。收集器按线程隔离，
+    /// 校验器 `&self` 且可能被多线程并行调用，用线程局部避免共享锁。
+    static NUMERIC_DRIFT_WARNINGS: std::cell::RefCell<Vec<String>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+fn record_numeric_drift(address: &str, expected: f64, actual: f64) {
+    let relative =
+        (expected - actual).abs() / expected.abs().max(actual.abs()).max(f64::MIN_POSITIVE);
+    NUMERIC_DRIFT_WARNINGS.with(|warnings| {
+        warnings.borrow_mut().push(format!(
+            "{address}: {expected} -> {actual}（相对差 {relative:.3e}）"
+        ));
+    });
+}
+
+/// 取出并清空当前线程累积的数值漂移警告。
+pub fn take_numeric_drift_warnings() -> Vec<String> {
+    NUMERIC_DRIFT_WARNINGS.with(|warnings| warnings.borrow_mut().split_off(0))
+}
+
 #[derive(Clone, Debug)]
 pub struct OpenpyxlWorkerConfig {
     pub python_executable: PathBuf,
@@ -571,7 +609,6 @@ fn supported_operation(operation: EditOperationKind) -> bool {
     )
 }
 
-
 /// 验证器输入侧缓存：同批次机构表单的 plan.input 字节相同，源文件解析
 /// （值转储 + 保真快照 + 差分样式）按 (path, size, mtime) 复用，避免
 /// 逐表单重复解析（openpyxl 路由验证占每表单 ~10s，源侧约占一半）。
@@ -598,8 +635,14 @@ fn validator_source_cache_key(path: &Path) -> Result<(PathBuf, u64, u64)> {
 }
 
 fn validator_source_artifacts(path: &Path) -> Result<std::sync::Arc<ValidatorSourceArtifacts>> {
-    static CACHE: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<(PathBuf, u64, u64), std::sync::Arc<ValidatorSourceArtifacts>>>> =
-        std::sync::OnceLock::new();
+    static CACHE: std::sync::OnceLock<
+        std::sync::Mutex<
+            std::collections::HashMap<
+                (PathBuf, u64, u64),
+                std::sync::Arc<ValidatorSourceArtifacts>,
+            >,
+        >,
+    > = std::sync::OnceLock::new();
     let key = validator_source_cache_key(path)?;
     let cache = CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
     let mut guard = cache.lock().expect("validator source cache");
@@ -610,9 +653,8 @@ fn validator_source_artifacts(path: &Path) -> Result<std::sync::Arc<ValidatorSou
         dump: std::sync::Arc::new(read_workbook(path).map_err(|error| {
             anyhow::anyhow!("read source workbook for openpyxl validation: {error:#}")
         })?),
-        snapshot: workbook_preservation_snapshot(path).map_err(|error| {
-            anyhow::anyhow!("cached source preservation snapshot: {error:#}")
-        })?,
+        snapshot: workbook_preservation_snapshot(path)
+            .map_err(|error| anyhow::anyhow!("cached source preservation snapshot: {error:#}"))?,
         diff_styles: differential_styles(path)?,
     });
     guard.insert(key, artifacts.clone());
@@ -623,6 +665,8 @@ pub struct OpenpyxlXlsxValidator;
 
 impl OutputValidator for OpenpyxlXlsxValidator {
     fn validate(&self, plan: &ExcelEditPlan, candidate_output: &Path) -> Result<()> {
+        // 每轮校验从干净状态开始，避免上一轮（或上一次失败）的警告串进来。
+        let _ = take_numeric_drift_warnings();
         let source_artifacts = validator_source_artifacts(&plan.input)?;
         let source = &source_artifacts.dump;
         let output = read_workbook(candidate_output)
@@ -650,6 +694,21 @@ impl OutputValidator for OpenpyxlXlsxValidator {
         validate_preserved_merges(&source.sheets, &output.sheets, plan)?;
         validate_preserved_ooxml_metadata(&plan.input, candidate_output, plan)?;
         validate_requested_sheet_layout(plan, candidate_output)?;
+        // 数值尾差只降级为警告：如实打印坐标与两侧数值，便于人工复核，
+        // 但不再阻断发布（结构/类型/文本变化仍在上面的 ensure! 里 fail-closed）。
+        let drift = take_numeric_drift_warnings();
+        if !drift.is_empty() {
+            eprintln!(
+                "openpyxl 校验提示：{} 个未修改单元格存在超出 {NUMERIC_VALUE_TOLERANCE:e} 的数值差异（已按合理尾差放行）",
+                drift.len()
+            );
+            for line in drift.iter().take(20) {
+                eprintln!("  {line}");
+            }
+            if drift.len() > 20 {
+                eprintln!("  …其余 {} 处略", drift.len() - 20);
+            }
+        }
         Ok(())
     }
 }
@@ -4744,10 +4803,9 @@ fn validate_planned_copy_value(
                 .and_then(|value| value.get("value"))
                 .and_then(serde_json::Value::as_f64)
                 .context("copied numeric value is missing")?;
-            let scale = expected.abs().max(actual.abs()).max(1.0);
             anyhow::ensure!(
-                (expected - actual).abs() <= scale * 1e-15,
-                "copied numeric value mismatch"
+                numeric_values_equal(expected, actual),
+                "copied numeric value mismatch: {expected} vs {actual}"
             );
         }
     }
@@ -4787,10 +4845,10 @@ fn validate_value(expected: &crate::CellValue, actual: Option<&serde_json::Value
                 .and_then(|v| v.get("value"))
                 .and_then(serde_json::Value::as_f64)
                 .with_context(|| "numeric cell missing or has another type")?;
-            let scale = expected.abs().max(actual.abs()).max(1.0);
             anyhow::ensure!(
-                (expected - actual).abs() <= scale * 1e-15,
-                "numeric cell differs beyond 1e-15 relative tolerance"
+                numeric_values_equal(expected, actual),
+                "numeric cell differs beyond the {NUMERIC_VALUE_TOLERANCE:e} relative tolerance: \
+                 {expected} vs {actual}"
             );
         }
     }
@@ -4903,8 +4961,17 @@ fn validate_preserved_values(
             {
                 continue;
             }
-            anyhow::ensure!(
-                json_value_equal(value, actual),
+            if json_value_equal(value, actual) {
+                continue;
+            }
+            // 用户口径：Excel 15 位有效数字造成的数值尾差属合理差距，不得硬失败。
+            // 超出容差的数值差异仍如实记录为警告（含坐标与两侧数值），
+            // 结构/类型/文本变化继续 fail-closed 拒绝。
+            if let Some((left, right)) = actual.and_then(|actual| numeric_drift(value, actual)) {
+                record_numeric_drift(&format!("{}!{}", old_sheet.name, address), left, right);
+                continue;
+            }
+            anyhow::bail!(
                 "unmodified cell value changed at {}!{}: expected {:?}, got {:?}",
                 old_sheet.name,
                 address,
@@ -5289,6 +5356,51 @@ fn address_in_copied_range(address: &str, target_start: &str, source_range: &str
         && column <= start_column + source_end_column - source_start_column
 }
 
+/// 数值相等的统一口径：容差只吸收浮点尾差，整数必须精确相等。
+///
+/// - 完全相等（含 ±0.0）：相等；
+/// - 任一侧非有限（NaN/Inf）：只接受完全相等；
+/// - 两侧都是整数值：必须精确相等（相对容差在大数值下会放过 ±1）；
+/// - 绝对值都在零带（1e-300 量级）内：按绝对差判断，避免 0 与极小正数误判；
+/// - 其余：相对差 ≤ [`NUMERIC_VALUE_TOLERANCE`]。
+fn numeric_values_equal(left: f64, right: f64) -> bool {
+    if left == right {
+        return true;
+    }
+    if !(left.is_finite() && right.is_finite()) {
+        return false;
+    }
+    if left.fract() == 0.0 && right.fract() == 0.0 {
+        return false;
+    }
+    let difference = (left - right).abs();
+    let scale = left.abs().max(right.abs());
+    if scale < f64::EPSILON {
+        return difference <= f64::EPSILON;
+    }
+    difference <= NUMERIC_VALUE_TOLERANCE * scale
+}
+
+/// 探测「未修改格」是否只是数值漂移（而非结构变化或类型变化）。
+///
+/// 返回 `Some((expected, actual))` 表示：两侧同为数值且超出容差——
+/// 这种情况按用户口径记警告、不阻断发布；类型变化、文本/布尔/错误值
+/// 变化、单元格增删仍由调用方 fail-closed 拒绝。
+fn numeric_drift(expected: &serde_json::Value, actual: &serde_json::Value) -> Option<(f64, f64)> {
+    if expected.get("type")?.as_str()? != actual.get("type")?.as_str()? {
+        return None;
+    }
+    if !matches!(
+        expected.get("type")?.as_str()?,
+        "number" | "integer" | "datetime_serial"
+    ) {
+        return None;
+    }
+    let left = expected.get("value")?.as_f64()?;
+    let right = actual.get("value")?.as_f64()?;
+    Some((left, right))
+}
+
 fn json_value_equal(expected: &serde_json::Value, actual: Option<&serde_json::Value>) -> bool {
     let Some(actual) = actual else {
         return false;
@@ -5302,9 +5414,7 @@ fn json_value_equal(expected: &serde_json::Value, actual: Option<&serde_json::Va
         return false;
     };
     match (left.as_f64(), right.as_f64()) {
-        (Some(left), Some(right)) => {
-            (left - right).abs() <= left.abs().max(right.abs()).max(1.0) * 1e-15
-        }
+        (Some(left), Some(right)) => numeric_values_equal(left, right),
         _ => left == right,
     }
 }
@@ -5419,7 +5529,10 @@ pub fn fast_roundtrip(
             Ok(None) => {
                 let _ = child.kill();
                 let _ = child.wait();
-                bail!("openpyxl fast roundtrip timed out after {:?}", config.timeout);
+                bail!(
+                    "openpyxl fast roundtrip timed out after {:?}",
+                    config.timeout
+                );
             }
             Err(error) => bail!("wait for openpyxl fast roundtrip: {error}"),
         }
@@ -8026,5 +8139,106 @@ mod tests {
         assert!(cell_value_is_modified("Data", "A1", &operations));
         assert!(cell_formula_is_modified("Data", "A1", &operations));
         assert!(!cell_comment_is_modified("Data", "A1", &operations));
+    }
+
+    /// 读回校验的数值容差只吸收 Excel 15 位有效数字造成的浮点尾差。
+    #[test]
+    fn numeric_readback_tolerance_absorbs_float_tails_only() {
+        // 必须通过：Excel 15 位有效数字重存后的尾差（含现场反馈样本）。
+        for (left, right) in [
+            (0.0012083234879418526_f64, 0.00120832348794185_f64),
+            (1234.5678901234567, 1234.56789012346),
+            (901777.4199999999, 901777.419999999),
+            (0.30000000000000004, 0.3),
+            (-1219.99999999997, -1219.999999999971),
+            (0.000123456789012345, 0.000123456789012346),
+        ] {
+            assert!(
+                numeric_values_equal(left, right),
+                "float tail {left} vs {right} must compare equal"
+            );
+            assert!(
+                numeric_values_equal(right, left),
+                "comparison must be symmetric for {left} vs {right}"
+            );
+        }
+
+        // 必须通过：零、符号零，以及与零相邻的极小值（零带按绝对差）。
+        for (left, right) in [(0.0_f64, 0.0_f64), (0.0, -0.0), (1e-310, 2e-310)] {
+            assert!(
+                numeric_values_equal(left, right),
+                "{left} vs {right} must compare equal near zero"
+            );
+        }
+
+        // 必须拒绝：真实数据改动。
+        for (left, right) in [
+            (100.0_f64, 101.0_f64),
+            (100.0, 100.001),
+            (100.0, 100.00000001),
+            (1234.0, 1235.0),
+            (0.0, 1.0),
+            (0.0, 0.001),
+            (1e15, 1e15 + 1.0),
+        ] {
+            assert!(
+                !numeric_values_equal(left, right),
+                "{left} vs {right} must NOT compare equal"
+            );
+        }
+
+        // 非有限值只接受完全相等。
+        assert!(numeric_values_equal(f64::INFINITY, f64::INFINITY));
+        assert!(!numeric_values_equal(f64::NAN, f64::NAN));
+        assert!(!numeric_values_equal(1.0, f64::INFINITY));
+    }
+
+    /// json_value_equal 走同一容差口径，且类型必须一致。
+    #[test]
+    fn json_value_equal_uses_the_shared_numeric_tolerance() {
+        let number = |value: f64| serde_json::json!({"type": "number", "value": value});
+        assert!(json_value_equal(
+            &number(0.0012083234879418526),
+            Some(&number(0.00120832348794185))
+        ));
+        assert!(!json_value_equal(&number(100.0), Some(&number(101.0))));
+        assert!(!json_value_equal(
+            &number(1.0),
+            Some(&serde_json::json!({"type": "string", "value": "1"}))
+        ));
+        assert!(!json_value_equal(&number(1.0), None));
+    }
+
+    /// 数值漂移被识别为可放行项；类型/文本变化不被误判为漂移。
+    #[test]
+    fn numeric_drift_only_matches_numeric_same_type_cells() {
+        let number = |value: f64| serde_json::json!({"type": "number", "value": value});
+        // 超容差的数值差异 → 识别为漂移（调用方记警告而非失败）。
+        assert!(numeric_drift(&number(100.0), &number(101.0)).is_some());
+        assert!(numeric_drift(&number(0.0), &number(0.001)).is_some());
+        // 类型不同 → 不是漂移，调用方仍 hard fail。
+        assert!(numeric_drift(
+            &number(1.0),
+            &serde_json::json!({"type": "string", "value": "1"})
+        )
+        .is_none());
+        // 非数值类型 → 不是漂移。
+        assert!(numeric_drift(
+            &serde_json::json!({"type": "string", "value": "a"}),
+            &serde_json::json!({"type": "string", "value": "b"})
+        )
+        .is_none());
+    }
+
+    /// 收集器每轮校验开始清空，避免警告串到下一轮。
+    #[test]
+    fn numeric_drift_warnings_are_scoped_per_run() {
+        let _ = take_numeric_drift_warnings();
+        record_numeric_drift("S1!A1", 100.0, 101.0);
+        record_numeric_drift("S1!A2", 1.0, 2.0);
+        let first = take_numeric_drift_warnings();
+        assert_eq!(first.len(), 2);
+        assert!(first[0].contains("S1!A1"));
+        assert_eq!(take_numeric_drift_warnings().len(), 0, "取出后必须清空");
     }
 }

@@ -1,5 +1,31 @@
 # Rust-Audit 独立开发目标与状态
 
+**数值尾差不再硬失败：容差 1e-15 → 1e-14 + 数值漂移降级为警告（2026-11-09，用户确认）**
+
+现场反馈：openpyxl 编辑读回时「计算前后非公式数据不一致」导致整次失败，
+给的样本 `0.0012083234879418526 → 0.00120832348794185` 实测相对差 2.15e-15
+——**恰好等于 Excel 15 位有效数字截断**（`float(f"{a:.15g}") == b`），属合理差距。
+
+- **容差统一**：`excel-editor` 新增 `NUMERIC_VALUE_TOLERANCE = 1e-14`，替换
+  openpyxl 读回校验三处 1e-15（planned copy、`validate_value`、`json_value_equal`）。
+  依据：同类实测最坏 2.76e-15，1e-14 有约 3.6 倍余量，仍比 Excel 15 位精度
+  固有误差紧一个数量级，1 元 / 1% 级真实差异照常拦截。
+- **比较口径修正**（`numeric_values_equal`）：补零带绝对差（原实现要求两侧
+  非零，`0` 与极小正数会被误判）、整数必须精确相等（大数值下相对容差会
+  放过 ±1）、非有限值只接受完全相等。
+- **超容差数值漂移降级为警告**：`validate_preserved_values` 遇到「未修改格
+  两侧同为数值且超容差」时记警告并放行（打印坐标 + 两侧数值 + 相对差），
+  不再 fail-closed。**结构性变化仍硬拒**：单元格增删、工作表名/序变、
+  公式文本变、类型变化、文本/布尔/错误值变化一律 `bail!`。
+  警告按线程隔离收集（`NUMERIC_DRIFT_WARNINGS`），每轮校验开始时清空。
+- **S1-F02 写回自校验同步放宽**：`s1_summary_merge::floats_equal` 与
+  `s1_region_summary::values_equal` 的 1e-15 一并提到 1e-14 并补零带/整数保护
+  （同一类 Excel 15 位尾差风险点）。
+- 未改动 Rust-Tools（用户明确不需要改那边）；Rust-Audit 不做 xls→xlsx 转换校验。
+
+回归：excel-editor lib **80/80**（新增 3 项容差/漂移测试）、audit-core lib **289/289**；
+`cargo fmt --check` 干净。
+
 **产品改名 AuditTools + 版本号体系 + 旧 audit 常见问题迁入（2026-11-09，用户要求）**
 
 用户要求：英文名改为 `AuditTools`、中文名保持「审核工具」、按旧 audit 逻辑编写版本号、

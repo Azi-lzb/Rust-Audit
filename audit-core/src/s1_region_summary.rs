@@ -2133,6 +2133,33 @@ fn validate_summary_workbook(path: &Path, groups: &[RegionGroup]) -> Result<()> 
     Ok(())
 }
 
+const WRITEBACK_NUMERIC_TOLERANCE: f64 = 1e-14;
+
+/// 结果写回后自校验的数值相对容差。
+///
+/// 写出的 double 与 Excel/openpyxl 重存后读回的形式可能相差 15 位有效数字
+/// 级别的尾差（实测最坏约 2.8e-15，例如 1234.5678901234567 ->
+/// 1234.56789012346）。原 1e-15 会把合理尾差判成"单元格值或类型不匹配"
+/// 并让整个结果作废；1e-14 比最坏实测高约 3.6 倍，仍能拦截 1 元 / 1% 级
+/// 的真实差异。零带用绝对差，整数必须精确相等。
+fn floats_equal(left: f64, right: f64) -> bool {
+    if left == right {
+        return true;
+    }
+    if !(left.is_finite() && right.is_finite()) {
+        return false;
+    }
+    if left.fract() == 0.0 && right.fract() == 0.0 {
+        return false;
+    }
+    let difference = (left - right).abs();
+    let scale = left.abs().max(right.abs());
+    if scale < f64::EPSILON {
+        return difference <= f64::EPSILON;
+    }
+    difference <= WRITEBACK_NUMERIC_TOLERANCE * scale
+}
+
 fn values_equal(expected: &CellValue, actual: &CellValue) -> bool {
     match (expected, actual) {
         (CellValue::Empty, CellValue::Empty) => true,
@@ -2140,10 +2167,7 @@ fn values_equal(expected: &CellValue, actual: &CellValue) -> bool {
         (CellValue::Boolean(left), CellValue::Boolean(right)) => left == right,
         (CellValue::Integer(left), CellValue::Integer(right)) => left == right,
         (left, right) => match (numeric_value(left), numeric_value(right)) {
-            (Some(left), Some(right)) => {
-                left == right
-                    || (left - right).abs() <= left.abs().max(right.abs()).max(1.0) * 1e-15
-            }
+            (Some(left), Some(right)) => floats_equal(left, right),
             _ => false,
         },
     }
