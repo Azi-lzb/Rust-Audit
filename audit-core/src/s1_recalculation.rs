@@ -238,6 +238,12 @@ impl S1RecalculationSession {
         let started = Instant::now();
         let (input_path, output_path, staging) =
             prepare_recalculation_paths(input_path.as_ref(), output_path.as_ref())?;
+        // 与所有引擎路径同一口径：sidecar 读规范化基线副本，比对也用基线，
+        // 调用方文件保持原样（shared ref 归一不再被误判成「改公式」）。
+        let baseline = staging.path().join("recalc-baseline.xlsx");
+        std::fs::copy(&input_path, &baseline)
+            .with_context(|| format!("为 sidecar 重算准备基线副本：{}", baseline.display()))?;
+        let _ = crate::excel_open_repair::repair_audit_copy_for_excel(&baseline);
         let candidate = staging.path().join("recalculated.xlsx");
         if let Err(error) = self.ensure_started() {
             self.stop_process();
@@ -245,7 +251,7 @@ impl S1RecalculationSession {
         }
         let request = serde_json::json!({
             "type": "recalculate",
-            "input": sidecar_io_path(&input_path).display().to_string(),
+            "input": sidecar_io_path(&baseline).display().to_string(),
             "output": sidecar_io_path(&candidate).display().to_string(),
         });
         let request_result = (|| -> Result<Value> {
@@ -278,7 +284,7 @@ impl S1RecalculationSession {
                 return self.fallback_to_libreoffice(&input_path, &output_path, error);
             }
         };
-        finish_recalculation(&input_path, &output_path, &candidate, report, started)
+        finish_recalculation(&baseline, &output_path, &candidate, report, started)
     }
 
     /// Scan actual Excel DisplayFormat fills in the named S1 conditional-format
@@ -924,9 +930,21 @@ pub fn recalculate_s1_formula_copy_batch(
         }
     }
     // 仅剩被 betteroffice 拒绝的工作簿需要外部引擎。
-    let sidecar_path = sidecar_path.context(
-        "betteroffice 校验区域重算不可用，且未配置公式重算 sidecar（Excel COM / LibreOffice）",
-    )?;
+    let refusal_summary: Vec<String> = betteroffice_reasons
+        .iter()
+        .flatten()
+        .cloned()
+        .collect();
+    let sidecar_missing = if refusal_summary.is_empty() {
+        "betteroffice 校验区域重算不可用，且未配置公式重算 sidecar（Excel COM / LibreOffice）"
+            .to_owned()
+    } else {
+        format!(
+            "betteroffice 校验区域重算不可用（{}），且未配置公式重算 sidecar（Excel COM / LibreOffice）",
+            refusal_summary.join("；")
+        )
+    };
+    let sidecar_path = sidecar_path.context(sidecar_missing)?;
     let sidecar_path = fs::canonicalize(sidecar_path)
         .with_context(|| format!("读取公式重算 sidecar：{}", sidecar_path.display()))?;
     ensure!(sidecar_path.is_file(), "公式重算 sidecar 不是文件");
@@ -1105,9 +1123,16 @@ pub fn recalculate_s1_formula_copy(
         }
     }
     // 至此 betteroffice 不可用；没有 sidecar 就没有任何可用引擎。
-    let sidecar_path = sidecar_path.context(
-        "betteroffice 校验区域重算不可用，且未配置公式重算 sidecar（Excel COM / LibreOffice）",
-    )?;
+    // 把 betteroffice 的拒绝原因带进最终错误，否则用户只看到「缺 sidecar」，
+    // 完全不知道真正原因（预算耗尽 / #NAME? / 循环引用 / 打不开）。
+    let sidecar_missing = match &bo_fallback_reason {
+        Some(reason) => format!(
+            "betteroffice 校验区域重算不可用（{reason}），且未配置公式重算 sidecar（Excel COM / LibreOffice）"
+        ),
+        None => "betteroffice 校验区域重算不可用，且未配置公式重算 sidecar（Excel COM / LibreOffice）"
+            .to_owned(),
+    };
+    let sidecar_path = sidecar_path.context(sidecar_missing)?;
     let sidecar_path = fs::canonicalize(sidecar_path)
         .with_context(|| format!("读取公式重算 sidecar：{}", sidecar_path.display()))?;
     ensure!(sidecar_path.is_file(), "公式重算 sidecar 不是文件");
@@ -1176,7 +1201,8 @@ fn recalculate_with_betteroffice(
         "status": "recalculated",
         "engine": outcome.application,
     });
-    let mut report = finish_recalculation(&input, &output, &candidate, report, started)?;
+    // 比对基准必须是「已规范化的基线」，否则 shared ref 归一会误判成改公式。
+    let mut report = finish_recalculation(&baseline, &output, &candidate, report, started)?;
     report.elapsed_ms = started.elapsed().as_millis();
     Ok(report)
 }

@@ -18,6 +18,26 @@
 
 
 
+
+**未验证项全部补齐（2026-11-09）**
+
+| 原未验证项 | 结果 | 证据 |
+| --- | --- | --- |
+| Linux deb 打包（glibc 2.28 / 麒麟 V10 / UOS V20） | ✅ **通过** | zigbuild target `x86_64-unknown-linux-gnu.2.28`；`objdump` 实测最高符号 GLIBC_2.28；新增 `package-linux-deb.sh`（含 glibc 上限硬校验）；WSL 实测 打包→安装→运行→卸载 全通，deb 9.4MB |
+| 循环引用拒绝分支 | ✅ 拒绝 | `存在 2 个循环引用格` |
+| #NAME? 拒绝分支 | ✅ 拒绝 | `1 个公式格求值为 #NAME?（betteroffice 未实现的函数）`；触发路径是**未定义名称**（GEOMEAN/UNIQUE 已被实现或静默降级） |
+| 真实带 VBA 的 xlsm | ✅ **通过** | `统计工具-大集中工具v3.3.8.xlsm`（38 表 / 3106 公式 / `vbaProject.bin` 713728 B）：重算成功、无 #NAME?、**VBA 部件逐字节保留** |
+| 3 轮以上收敛 | ✅ 已收敛 | ！100 / ！90 / ！50 三模板：round1 有变化 → round2 changed=0 → round3/4/5 恒 0 |
+| WPS COM 回退分支 | ⚠️ **部分验证** | WPS COM（ket.Application v12.0）可打开并成功 CalculateFull + SaveAs，产物 46 部件、551 公式可读；但**未构造出「Excel 打不开而 WPS 能开」的触发场景**（repair 已把可修的都修了，剩下的是真损坏） |
+
+**Linux glibc 2.28 端到端**：20 模板 betteroffice **20/20 全部成功**，与 Windows 逐字段完全相同（实质差异 0）——此前 Linux 侧 ！40/！70 失败的真因是
+`recalculate_with_betteroffice` 与 sidecar session 分支仍用**未规范化的 input** 作比对基准，
+shared ref 归一被误判成「重算改变公式」；修正后两平台一致。
+
+**顺带修的错误信息缺陷**：betteroffice 拒绝时若同时缺 sidecar，最终错误只显示
+「未配置 sidecar」，吞掉了真实原因（预算耗尽/#NAME?/循环引用）。现已在批量与单本
+两个入口把拒绝原因拼入错误文本。
+
 **OOXML 规范化与计算引擎解耦（2026-11-09，Rust-Tools ③ 对齐）**
 
 Rust-Tools 指出：若只在 COM 分支做 shared formula ref 归一，betteroffice 侧副本

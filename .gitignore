@@ -101,3 +101,11 @@ probe/reports/s1f1_bo_parity/br
 probe/reports/s1f1_bo_parity/guard_test/
 probe/reports/s1f1_bo_parity/final_com/
 probe/reports/s1f1_bo_parity/v2_com/
+dist-linux/
+probe/reports/bo228
+probe/reports/wba_test/
+probe/reports/vba_test/
+probe/reports/wps_route/
+probe/reports/mutation_test/
+probe/reports/safety_test/
+probe/reports/refcheck/
