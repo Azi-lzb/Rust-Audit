@@ -1,0 +1,15 @@
+{
+  "product": {
+    "id": "AuditTools",
+    "name": "审核工具",
+    "version": "26.3.0.0",
+    "version_scheme": "YY.MAJOR.MINOR.PATCH（年份.大版本.中版本.小版本）",
+    "description": "AuditTools 是 Rust 实现的数据审核工具产品标识；整包发布版本使用年份.大版本.中版本.小版本。"
+  },
+  "version_scheme": "功能/配置组件 SemVer（vMAJOR.MINOR.PATCH）：PATCH=不改变外部契约的修复/优化；MINOR=向后兼容的新增能力；MAJOR=不兼容语义/结构/契约变化。",
+  "systems": {
+    "S1": { "name": "逐笔统计系统" },
+    "S2": { "name": "报表采集系统" },
+    "S3": { "name": "大集中统计系统" }
+  }
+}

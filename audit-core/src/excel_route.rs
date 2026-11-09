@@ -254,7 +254,11 @@ fn s3_f05_modifier(
 fn s1_f01_openpyxl_backend(platform: &str, feature: &str) -> anyhow::Result<Arc<dyn EditBackend>> {
     let capability = openpyxl_capability(platform, feature)?;
     let binary = std::env::current_exe().context("定位当前可执行文件以解析 openpyxl 运行时")?;
-    let backend = OpenpyxlXlsxBackend::for_product_binary(capability, binary, "open-data-audit")?;
+    let backend = OpenpyxlXlsxBackend::for_product_binary(
+        capability,
+        binary,
+        crate::app_identity::PRODUCT_DIR,
+    )?;
     Ok(Arc::new(backend))
 }
 
@@ -267,8 +271,11 @@ pub fn fast_roundtrip_via_openpyxl(
     let platform = runtime_platform();
     let capability = openpyxl_capability(&platform, "S3-F05")?;
     let binary = std::env::current_exe().context("定位当前可执行文件以解析 openpyxl 运行时")?;
-    let config = excel_editor::OpenpyxlWorkerConfig::for_product_binary(binary, "open-data-audit")
-        .with_context(|| format!("解析 {} 的 openpyxl worker 运行时", "S3-F05"))?;
+    let config = excel_editor::OpenpyxlWorkerConfig::for_product_binary(
+        binary,
+        crate::app_identity::PRODUCT_DIR,
+    )
+    .with_context(|| format!("解析 {} 的 openpyxl worker 运行时", "S3-F05"))?;
     let _ = capability;
     // 原地往返：先写临时件，再替换目标
     let staged = output.with_extension("openpyxl-roundtrip.xlsx");

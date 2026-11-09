@@ -1,4 +1,4 @@
-﻿# Open-Data-Audit Windows 发布包（全量版 / S1S2 版）
+﻿# AuditTools 审核工具 Windows 发布包（全量版 / S1S2 版）
 #
 # 用法：
 #   powershell -File package-windows.ps1                  # 全量版 S1+S2+S3
@@ -6,8 +6,9 @@
 #
 # 布局（用户解压即可双击运行）：
 #   <root>/
-#     open-data-audit.exe
+#     AuditTools.exe
 #     run.bat
+#     VERSION_MANIFEST.json     产品名称与版本（界面标题用）
 #     config-real/*.xlsx        真实配置（S1S2 版只含 1./2.）
 #     libexec/.../openpyxl_worker.py
 #     使用说明.docx
@@ -72,7 +73,7 @@ if (-not (Test-Path -LiteralPath $guide -PathType Leaf)) {
 }
 
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-$archive = Join-Path $dist "open-data-audit-windows-x64-$editionTag-$stamp.zip"
+$archive = Join-Path $dist "AuditTools-windows-x64-$editionTag-$stamp.zip"
 if (Test-Path -LiteralPath $archive) {
     throw "Package already exists: $archive"
 }
@@ -82,10 +83,15 @@ try {
     New-Item -ItemType Directory -Path $stage -Force | Out-Null
     $stageConfig = Join-Path $stage 'config-real'
     New-Item -ItemType Directory -Path $stageConfig -Force | Out-Null
-    $stageWorker = Join-Path $stage 'libexec\open-data-audit\openpyxl\worker'
+    $stageWorker = Join-Path $stage 'libexec\audittools\openpyxl\worker'
     New-Item -ItemType Directory -Path $stageWorker -Force | Out-Null
 
-    Copy-Item -LiteralPath (Join-Path $dist 'open-data-audit.exe') -Destination $stage
+    Copy-Item -LiteralPath (Join-Path $dist 'AuditTools.exe') -Destination $stage
+    $manifest = Join-Path $root 'VERSION_MANIFEST.json'
+    if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) {
+        throw "Required version manifest is missing: $manifest"
+    }
+    Copy-Item -LiteralPath $manifest -Destination $stage
     Copy-Item -LiteralPath (Join-Path $root 'crates\excel-editor\python\openpyxl_worker.py') `
         -Destination (Join-Path $stageWorker 'openpyxl_worker.py')
     Copy-Item -LiteralPath (Join-Path $root 'run.bat') -Destination $stage

@@ -753,17 +753,19 @@ fn state_base_dir() -> Result<PathBuf> {
         let base = std::env::var_os("LOCALAPPDATA")
             .map(PathBuf::from)
             .context("Windows 用户状态目录不可用：LOCALAPPDATA 未设置")?;
-        Ok(base.join("open-data-audit"))
+        Ok(base.join(crate::app_identity::PRODUCT_DIR))
     }
     #[cfg(not(windows))]
     {
         if let Some(path) = std::env::var_os("XDG_STATE_HOME").filter(|v| !v.is_empty()) {
-            return Ok(PathBuf::from(path).join("open-data-audit"));
+            return Ok(PathBuf::from(path).join(crate::app_identity::PRODUCT_DIR));
         }
         let home = std::env::var_os("HOME")
             .map(PathBuf::from)
             .context("用户状态目录不可用：XDG_STATE_HOME 和 HOME 均未设置")?;
-        Ok(home.join(".local/state/open-data-audit"))
+        Ok(home
+            .join(".local/state")
+            .join(crate::app_identity::PRODUCT_DIR))
     }
 }
 
@@ -806,9 +808,9 @@ pub fn openpyxl_selection_status() -> (bool, String) {
 }
 
 fn detect_openpyxl_selection_status() -> (bool, String) {
-    let config = std::env::current_exe()
-        .ok()
-        .and_then(|binary| OpenpyxlWorkerConfig::for_product_binary(binary, "open-data-audit"));
+    let config = std::env::current_exe().ok().and_then(|binary| {
+        OpenpyxlWorkerConfig::for_product_binary(binary, crate::app_identity::PRODUCT_DIR)
+    });
     let Some(config) = config else {
         return (
             false,

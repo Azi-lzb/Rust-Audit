@@ -3,8 +3,8 @@ setlocal
 
 set "PROJECT_ROOT=%~dp0"
 set "DIST_DIR=%PROJECT_ROOT%dist"
-if not exist "%DIST_DIR%\open-data-audit.exe" (
-    echo Missing %DIST_DIR%\open-data-audit.exe. Run build-release.bat explicitly first.
+if not exist "%DIST_DIR%\AuditTools.exe" (
+    echo Missing %DIST_DIR%\AuditTools.exe. Run build-release.bat explicitly first.
     exit /b 2
 )
 if not exist "%PROJECT_ROOT%audit-core\config-real" (

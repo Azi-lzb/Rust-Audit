@@ -64,9 +64,9 @@ use std::{
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "open-data-audit",
-    version,
-    about = "Rust implementation of Open-Data-Audit workflows"
+    name = "AuditTools",
+    version = audit_core::app_identity::PRODUCT_VERSION,
+    about = "审核工具（AuditTools）：逐笔统计 / 报表采集 / 大集中统计审核"
 )]
 struct Cli {
     /// 省略子命令（例如双击 exe）时启动图形界面；命令行使用保持原语义。
@@ -790,7 +790,7 @@ fn main() {
         return;
     }
     if let Err(error) = run() {
-        eprintln!("open-data-audit: {error:#}");
+        eprintln!("AuditTools: {error:#}");
         std::process::exit(2);
     }
 }

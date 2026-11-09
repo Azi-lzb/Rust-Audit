@@ -9,6 +9,7 @@
 #![recursion_limit = "512"]
 
 pub mod acceptance_runner;
+pub mod app_identity;
 pub mod app_settings;
 pub mod bo_calc;
 pub mod central_csv;
@@ -17,6 +18,7 @@ pub mod config_update;
 pub mod discovery;
 pub mod excel_open_repair;
 pub mod excel_route;
+pub mod faq;
 pub mod models;
 pub mod name_config;
 pub mod native_file_dialog;

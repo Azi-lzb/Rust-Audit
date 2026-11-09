@@ -1,5 +1,32 @@
 # Rust-Audit 独立开发目标与状态
 
+**产品改名 AuditTools + 版本号体系 + 旧 audit 常见问题迁入（2026-11-09，用户要求）**
+
+用户要求：英文名改为 `AuditTools`、中文名保持「审核工具」、按旧 audit 逻辑编写版本号、
+把旧 audit 的常见问题搬进来，最后打 exe/deb 共 4 个包。
+
+- **版本清单** `VERSION_MANIFEST.json`（仓库根，仿旧 audit `版本管理/VERSION_MANIFEST.json`）：
+  `product.id=AuditTools`、`product.name=审核工具`、`product.version=26.3.0.0`；
+  格式 `YY.MAJOR.MINOR.PATCH`（年份两位、各段 ≤65535），与旧 audit 的
+  `app_identity.py` 校验口径一致。Rust 侧 `app_identity` 模块读取安装根清单，
+  缺失时回退编译期内嵌的同一份（单测强制常量与清单一致）。
+- **界面标题**：`__AUDIT_APP_TITLE__` 由常量「审核工具」改为
+  `app_identity::app_title()` → **「审核工具 V26.3.0.0」**；`appInfo.title`、
+  浏览器标题、关于对话框、系统信息摘要同步。
+- **英文名**：CLI 名 `AuditTools`、Cargo bin 名 `AuditTools`、发行 exe `AuditTools.exe`、
+  deb 包名 `audittools`、安装路径 `/opt/audittools/`、命令 `/usr/bin/audittools`、
+  资源目录 `libexec/audittools/openpyxl/`（`PRODUCT_DIR`，满足 worker 解析器的
+  小写/数字/连字符约束）、状态目录 `%LOCALAPPDATA%\audittools` 与
+  `~/.local/state/audittools`。`run.bat`/`build-release.bat`/`package.bat`/
+  `package-windows.ps1`/`package-linux-deb.sh` 全部同步；打包时把
+  `VERSION_MANIFEST.json` 放进发行包根（配置更新模块也读它）。
+- **常见问题**：旧 audit `docs/常见问题.json` 的 23 条问答原样迁入
+  `audit-core/src/faq_data.json`（逐字段校验与旧文件完全一致），新增
+  `get_faq` API；S1S2 发行版取 `answerS1S2`（无则回退完整答案），全量版取
+  `answer`。前端 FAQ 页签（分类筛选/搜索/Q 编号）此前已就绪，本次接上真实数据。
+
+回归：audit-core lib **289/289**（新增 app_identity 3 项、faq 2 项）；`cargo fmt --check` 干净。
+
 **config-real 默认绑定播种进 settings.json（2026-11-09，用户反馈「配置还是没有绑定上去」）**
 
 现象：S3 四个配置框（通用/执行比较/本期数值核对/指标比较拆分）显示「未选择」。

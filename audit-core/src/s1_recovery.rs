@@ -237,7 +237,10 @@ impl S1RecoveryStore {
                 .join(".local")
                 .join("state")
         };
-        Ok(Self::new(base.join("Rust-Audit").join("s1-f3-recovery")))
+        Ok(Self::new(
+            base.join(crate::app_identity::PRODUCT_DIR)
+                .join("s1-f3-recovery"),
+        ))
     }
 
     pub fn directory(&self) -> &Path {

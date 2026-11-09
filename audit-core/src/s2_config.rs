@@ -92,7 +92,10 @@ pub fn resolve_default_config_path() -> Result<PathBuf> {
     #[cfg(target_os = "linux")]
     let directories = {
         let mut directories = directories;
-        directories.push(PathBuf::from("/usr/share/open-data-audit/config/默认配置"));
+        directories.push(PathBuf::from(format!(
+            "/usr/share/{}/config/默认配置",
+            crate::app_identity::PRODUCT_DIR
+        )));
         directories
     };
     find_s2_config_path(&directories)

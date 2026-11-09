@@ -35,7 +35,7 @@ windows-sys.workspace = true
 ashpd.workspace = true
 
 [[bin]]
-name = "open-data-audit"
+name = "AuditTools"
 path = "src/bin/open-data-audit.rs"
 
 [[bin]]

@@ -91,7 +91,11 @@ use tokio::{net::TcpListener, runtime::Builder};
 const ORIGINAL_HTML: &str = include_str!("../frontend/web/index.html");
 const APP_ICON_PNG: &[u8] = include_bytes!("../frontend/assets/app-icon.png");
 const APP_ICON_ICO: &[u8] = include_bytes!("../frontend/assets/app-icon.ico");
-const APP_TITLE: &str = "审核工具";
+/// 界面标题「审核工具 V<版本>」，版本来自 VERSION_MANIFEST.json。
+fn app_title() -> &'static str {
+    static TITLE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    TITLE.get_or_init(crate::app_identity::app_title)
+}
 
 fn system_environment_info(openpyxl_status: &(bool, String)) -> Value {
     static INFO: OnceLock<Value> = OnceLock::new();
@@ -143,9 +147,8 @@ fn collect_system_environment_info(openpyxl_status: &(bool, String)) -> Value {
 
     json!({
         "app": format!(
-            "{} v{}；{} 构建；本机服务 + 默认浏览器",
-            APP_TITLE,
-            env!("CARGO_PKG_VERSION"),
+            "{}；{} 构建；本机服务 + 默认浏览器",
+            app_title(),
             if cfg!(debug_assertions) { "Debug" } else { "Release" }
         ),
         "os": host_os_description(),
@@ -370,7 +373,7 @@ impl AppState {
         let openpyxl_status = crate::app_settings::openpyxl_selection_status();
         let system_environment_info = system_environment_info(&openpyxl_status);
         let mut state = json!({
-            "appInfo": {"title": APP_TITLE},
+            "appInfo": {"title": app_title()},
             "systemEnvironmentInfo": system_environment_info,
             "busy": false,
             "currentWork": Value::Null,
@@ -630,7 +633,7 @@ fn distribution_profile() -> &'static str {
 
 fn render_index() -> String {
     ORIGINAL_HTML
-        .replace("__AUDIT_APP_TITLE__", APP_TITLE)
+        .replace("__AUDIT_APP_TITLE__", app_title())
         .replace("__AUDIT_ICON_URL__", "/assets/app-icon.png")
         .replacen("</head>", &format!("{BRIDGE_JS}</head>"), 1)
 }
@@ -753,6 +756,7 @@ fn dispatch_api(
         "open_path" => open_path(state, args),
         "recognize" => recognize_s1_sources(state),
         "set_selected_files" => set_selected_files(state, args),
+        "get_faq" => Ok(crate::faq::items(distribution_profile())),
         "get_config_update" => Ok(crate::config_update::inspect()),
         "apply_config_update" => {
             let names = args
@@ -9036,7 +9040,7 @@ mod tests {
         let served = render_index();
         let served_markup = served.replace(super::BRIDGE_JS, "");
         let expected_markup = super::ORIGINAL_HTML
-            .replace("__AUDIT_APP_TITLE__", super::APP_TITLE)
+            .replace("__AUDIT_APP_TITLE__", super::app_title())
             .replace("__AUDIT_ICON_URL__", "/assets/app-icon.png");
         assert_eq!(served_markup, expected_markup);
         assert!(!served.contains("__AUDIT_APP_TITLE__"));
