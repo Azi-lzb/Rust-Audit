@@ -2320,6 +2320,15 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest, task_started
                     }
                 ),
             );
+            // 技术路径明细：只在「设置 → 显示详细运行日志」开启时输出，
+            // 让人一眼看出本次实际走的是哪条链路，而不是靠推断。
+            push_detail_log(
+                &mut ui.value,
+                format!(
+                    "S1-F01 技术路径：{}",
+                    s1_f1_technical_path(&request, &output)
+                ),
+            );
             if let Some(result_path) = output.result_path.as_ref() {
                 push_log(
                     &mut ui.value,
@@ -7717,6 +7726,78 @@ fn push_log_entry(state: &mut Value, message: String, level: &str, detail: bool)
         let excess = log.len() - LOG_CAPACITY;
         log.drain(0..excess);
     }
+}
+
+/// S1-F01 本次实际走过的技术路径（详细日志）。
+///
+/// 把「哪个编辑后端、哪个重算引擎、条件格式从哪读、是否发生回退」拼成一行，
+/// 避免用户只能从"慢"推断"是不是没用上 betteroffice"。设置里的
+/// 「显示详细运行日志」关闭时不会输出。
+fn s1_f1_technical_path(
+    request: &S1F1PreflightRequest,
+    output: &S1F1WorkflowOutput,
+) -> String {
+    let mut parts: Vec<String> = Vec::new();
+
+    // 1) 编辑后端：SOURCE 预检之后生成审核副本所用的引擎。
+    let edit_engine = request.edit_engine.as_str();
+    let edit_route = match edit_engine {
+        "auto" => "OOXML 直改 → openpyxl（可用时）→ Umya",
+        "ooxml" => "OOXML 直改（后端不支持时拒绝，不回退）",
+        "openpyxl" => "openpyxl worker",
+        "umya" => "Umya",
+        other => other,
+    };
+    parts.push(format!("审核副本编辑={edit_route}"));
+
+    // 2) 重算引擎：实际生效的那个，以及有没有从 betteroffice 回退。
+    let engine = if output.recalculation_engines.is_empty() {
+        "无（没有工作簿完成真实重算）".to_owned()
+    } else {
+        output.recalculation_engines.join("、")
+    };
+    parts.push(format!("校验区域重算={engine}"));
+    if output
+        .recalculation_engines
+        .iter()
+        .any(|label| label.contains("betteroffice") && label.contains("回退"))
+    {
+        parts.push("重算回退=betteroffice 被拒绝后改走 COM/LibreOffice".to_owned());
+    }
+
+    // 3) 条件格式：显示色来自重算后的审核副本，还是源文件/静态规则。
+    let cf_source = match request.conditional_format_source.as_str() {
+        "audit_copy" => "复制校验区域并重算后的审核副本",
+        "source" => "原始源文件",
+        other => other,
+    };
+    parts.push(format!("条件格式来源={cf_source}"));
+
+    // 4) 成本结构：让"慢"能定位到具体阶段。
+    let timings = &output.performance_timings;
+    let ms = |key: &str| -> u128 {
+        timings
+            .get(key)
+            .and_then(serde_json::Value::as_u64)
+            .map(|value| value as u128 / 1000)
+            .unwrap_or(0)
+    };
+    let copy_ms = ms("copyAndRecalculationPreparationTotalUs");
+    let recalc_ms = ms("externalExcelRecalculationUs");
+    let extract_ms = ms("issueExtractionTotalUs");
+    let total_ms = ms("workflowTotalUs");
+    if total_ms > 0 {
+        parts.push(format!(
+            "耗时(ms)=合计 {total_ms}｜副本准备 {copy_ms}｜重算 {recalc_ms}｜异常提取 {extract_ms}"
+        ));
+    }
+
+    parts.push(format!(
+        "源文件 {} 个；审核副本 {} 个",
+        output.file_results.len(),
+        output.audit_copies.len()
+    ));
+    parts.join("；")
 }
 
 fn push_detail_log(state: &mut Value, message: String) {

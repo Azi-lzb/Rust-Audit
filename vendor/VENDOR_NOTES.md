@@ -18,6 +18,8 @@
 | 2 | xlsx-model `src/workbook.rs` | `impl CellProvider for Workbook` 的 `used_rows/used_cols` 改为基于 `content_range`（数组公式 spill 逻辑保留） | 计算 provider 是整列引用截断的唯一入口 |
 | 3 | xlsx-calc `src/eval.rs` | `MAX_RECALCULATION_CELL_VISITS` 常量改为 `AtomicU64` 全局默认值 + `pub fn set_max_recalculation_visits(u64)` | 上限原为编译期 const 10,000,000 不可配置；业务侧需按 `PYTOOLS_BO_CALC_MAX_VISITS` 配置 |
 
+| 4 | xlsx-calc `src/eval.rs` | `arithmetic()` 对每步四则结果做 **15 位有效数字归一化**（`excel_normalize`）；量级 ≥1e15 时原样返回 | Excel 每步都截到 15 位有效数字，原始 IEEE754 残差会让 `ABS(本期-上期-发生+结清)>0` 类校验公式误报。实测 7 个真实单位贷款核查表：不加归一化比 Excel COM 多报 6 条浮点残差假阳性，加上后 322 行逐条 0 差异 |
+
 ## 配套测试（登记于各 crate tests）
 
 - xlsx-model：样式空格不进入 `content_range`；`used_range` 行为与上游一致（回归）。

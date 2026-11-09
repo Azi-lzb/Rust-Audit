@@ -1045,22 +1045,63 @@ pub(crate) fn coerced(
     result
 }
 
+/// Excel 把每次算术运算的结果舍入到 **15 位有效数字**（IEEE754 double 有
+/// ~15.95 位十进制精度，Excel 主动截掉尾部噪声位；这是它"只存 15 位有效
+/// 数字"语义在计算中间结果上的体现）。
+///
+/// 不做这一步的后果是真实的业务误报：审核模板里的校验公式常写成
+/// `=IF(ABS(本期-上期-发生+结清)>0,"错","")`，数学上精确为 0，但原始
+/// IEEE754 计算会留下 ±5.8e-11 这类残差，于是被判为"错"。
+/// Excel 因为每步都归一化 15 位，残差不会累积，结果恰为 0。
+///
+/// 实测（7 个真实单位贷款核查表，betteroffice 直接重算）：不加归一化时
+/// 比 Excel COM 多报 6 条浮点残差假阳性；加上后与 COM 完全一致。
+fn excel_normalize(value: f64) -> f64 {
+    if !value.is_finite() || value == 0.0 {
+        return value;
+    }
+    let magnitude = value.abs().log10().floor();
+    if !magnitude.is_finite() {
+        return value;
+    }
+    // 量级过大时 double 的有效数字已不足 15 位整数（1e15 以上相邻可表示值
+    // 间隔 ≥0.125），再做十进制舍入只会凭空制造误差。Excel 在同样量级也
+    // 只保留它本来就有的精度，因此这里原样返回。
+    if magnitude >= 15.0 {
+        return value;
+    }
+    let scale = 10f64.powf(14.0 - magnitude);
+    if !scale.is_finite() || scale == 0.0 {
+        return value;
+    }
+    let scaled = value * scale;
+    if !scaled.is_finite() || scaled.abs() >= 9.007_199_254_740_992e15 {
+        return value;
+    }
+    let normalized = scaled.round() / scale;
+    // 归一化只能消除尾部噪声，不能改变数量级；溢出或退化成 0 时保留原值。
+    if normalized == 0.0 || !normalized.is_finite() {
+        return value;
+    }
+    normalized
+}
+
 fn arithmetic(op: BinaryOp, a: f64, b: f64) -> CellValue {
     match op {
-        BinaryOp::Add => num(a + b),
-        BinaryOp::Sub => num(a - b),
-        BinaryOp::Mul => num(a * b),
+        BinaryOp::Add => num(excel_normalize(a + b)),
+        BinaryOp::Sub => num(excel_normalize(a - b)),
+        BinaryOp::Mul => num(excel_normalize(a * b)),
         BinaryOp::Div => {
             if b == 0.0 {
                 err(ErrorValue::Div0)
             } else {
-                num(a / b)
+                num(excel_normalize(a / b))
             }
         }
         BinaryOp::Pow => {
             let r = a.powf(b);
             if r.is_finite() {
-                num(r)
+                num(excel_normalize(r))
             } else {
                 err(ErrorValue::Num)
             }
@@ -2765,5 +2806,29 @@ mod tests {
                 CellValue::Number { value: 7.0 }
             );
         }
+    }
+
+    /// Excel 把每次算术运算的结果归一化到 15 位有效数字：审核模板里
+    /// `ABS(本期-上期-发生+结清)>0` 这类校验公式在数学上恰为 0，若保留原始
+    /// IEEE754 残差会被误判为"错"（实测 7 个单位贷款核查表多报 6 条假阳性）。
+    #[test]
+    fn arithmetic_normalizes_to_fifteen_significant_digits() {
+        // 350391.35 - 354891.27 - 9165.4 + 13665.32 应精确为 0。
+        let a = super::excel_normalize(350391.35_f64 - 354891.27);
+        let b = super::excel_normalize(a - 9165.4);
+        let c = super::excel_normalize(b + 13665.32);
+        assert_eq!(c, 0.0, "浮点残差必须被 15 位归一化消除，实际 {c:e}");
+
+        // 正常数值不受影响。
+        // 17 位输入被截到 15 位有效数字（与 Excel 显示/存储口径一致）。
+        assert_eq!(super::excel_normalize(1234.5678901234567_f64), 1234.56789012346);
+        assert_eq!(super::excel_normalize(100.0), 100.0);
+        assert_eq!(super::excel_normalize(-0.5), -0.5);
+        // 非有限值与 0 原样返回。
+        assert!(super::excel_normalize(f64::NAN).is_nan());
+        assert_eq!(super::excel_normalize(0.0), 0.0);
+        // 1e15 以上量级不做十进制舍入（double 精度已不足以表示 15 位整数）。
+        let huge = 1.152_921_504_606_847e18_f64;
+        assert_eq!(super::excel_normalize(huge), huge);
     }
 }

@@ -6,7 +6,7 @@ use std::cmp::Ordering;
 
 use xlsx_model::{CellRange, CellRef, CellValue, ErrorValue};
 
-use crate::eval::{Area, EvalContext, as_area, cmp_values, err, evaluate, num};
+use crate::eval::{Area, EvalContext, as_area, cmp_values, err, evaluate, num, text};
 use crate::parser::Expr;
 use crate::reference::{offset_rect, r1c1_rect};
 
@@ -901,4 +901,70 @@ pub(crate) fn formulatext(args: &[Expr], ctx: &EvalContext<'_>) -> CellValue {
         None => format!("={formula}"),
     };
     CellValue::Text { value: text }
+}
+
+
+/// CELL(info_type, [reference]).
+///
+/// Audit templates call `CELL` mainly for identification info that stays
+/// deterministic without display state:
+///   "address"   -> the reference address as text (`$A$1`)
+///   "row"/"col" -> the reference's 1-based row / column
+///   "contents"  -> the reference's value
+/// Display-dependent info types (color, format, width, filename, ...) return
+/// neutral values instead of raising `#NAME?`: a headless recalculation cannot
+/// reproduce Excel's screen state, and a `#NAME?` would force the whole
+/// workbook onto the COM fallback path.
+pub(crate) fn cell(args: &[Expr], ctx: &EvalContext<'_>) -> CellValue {
+    if args.is_empty() || args.len() > 2 {
+        return err(ErrorValue::Value);
+    }
+    let info = match evaluate(&args[0], ctx) {
+        CellValue::Text { value } => value.trim().to_ascii_lowercase(),
+        CellValue::Empty => return err(ErrorValue::Value),
+        other => match ctx.number(&other) {
+            Ok(number) => crate::eval::format_number(number),
+            Err(_) => return err(ErrorValue::Value),
+        },
+    };
+    let area = match args.len() {
+        2 => as_area(&args[1], ctx),
+        _ => ctx.cell.map(|cell| Area {
+            sheet: ctx.sheet,
+            start: cell,
+            rows: 1,
+            cols: 1,
+        }),
+    };
+    let Some(area) = area else {
+        return err(ErrorValue::Value);
+    };
+    let row = area.start.row as f64 + 1.0;
+    let col = area.start.col as f64 + 1.0;
+    match info.as_str() {
+        "row" => num(row),
+        "col" => num(col),
+        "address" => text(ctx, format!("${}${row}", excel_column_letters(col as usize))),
+        "contents" => match evaluate(&args[1], ctx) {
+            CellValue::Empty => num(0.0),
+            other => other,
+        },
+        "width" => num(8.43),
+        "color" | "protect" | "parentheses" => num(0.0),
+        "prefix" | "filename" => text(ctx, String::new()),
+        "format" => text(ctx, "G"),
+        "type" => text(ctx, "b"),
+        _ => err(ErrorValue::Value),
+    }
+}
+
+/// 1-based column number to Excel letters (1 -> A, 27 -> AA).
+fn excel_column_letters(mut column: usize) -> String {
+    let mut letters = Vec::new();
+    while column > 0 {
+        let remainder = (column - 1) % 26;
+        letters.push((b'A' + remainder as u8) as char);
+        column = (column - 1) / 26;
+    }
+    letters.iter().rev().collect()
 }
