@@ -230,24 +230,43 @@ pub fn load_execution_compare_config(
         ..S3ExecutionCompareConfig::default()
     };
 
-    let run_sheet = find_sheet(&feature_sheets, "运行参数");
-    if let Some(run_sheet) = run_sheet {
-        config.run_parameters = read_parameter_rows(run_sheet)?;
-        if let Some(unit) = config.run_parameters.get("默认源数据单位") {
-            if !unit.trim().is_empty() {
-                config.source_unit = unit.trim().to_owned();
-            }
+    // 与源生产 run_comparison 口径一致（`load_central_config((common, feature))`）：
+    // 3.0 通用配置与 3.1 功能配置**合并读取**。参数式工作表后册覆盖前册同名
+    // 参数；行式工作表（环比警戒、单位换算例外）按「3.0 → 3.1」顺序追加。
+    //
+    // 关键事实：3.1 工作簿里并没有「环比警戒」和「单位换算例外」工作表，这两张
+    // 表只在 3.0 中。此前只读 3.1，导致警戒区间恒为空，每一行都落到
+    // "缩小100倍以上"兜底分支并整行涂色（2026-11 现场问题：S3-F01 备注的
+    // 环比警戒全部不对）。
+    for run_sheet in [
+        find_sheet(&common_sheets, "运行参数"),
+        find_sheet(&feature_sheets, "运行参数"),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        config
+            .run_parameters
+            .extend(read_parameter_rows(run_sheet)?);
+    }
+    if let Some(unit) = config.run_parameters.get("默认源数据单位") {
+        if !unit.trim().is_empty() {
+            config.source_unit = unit.trim().to_owned();
         }
-        if let Some(unit) = config.run_parameters.get("默认目标单位") {
-            if !unit.trim().is_empty() {
-                config.target_unit = unit.trim().to_owned();
-            }
+    }
+    if let Some(unit) = config.run_parameters.get("默认目标单位") {
+        if !unit.trim().is_empty() {
+            config.target_unit = unit.trim().to_owned();
         }
     }
 
-    // 与源生产 run_comparison 口径一致：运行参数/单位换算例外/环比警戒均
-    // 只读 3.1 配置本身；工作表缺省时用默认值或空列表，不再回读 3.0。
-    if let Some(exception_sheet) = find_sheet(&feature_sheets, "单位换算例外") {
+    for exception_sheet in [
+        find_sheet(&common_sheets, "单位换算例外"),
+        find_sheet(&feature_sheets, "单位换算例外"),
+    ]
+    .into_iter()
+    .flatten()
+    {
         for row in read_rows(exception_sheet, &["指标代码", "启用"])? {
             let code = row.get("指标代码").map(String::as_str).unwrap_or_default();
             if !code.trim().is_empty()
@@ -260,31 +279,48 @@ pub fn load_execution_compare_config(
         }
     }
 
-    if let Some(alert_sheet) = find_sheet(&feature_sheets, "环比警戒") {
-        config.alert_bands = read_rows(
-            alert_sheet,
-            &[
-                "下限",
-                "上限",
-                "备注文字",
-                "填充颜色",
-                "是否整行填充",
-                "金额变动阈值",
-                "是否说明",
-            ],
-        )?
-        .into_iter()
-        .map(|row| S3AlertBand {
-            lower: row["下限"].clone(),
-            upper: row["上限"].clone(),
-            remark_text: row["备注文字"].clone(),
-            fill_color: row["填充颜色"].clone(),
-            fill_entire_row: row["是否整行填充"].clone(),
-            amount_threshold: row["金额变动阈值"].clone(),
-            explanation: row["是否说明"].clone(),
-        })
-        .collect();
+    let mut alert_sheet_present = false;
+    for alert_sheet in [
+        find_sheet(&common_sheets, "环比警戒"),
+        find_sheet(&feature_sheets, "环比警戒"),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        alert_sheet_present = true;
+        config.alert_bands.extend(
+            read_rows(
+                alert_sheet,
+                &[
+                    "下限",
+                    "上限",
+                    "备注文字",
+                    "填充颜色",
+                    "是否整行填充",
+                    "金额变动阈值",
+                    "是否说明",
+                ],
+            )?
+            .into_iter()
+            .map(|row| S3AlertBand {
+                lower: row["下限"].clone(),
+                upper: row["上限"].clone(),
+                remark_text: row["备注文字"].clone(),
+                fill_color: row["填充颜色"].clone(),
+                fill_entire_row: row["是否整行填充"].clone(),
+                amount_threshold: row["金额变动阈值"].clone(),
+                explanation: row["是否说明"].clone(),
+            }),
+        );
     }
+    // 只有"表完全缺失"才算配置事故：那会让每一行都落到"缩小100倍以上"兜底
+    // 分支并整行涂色（2026-11 现场问题）。表存在但没有数据行时按旧口径放行
+    // （合成/精简配置的合法场景），命中不了区间就走既有兜底。
+    ensure!(
+        alert_sheet_present,
+        "3.0 大集中通用配置缺少“环比警戒”工作表：没有警戒区间时每一行都会被\
+         误判为“缩小100倍以上”，已停止本次比较"
+    );
 
     let indicator_sheet = find_sheet(&feature_sheets, "指标参照")
         .context("3.1 大集中执行比较配置缺少“指标参照”工作表")?;
@@ -3594,6 +3630,174 @@ mod tests {
         assert_eq!(rows[0].fill_color, Some(6));
         assert_eq!(rows[0].fill_scope, "row");
         assert!(!rows[0].need_explanation.is_empty());
+    }
+
+    /// 回归：3.0 通用配置的「环比警戒」必须被装载并命中。
+    ///
+    /// 2026-11 现场问题：S3-F01 只从 3.1 读警戒区间，而 3.1 工作簿没有这张表，
+    /// 于是 alert_bands 恒为空，每一行都落到"缩小100倍以上"兜底分支并整行涂色。
+    /// 这里用合成配置复现"3.0 有表、3.1 没有"的真实布局。
+    #[test]
+    fn alert_bands_come_from_common_config_and_hit_the_right_band() {
+        use excel_writer::Workbook;
+        let root = std::env::temp_dir().join(format!(
+            "audit_s3f1_alert_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let common = root.join("3.0.xlsx");
+        let feature = root.join("3.1.xlsx");
+
+        // 3.0：运行参数 + 环比警戒（含 config-real 里的 [0,30) 无填充档）。
+        let mut book = Workbook::new();
+        let params = book.add_worksheet();
+        params.set_name("运行参数").unwrap();
+        params.write_string(0, 0, "参数").unwrap();
+        params.write_string(0, 1, "值").unwrap();
+        params.write_string(1, 0, "默认源数据单位").unwrap();
+        params.write_string(1, 1, "元").unwrap();
+        params.write_string(2, 0, "默认目标单位").unwrap();
+        params.write_string(2, 1, "亿元").unwrap();
+        let alerts = book.add_worksheet();
+        alerts.set_name("环比警戒").unwrap();
+        for (column, header) in [
+            "下限",
+            "上限",
+            "备注文字",
+            "填充颜色",
+            "是否整行填充",
+            "金额变动阈值",
+            "是否说明",
+        ]
+        .iter()
+        .enumerate()
+        {
+            alerts.write_string(0, column as u16, *header).unwrap();
+        }
+        // [0,30)：不填充、无备注
+        alerts.write_string(1, 0, "0").unwrap();
+        alerts.write_string(1, 1, "30").unwrap();
+        alerts.write_number(1, 3, 0.0).unwrap();
+        alerts.write_number(1, 4, 0.0).unwrap();
+        // [30,50)：填色 43
+        alerts.write_string(2, 0, "30").unwrap();
+        alerts.write_string(2, 1, "50").unwrap();
+        alerts.write_string(2, 2, "增幅30%-50%").unwrap();
+        alerts.write_number(2, 3, 43.0).unwrap();
+        book.save(&common).unwrap();
+
+        // 3.1：只有指标参照/规则动作（没有环比警戒表）。
+        let mut book = Workbook::new();
+        let indicators = book.add_worksheet();
+        indicators.set_name("指标参照").unwrap();
+        for (column, header) in ["指标代码", "表单代码", "行序号", "指标别名"]
+            .iter()
+            .enumerate()
+        {
+            indicators.write_string(0, column as u16, *header).unwrap();
+        }
+        let actions = book.add_worksheet();
+        actions.set_name("规则动作").unwrap();
+        for (column, header) in [
+            "规则编号",
+            "规则说明",
+            "规则动作",
+            "指标代码",
+            "数据属性",
+            "币种",
+            "比较指标代码",
+            "人民币阈值(亿元)",
+            "美元阈值(亿美元)",
+            "变幅阈值(%)",
+            "来源分组",
+            "适用表单",
+            "适用频度",
+            "适用批次",
+            "适用场景",
+            "详细说明",
+            "启用",
+            "停用原因",
+            "备注",
+        ]
+        .iter()
+        .enumerate()
+        {
+            actions.write_string(0, column as u16, *header).unwrap();
+        }
+        let expressions = book.add_worksheet();
+        expressions.set_name("表达式校验（兼容）").unwrap();
+        for (column, header) in [
+            "规则编号",
+            "规则说明",
+            "校验表达式",
+            "是否取反",
+            "容差值(万元)",
+            "启用",
+            "停用原因",
+        ]
+        .iter()
+        .enumerate()
+        {
+            expressions.write_string(0, column as u16, *header).unwrap();
+        }
+        book.save(&feature).unwrap();
+
+        let config = load_execution_compare_config(&common, &feature).expect("load config");
+        assert_eq!(config.alert_bands.len(), 2, "3.0 的警戒区间必须被装载");
+        assert_eq!(config.source_unit, "元");
+        assert_eq!(config.target_unit, "亿元");
+
+        // 20% 命中 [0,30) → 无备注、无填充；40% 命中 [30,50) → 备注 + 填色 43。
+        let current = dataset(
+            vec![record(
+                "0001",
+                "1234567",
+                "A",
+                "月",
+                "1",
+                CentralValue::Number(1200.0),
+            )],
+            "2026-08-31",
+        );
+        let previous = dataset(
+            vec![record(
+                "0001",
+                "1234567",
+                "A",
+                "月",
+                "1",
+                CentralValue::Number(1000.0),
+            )],
+            "2026-07-31",
+        );
+        let rows = build_base_comparison(&current, &previous, &config);
+        assert!(
+            !rows[0].remark.contains("缩小100倍以上"),
+            "20% 增幅不应落到兜底分支，实际={:?}",
+            rows[0].remark
+        );
+        assert_eq!(rows[0].fill_color, None, "20% 档配置为不填充");
+
+        let current = dataset(
+            vec![record(
+                "0001",
+                "1234567",
+                "A",
+                "月",
+                "1",
+                CentralValue::Number(1400.0),
+            )],
+            "2026-08-31",
+        );
+        let rows = build_base_comparison(&current, &previous, &config);
+        assert!(rows[0].remark.contains("30%"));
+        assert_eq!(rows[0].fill_color, Some(43));
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
