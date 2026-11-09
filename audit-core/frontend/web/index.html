@@ -389,7 +389,6 @@ body.distribution-ui-unlocked .sidenav-item[data-system]{display:flex!important}
 .settings-pane .gen-group-label:first-child{margin-top:2px}
 body.dag-extras-locked .dag-extras-card{display:none}
 body.legacy-audit-mode .dag-extras-card{display:none}
-body.collect-legacy-locked .egg-btn{display:none}
 .dag-extras-card{display:flex;flex-direction:column;gap:10px}
 .s1-recovery-panel{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2)}
 .s1-recovery-panel[hidden]{display:none}
@@ -631,14 +630,6 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
 .guide-flow-card[open]>summary{border-bottom:1px solid var(--border)}
 .guide-flow-body{padding:12px 14px}
 .guide-flow-rows{display:flex;flex-direction:column;gap:8px}
-/* 更新日志：日期卡（复用 guide-flow-card）+ 分组徽章 + 条目列表 */
-.changelog-group{display:flex;gap:10px;align-items:flex-start;margin-bottom:10px}
-.changelog-group:last-child{margin-bottom:0}
-.changelog-badge{flex:none;min-width:44px;text-align:center;padding:2px 8px;border-radius:8px;color:#fff;font-size:12px;font-weight:700}
-.changelog-items{flex:1;min-width:0;margin:0;padding:0 0 0 4px;list-style:none}
-.changelog-items li{font-size:12.5px;color:var(--text);line-height:1.7;padding:2px 0;word-break:break-word}
-.changelog-items li+li{border-top:1px dashed var(--border)}
-.update-system-badge{display:inline-flex;align-items:center;vertical-align:middle;margin:0 6px 2px 0;padding:1px 6px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-size:10px;font-weight:700;line-height:1.5;white-space:nowrap}
 .updates-subtabs{display:flex;gap:8px;margin-bottom:12px}
 .updates-host-info{display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;padding:10px 14px;margin:0 0 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);font-size:12px;color:var(--text-2)}
 .updates-host-info strong{color:var(--text);margin-right:5px}
@@ -965,14 +956,6 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
             <div class="path-name empty link" id="centralOutputName" onclick="openCentralPath('centralOutput')" title="">未选择</div>
             <button class="btn" onclick="pickCentral('centralOutput')" title="比较结果与核对结果的输出目录；默认为本期数据文件同级的“执行结果”">选择</button>
           </div>
-        </div>
-        <div class="field">
-          <div class="field-head"><label>金融表单输出目录</label><button class="pin-btn" id="centralFormOutputPin" onclick="toggleCentralOutputPin('centralFormOutput')" title="固定输出目录" aria-label="固定输出目录"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="17" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg></button></div>
-          <div class="input-group">
-            <div class="path-name empty link" id="centralFormOutputName" onclick="openCentralPath('centralFormOutput')" title="">未选择</div>
-            <button class="btn" onclick="pickCentral('centralFormOutput')" title="选择金融表单生成目录；默认使用比较文件所在目录">选择</button>
-          </div>
-          <div class="engine-detail" id="centralFormOutputResult"></div>
         </div>
         <div class="field central-compare-file">
           <div class="field-head"><label>比较文件</label></div>
@@ -1759,26 +1742,8 @@ function includesUndeliveredSystemInfo(text){
   if(systems.length)return false;
   return !isUpdateSystemIncluded('S3')&&/\bS3(?:\b|F\d|CFG)|(?:^|[^\d.])3\.[0-3](?=$|[^\d.])|大集中统计系统|大集中比较|大集中指标查询|大集中通用配置|大集中执行比较|大集中本期数值核对|大集中指标比较拆分|两期数据\s*[⇨→]|比较文件\s*[⇨→]|机构说明\s*[⇨→]|本期数值核对|指标比较拆分/i.test(value);
 }
-function updateItemInfo(item){
-  const value=String(item||'');
-  const match=value.match(/^\[(通用|S[1-5](?:\/S[1-5])*)\]\s*/);
-  if(!match)return {text:value,systems:null};
-  return {text:value.slice(match[0].length),systems:match[1]==='通用'?['通用']:match[1].split('/')};
-}
 function containsRemovedProductInfo(text){
   return /\bS5(?:\b|F\d|CFG)|逐笔统计系统（配置版）|配置化逐笔统计审核|配置规则审核|模板公式审核/i.test(String(text||''));
-}
-function updateItemVisible(item){
-  if(containsRemovedProductInfo(item))return false;
-  const info=updateItemInfo(item);
-  if(!info.systems)return !includesUndeliveredSystemInfo(info.text);
-  if(info.systems.includes('通用'))return true;
-  return info.systems.some(isUpdateSystemIncluded);
-}
-function editionUpdateEntries(entries){
-  return entries.map(entry=>({...entry,groups:(entry.groups||[]).map(group=>({
-    ...group,items:(group.items||[]).filter(updateItemVisible)
-  })).filter(group=>group.items.length)})).filter(entry=>entry.groups.length);
 }
 function editionFaqItems(items){
   const systems=DISTRIBUTION_CONFIG&&Array.isArray(DISTRIBUTION_CONFIG.systems)?DISTRIBUTION_CONFIG.systems:[];
@@ -1798,7 +1763,6 @@ function updateAuditWorkbenchMode(){
   if(summary){summary.dataset.action='dag:汇总校验结果说明';summary.title='DAG 主流程：汇总校验结果与报送说明';}
 }
 function openAuditWorkbench(){
-  registerAuditEggClick();
   updateAuditWorkbenchMode();
   requestSystemNavigation('S1','audit');
 }
@@ -1844,14 +1808,6 @@ function askDiscardSettings(target){
   document.getElementById('confirmOk').textContent='放弃更改';
   document.getElementById('confirmMsg').textContent='设置有未保存的更改，放弃后将不生效。确定要离开设置中心吗？';
   document.getElementById('confirmMask').style.display='flex';
-}
-/* ---- 唯一彩蛋：逐笔统计系统的低频执行入口与操作说明同步显示。 ---- */
-function auditExtrasUnlocked(){
-  return localStorage.getItem('uiAuditExtrasUnlocked')==='1';
-}
-function applyEggState(){
-  document.body.classList.toggle('dag-extras-locked',!auditExtrasUnlocked());
-  if(CFG.tab==='guide'&&CFG.data)renderGuide();
 }
 let settingsAdvancedUnlockedSession=false;
 function settingsAdvancedUnlocked(){
@@ -1903,18 +1859,6 @@ function registerSettingsEggClick(){
   applySettingsEggState();
   showToast(unlocked?'已显示高级设置':'已隐藏高级设置');
   if(!unlocked&&CFG.tab==='advanced')setSettingsTab('general');
-}
-let auditEggClickTimes=[];
-function registerAuditEggClick(){
-  const now=Date.now();
-  auditEggClickTimes=auditEggClickTimes.filter(t=>now-t<2000);
-  auditEggClickTimes.push(now);
-  if(auditEggClickTimes.length<5)return;
-  auditEggClickTimes=[];
-  const unlocked=!auditExtrasUnlocked();
-  localStorage.setItem('uiAuditExtrasUnlocked',unlocked?'1':'0');
-  applyEggState();
-  showToast(unlocked?'已显示逐笔统计系统的低频功能':'已隐藏逐笔统计系统的低频功能');
 }
 /* 轻提示 */
 /* 后台服务断连提示：横幅常驻直到恢复连接；此期间界面改动无法保存。 */
@@ -2051,7 +1995,6 @@ const GUIDE_FLOWS=[
   {n:'S3F3',editionSystem:'S3',name:'机构说明 ⇨ 说明文件',scenario:'将机构反馈的变动原因批量回写至同一份说明文件，方便集中审核。',prep:'选择或导出目标说明文件，并准备机构填报完成的说明文件。',steps:'① 确认“说明文件.xlsx”；② 点击“机构说明 ⇨ 说明文件”；③ 批量选择机构反馈文件。',output:'目标说明文件会原地更新；同目录会保留导入前时间戳备份。',tip:'按机构代码、机构名称、指标代码、指标名称、数据值和增减额匹配；存在冲突时不自动覆盖。'},
   {n:'S3F4',editionSystem:'S3',name:'本期数值核对',scenario:'按本期数值核对规则检查一份专用单期数据文件，覆盖多频度、多批次的跨表核对。',source:'大集中系统 → 指标查询：导出本次需要比较的指标，例如日报 1 批、月报 1 批。若要核对其他批次，还需在 3.2 配置中增加相应校验公式。',prep:'选择单个本期数值核对文件（CSV/XLSX/XLS）和输出目录。',steps:'① 选择本期数值核对文件（CSV/XLSX/XLS）；② 核对输出目录；③ 点击“本期数值核对”。',output:'输出目录下的“数值核对结果_时间戳.xlsx”。',tip:'不会使用“两期数据”的本期文件；规则由大集中通用配置和“3.2大集中本期数值核对_配置.xlsx”维护，引用上期 {...} 的规则已停用。'},
   {n:'S3F5',editionSystem:'S3',name:'比较文件 ⇨ 金融表单',scenario:'将比较文件按机构拆分并回填至内嵌金融表单，生成便于查看的机构工作簿。',prep:'选择或确认“比较文件.xlsx”和输出目录。',steps:'① 选择比较文件；② 核对输出目录；③ 点击“比较文件 ⇨ 金融表单”。',output:'输出目录下“指标比较拆分_时间戳”文件夹中的机构金融表单。',tip:'表单模板和转表规则在“3.3大集中指标比较拆分_配置.xlsx”中维护。'},
-  {n:'S1F5',editionSystem:'S1',name:'制作联合模板',egg:true,scenario:'需要把多个模板的独有工作表合并成一本“联合模板”，集中存放集中系统数据、参照表等公共依赖工作表，供跨表核查或制作模板时使用；这是低频的模板制作动作。',prep:'准备一个“基准模板”（包含集中系统数据、参照表等公共依赖工作表）和若干要并入的模板文件。',steps:'① 点击主界面“制作联合模板”按钮；② 阅读中文说明并确认；③ 第 1 步选择“基准模板”；④ 第 2 步批量选择“并入模板”；⑤ 等待制作完成。',output:'基准模板同级的“联合模板”目录：联合模板文件与“联合模板检查报告”。',tip:'基准模板只会另存为最终联合模板，原文件不修改；同名工作表保留先出现的一张，后续跳过；本动作不使用页面路径，也不会自动识别模板，不要将普通业务模板误选为基准模板。'},
 ];
 /* 设置中心卡片标题条：点击收起/展开卡片内容（事件委托，重渲染后仍有效）。 */
 document.getElementById('settingsPane').addEventListener('click',function(e){
@@ -2064,9 +2007,8 @@ document.getElementById('settingsPane').addEventListener('click',function(e){
     try{localStorage.setItem('envZoneCollapsed',card.classList.contains('collapsed')?'1':'0');}catch(e){}
   }
 });
-/* ---- 更新与答疑（设置中心页签）：更新日志 + 常见问题 两个子页 ---- */
-const CHANGELOG_BADGE={'新增':'#2e7d32','优化':'#1565c0','修复':'#c62828','其他':'#6b7280'};
-let UPDATES_SUB=(function(){try{const sub=localStorage.getItem('updatesSub');return ['faq','libreoffice'].includes(sub)?sub:'log';}catch(e){return 'log';}})();
+/* ---- 更新与答疑（设置中心页签）：常见问题 + 安装 LibreOffice 两个子页 ---- */
+let UPDATES_SUB=(function(){try{const sub=localStorage.getItem('updatesSub');return ['faq','libreoffice'].includes(sub)?sub:'faq';}catch(e){return 'faq';}})();
 function setUpdatesSub(sub){
   UPDATES_SUB=sub;
   try{localStorage.setItem('updatesSub',sub);}catch(e){}
@@ -2105,9 +2047,8 @@ function renderCombine(){
 async function renderUpdates(){
   const pane=document.getElementById('settingsPane');
   const configSupported=!!(state&&state.configUpdateSupported);
-  if(!configSupported&&UPDATES_SUB==='config')UPDATES_SUB='log';
+  if(!['faq','libreoffice'].includes(UPDATES_SUB))UPDATES_SUB='faq';
   const subTabs='<div class="updates-subtabs">'
-    +'<button type="button" class="btn tiny'+(UPDATES_SUB==='log'?' primary':'')+'" onclick="setUpdatesSub(\'log\')">更新日志</button>'
     +'<button type="button" class="btn tiny'+(UPDATES_SUB==='faq'?' primary':'')+'" onclick="setUpdatesSub(\'faq\')">常见问题</button>'
     +'<button type="button" class="btn tiny'+(UPDATES_SUB==='libreoffice'?' primary':'')+'" onclick="setUpdatesSub(\'libreoffice\')">安装 LibreOffice</button>'
     +(configSupported?'<button type="button" class="btn tiny'+(UPDATES_SUB==='config'?' primary':'')+'" onclick="setUpdatesSub(\'config\')">更新配置</button>':'')
@@ -2144,30 +2085,6 @@ async function renderUpdates(){
         +'<div style="margin-top:12px;display:flex;gap:8px"><button type="button" class="btn primary" onclick="applyConfigUpdate()">更新所选配置</button></div></div>';
       return;
     }
-    if(UPDATES_SUB==='log'){
-      const data=await bridge.api.get_update_log();
-      const entries=editionUpdateEntries((data&&data.entries)||[]);
-      if(!entries.length){
-        body.className='inspector-empty';
-        body.textContent='当前环境未随包分发更新日志（源码包或旧版包）。';
-        return;
-      }
-      body.className='';
-      body.innerHTML=entries.map(function(entry){
-        const groups=(entry.groups||[]).map(function(group){
-          const badge=CHANGELOG_BADGE[group.label]||CHANGELOG_BADGE['其他'];
-          const items=(group.items||[]).map(function(item){
-            const info=updateItemInfo(item);
-            const systems=(info.systems||[]).map(function(system){return '<span class="update-system-badge">'+esc(system)+'</span>';}).join('');
-            return '<li>'+systems+esc(info.text)+'</li>';
-          }).join('');
-          return '<div class="changelog-group"><span class="changelog-badge" style="background:'+badge+'">'
-            +esc(group.label)+'</span><ul class="changelog-items">'+items+'</ul></div>';
-        }).join('');
-        return '<details class="guide-flow-card" open><summary><span>'+esc(entry.date||'未注明日期')
-          +'</span></summary><div class="guide-flow-body">'+groups+'</div></details>';
-      }).join('');
-    }else{
       const data=await bridge.api.get_faq();
       const items=(data&&data.items)||[];
       if(!items.length){
@@ -2180,14 +2097,10 @@ async function renderUpdates(){
       FAQ_CATEGORY='全部';
       FAQ_KEYWORD='';
       renderFaqList(body);
-    }
   }catch(e){
-    /* 当前审核工具尚未实现 get_update_log/get_faq 接口：按子页给出准确的
-       静态说明，不显示原始接口错误。 */
+    /* 常见问题接口异常时给出准确的静态说明，不显示原始接口错误。 */
     body.className='inspector-empty';
-    body.textContent=UPDATES_SUB==='log'
-      ?'当前未随包分发更新日志；历史版本记录见随包文档。'
-      :'常见问题内容整理中；使用问题可先参考“操作指引”页。';
+    body.textContent='常见问题内容整理中；使用问题可先参考“操作指引”页。';
   }
 }
 /* Linux 安装状态独立轮询；切换页签后不再改写页面，安装仍由后台完成。 */
@@ -2334,7 +2247,7 @@ async function kylinMaintenanceAction(action){
 function renderGuide(){
   const pane=document.getElementById('settingsPane');
   let html='';
-  html+=GUIDE_FLOWS.filter(f=>!f.egg||auditExtrasUnlocked()).filter(f=>!f.editionSystem||isSystemVisible(f.editionSystem)).map(f=>{
+  html+=GUIDE_FLOWS.filter(f=>!f.editionSystem||isSystemVisible(f.editionSystem)).map(f=>{
       const rows=[['适用',f.scenario],['源数据获取',f.source],['准备',f.prep],['步骤',f.steps],['输出',f.output],['提示',f.tip]];
       return '<details class="guide-flow-card" open>'
         +'<summary><span class="guide-flow-num">'+esc(f.n)+'</span><span>'+esc(f.name)+'</span></summary>'
@@ -3387,7 +3300,7 @@ let pendingConfirm=null;
 function openAuditEgg(){registerAuditEggClick();}
 function openCollectWorkbench(){requestSystemNavigation('S2','collect')}
 function openCentralWorkbench(){requestSystemNavigation('S3','central')}
-const CENTRAL_PATHS=[["centralCommonConfig","centralCommonConfigName"],["centralComparisonConfig","centralComparisonConfigName"],["centralCrossConfig","centralCrossConfigName"],["centralFormsConfig","centralFormsConfigName"],["centralCur","centralCurName"],["centralPre","centralPreName"],["centralOutput","centralOutputName"],["centralCrossCur","centralCrossCurName"],["centralCrossOutput","centralCrossOutputName"],["centralCompareFile","centralCompareFileName"],["centralExplainFile","centralExplainFileName"],["centralFormOutput","centralFormOutputName"]];
+const CENTRAL_PATHS=[["centralCommonConfig","centralCommonConfigName"],["centralComparisonConfig","centralComparisonConfigName"],["centralCrossConfig","centralCrossConfigName"],["centralFormsConfig","centralFormsConfigName"],["centralCur","centralCurName"],["centralPre","centralPreName"],["centralOutput","centralOutputName"],["centralCrossCur","centralCrossCurName"],["centralCrossOutput","centralCrossOutputName"],["centralCompareFile","centralCompareFileName"],["centralExplainFile","centralExplainFileName"],];
 function renderCentral(s){
   CENTRAL_PATHS.forEach(([key,id])=>{
     const box=document.getElementById(id);
@@ -3402,11 +3315,10 @@ function renderCentral(s){
   });
   const pin=document.getElementById('centralCrossOutputPin');
   if(pin){const fixed=!s.centralCrossOutputAuto;pin.classList.toggle('on',fixed);pin.title=fixed?'取消固定输出目录':'固定输出目录';pin.setAttribute('aria-label',pin.title);pin.disabled=!!s.busy;}
-  [['centralOutputPin','centralOutputAuto'],['centralFormOutputPin','centralFormOutputAuto']].forEach(([id,key])=>{const el=document.getElementById(id);if(el){const fixed=!s[key];el.classList.toggle('on',fixed);el.title=fixed?'取消固定输出目录':'固定输出目录';el.setAttribute('aria-label',el.title);el.disabled=!!s.busy;}});
+  [['centralOutputPin','centralOutputAuto']].forEach(([id,key])=>{const el=document.getElementById(id);if(el){const fixed=!s[key];el.classList.toggle('on',fixed);el.title=fixed?'取消固定输出目录':'固定输出目录';el.setAttribute('aria-label',el.title);el.disabled=!!s.busy;}});
   const issue=document.getElementById('centralConfigIssue');
   if(issue){const text=(s.configIssues&&s.configIssues.central)||'';issue.textContent=text?'⚠ 配置需检查':'';issue.title=text;}
-  const formsOutput=document.getElementById('centralFormOutputResult');
-  if(formsOutput){const v=s.centralFormOutputLastResult||'';formsOutput.textContent=v?'最近输出目录：'+v:'';formsOutput.title=v;}
+
 }
 function openCentralPath(key){
   const v=state?state[key]:"";
@@ -3419,7 +3331,6 @@ async function pickCentral(key){
   const isFile=key in fileKinds;
   const titles={centralCur:'选择本期大集中导数文件（CSV/XLSX）',centralPre:'选择上期导数文件（CSV/XLSX）',centralCrossCur:'选择本期数值核对文件（CSV/XLSX/XLS）',
     centralOutput:'选择比较结果输出目录',centralCompareFile:'选择比较结果.xlsx',centralExplainFile:'选择说明文件.xlsx',
-    centralFormOutput:'选择转表输出目录',
     centralCommonConfig:'选择3.0大集中通用配置.xlsx',centralComparisonConfig:'选择3.1大集中执行比较_配置.xlsx',
     centralCrossConfig:'选择3.2大集中本期数值核对_配置.xlsx',centralFormsConfig:'选择3.3大集中指标比较拆分_配置.xlsx'};
   const picked=await pickPathSmart({
@@ -3461,7 +3372,6 @@ function runCentralForms(){
   if(!(state&&state.centralCompareFile))missing.push("比较结果.xlsx");
   if(!(state&&state.centralCommonConfig))missing.push("3.0 大集中通用配置.xlsx");
   if(!(state&&state.centralFormsConfig))missing.push("3.3 指标比较拆分配置.xlsx");
-  if(!(state&&state.centralFormOutput))missing.push("金融表单输出目录");
   if(missing.length){alert("请先选择："+missing.join("、"));return}
   maybeConfirmRun("指标比较拆分", async function(){
     try{ await bridge.api.start_central_indicator_split(); }
@@ -3532,7 +3442,6 @@ function confirmRun(ok){
   else if(c.type==='setExternalReferenceDefault'){doSetExternalReferenceConfigDefault();}
   else if(c.type==='setCentralDefault'){doSetCentralConfigDefault(c.profile);}
   else if(c.type==='resetEditorPart'){doResetEditorPart(c.part);}
-  else if(c.type==='templateMerge'){doCreateTemplateMerge();}
   else if(c.type==='periodCompare'){doCreatePeriodCompare();}
   else if(c.type==='periodAudit'){doCreatePeriodAudit();}
   else if(c.type==='discardSettings'){closeSettings(true);applySwitchPage(c.target||'audit');}
@@ -3835,32 +3744,6 @@ function setMergeMode(on,combine){
   }else{
     hint.classList.remove('show');
   }
-}
-function createTemplateMerge(){
-  pendingConfirm={type:'templateMerge'};
-  document.getElementById('confirmTitle').textContent='S1F5 制作联合模板';
-  document.getElementById('confirmOk').textContent='开始制作';
-  document.getElementById('confirmMsg').textContent='制作联合模板是低频的模板制作动作，不使用当前页面路径，也不会自动识别模板。\n\n'
-    +'第1步 选择“基准模板”：它只会另存为最终联合模板，原文件不会被修改；应选择包含集中系统数据、参照表等公共依赖工作表的模板，不要将普通业务模板误选为基准模板。\n'
-    +'第2步 批量选择“并入模板”：其独有工作表将复制进联合模板，请不要重复选择基准模板。\n'
-    +'同名工作表保留先出现的一张，后续同名表自动跳过。\n\n'
-    +'请确认后再开始，制作期间请勿操作本页面。';
-  document.getElementById('confirmMask').style.display='flex';
-}
-async function doCreateTemplateMerge(){
-  try{
-    // 两步选择：先选基准模板，再多选并入模板；原生优先，页面内兜底。
-    const start=state.templateDir||'';
-    const basePicked=await pickPathSmart({title:'第 1 步/2：选择基准模板',select:'file',mode:'excel_ooxml',start});
-    if(!basePicked.paths[0]){alert('已取消制作联合模板：未选择底稿模板');return}
-    const picked=await pickPathSmart({title:'第 2 步/2：批量选择要并入的模板',select:'multi',mode:'excel_ooxml',start:basePicked.paths[0]});
-    if(!picked.paths.length){alert('已取消制作联合模板：未选择待复制工作簿');return}
-    await bridge.api.create_template_merge(basePicked.paths[0],picked.paths);
-  }catch(e){
-    const msg=(e&&e.message)?e.message:String(e);
-    alert('制作联合模板失败：'+msg);
-  }
-  await refresh();
 }
 const PC_FIELDS = [
   ["pcCurDir", "pcCurName", "当期数据目录"],
@@ -4166,7 +4049,6 @@ function startAuditPrimary(){
 function startAuditSummary(){
   return startDagFlow('dag:汇总校验结果说明');
 }
-function startDagMerge(){setMergeMode(true,false);startDagFlow('dag:组合联合核查表')}
 async function copyLog(){
   const log=document.getElementById('log');
   const text=log.innerText||'';
@@ -4559,8 +4441,8 @@ function dagBusinessConfigHtml(){
 function renderDagBusinessConfig(){
   const pane=document.getElementById('settingsPane');pane.innerHTML=dagBusinessConfigHtml();
 }
-async function createRegularCombineWorkflow(){const name=(document.getElementById('regularFlowName').value||'').trim();const planId=document.getElementById('regularPlanId').value;if(CFG.dirty){alert('分组方案有未保存的修改，请先点击“保存设置”后再创建流程。');return}if(!name){alert('请填写流程名称');return}const id='custom:'+Date.now();const payload={schemaVersion:'2',workflowId:id,name,version:'1',description:'普通编排创建：按已选分组方案组合工作表。',settings:{flow_name:name,template:'combine_sheets'},nodes:[{nodeId:'combine-sheets',moduleId:'excel.combine_sheets',displayName:'组合工作表',enabled:true,parameters:{flow_name:name,plan_id:planId},failurePolicy:'FAIL_WORKFLOW',outputPolicies:{},uiPosition:{}}],edges:[],inputBindings:[],outputBindings:[{name:'result',nodeId:'combine-sheets',port:'result'}]};const check=await bridge.api.validate_dag_workflow(payload);if(!check.valid){alert('流程校验失败：\n'+check.errors.join('\n'));return}const saved=await bridge.api.save_dag_workflow(payload);if(!saved.ok){alert('保存失败：\n'+saved.errors.join('\n'));return}showSettingsStatus('已创建流程：'+name);renderDagFlowComposer();if(auditExtrasUnlocked())renderDagExtras()}
-async function deleteRegularDagWorkflow(id,name){if(!confirm('确定删除自定义流程“'+name+'”？此操作不会删除已输出的 Excel 文件。'))return;const result=await bridge.api.delete_dag_workflow(id);if(!result.ok){alert('删除失败：'+((result.errors||[]).join('；')||'未知错误'));return}showSettingsStatus('已删除流程：'+name);await renderDagFlowComposer();if(auditExtrasUnlocked())renderDagExtras()}
+async function createRegularCombineWorkflow(){const name=(document.getElementById('regularFlowName').value||'').trim();const planId=document.getElementById('regularPlanId').value;if(CFG.dirty){alert('分组方案有未保存的修改，请先点击“保存设置”后再创建流程。');return}if(!name){alert('请填写流程名称');return}const id='custom:'+Date.now();const payload={schemaVersion:'2',workflowId:id,name,version:'1',description:'普通编排创建：按已选分组方案组合工作表。',settings:{flow_name:name,template:'combine_sheets'},nodes:[{nodeId:'combine-sheets',moduleId:'excel.combine_sheets',displayName:'组合工作表',enabled:true,parameters:{flow_name:name,plan_id:planId},failurePolicy:'FAIL_WORKFLOW',outputPolicies:{},uiPosition:{}}],edges:[],inputBindings:[],outputBindings:[{name:'result',nodeId:'combine-sheets',port:'result'}]};const check=await bridge.api.validate_dag_workflow(payload);if(!check.valid){alert('流程校验失败：\n'+check.errors.join('\n'));return}const saved=await bridge.api.save_dag_workflow(payload);if(!saved.ok){alert('保存失败：\n'+saved.errors.join('\n'));return}showSettingsStatus('已创建流程：'+name);renderDagFlowComposer()}
+async function deleteRegularDagWorkflow(id,name){if(!confirm('确定删除自定义流程“'+name+'”？此操作不会删除已输出的 Excel 文件。'))return;const result=await bridge.api.delete_dag_workflow(id);if(!result.ok){alert('删除失败：'+((result.errors||[]).join('；')||'未知错误'));return}showSettingsStatus('已删除流程：'+name);await renderDagFlowComposer()}
 function expertCompatibleEdges(){const data=DAG_EDITOR.data||{},draft=DAG_EDITOR.draft||{},byId=Object.fromEntries((data.modules||[]).map(m=>[m.moduleId,m])),options=[];(draft.nodes||[]).forEach(a=>{const source=byId[a.moduleId]||{};(source.outputs||[]).forEach(out=>(draft.nodes||[]).forEach(b=>{if(a.nodeId===b.nodeId)return;const target=byId[b.moduleId]||{};(target.inputs||[]).forEach(input=>{if(out.type===input.type)options.push({a,out,b,input})})}))});return options}
 async function renderDagEditor(){const pane=document.getElementById('settingsPane');pane.innerHTML='<div class="inspector-empty">正在读取专家流程…</div>';try{const data=await loadDagStudioData();DAG_EDITOR.data=data;if(!DAG_EDITOR.selected)DAG_EDITOR.selected=(data.workflows||[])[0]&&data.workflows[0].workflowId;const source=(data.workflows||[]).find(w=>w.workflowId===DAG_EDITOR.selected)||(data.workflows||[])[0];if(!DAG_EDITOR.draft||DAG_EDITOR.draft.workflowId!==source.workflowId)DAG_EDITOR.draft=deepCopy(source);const draft=DAG_EDITOR.draft,custom=String(draft.workflowId||'').startsWith('custom:'),mods=data.modules||[],byId=Object.fromEntries(mods.map(m=>[m.moduleId,m])),edges=expertCompatibleEdges();pane.innerHTML='<div class="studio-head"><div><h3 class="studio-title">DAG 专家模式</h3><p class="studio-desc">仅在需要分支、汇聚或非标准模块时使用。连线只显示类型兼容的中文端口。</p></div><div class="studio-actions"><button class="btn tiny" onclick="cloneDagWorkflow()">复制为自定义流程</button>'+(custom?'<button class="btn tiny primary" onclick="saveVisualDag()">校验并保存</button>':'')+'</div></div><div class="gen-card"><div class="gen-row"><div class="gen-row-left"><div class="gen-row-name">编辑流程</div></div><div class="gen-row-right"><select class="gen-select" onchange="expertSelectWorkflow(this.value)">'+(data.workflows||[]).map(w=>'<option value="'+esc(w.workflowId)+'"'+(w.workflowId===draft.workflowId?' selected':'')+'>'+esc(w.name)+'</option>').join('')+'</select></div></div></div><div class="gen-card"><p class="gen-card-title">节点</p>'+(draft.nodes||[]).map(n=>{const m=byId[n.moduleId]||{};const planField=n.moduleId==='excel.combine_sheets'?'<select class="gen-select" onchange="expertSetPlan(\''+esc(n.nodeId)+'\',this.value)">'+dagPlanOptions((n.parameters||{}).plan_id||CFG.draft.activeCombineSheetsPlanId)+'</select>':'';return '<div class="gen-row"><div class="gen-row-left"><div class="gen-row-name"><input value="'+esc(n.displayName||n.nodeId)+'" '+(custom?'oninput="expertSetNodeName(\''+esc(n.nodeId)+'\',this.value)"':'disabled')+'></div><div class="gen-row-desc">'+esc(m.name||n.moduleId)+(planField?'<br>'+planField:'')+'</div></div><div class="gen-row-right">'+(custom?'<button class="btn tiny danger" onclick="expertRemoveNode(\''+esc(n.nodeId)+'\')">删除</button>':'<span class="module-help-hint">内置只读</span>')+'</div></div>'}).join('')+(custom?'<div class="inspector-actions"><select class="gen-select" id="expertAddModule">'+mods.map(m=>'<option value="'+esc(m.moduleId)+'">'+esc(m.name)+'</option>').join('')+'</select><button class="btn tiny" onclick="expertAddNode()">添加节点</button></div>':'')+'</div><div class="gen-card"><p class="gen-card-title">连线</p>'+(draft.edges||[]).map((e,i)=>'<div class="gen-row"><div class="gen-row-left"><div class="gen-row-name">'+esc((draft.nodes.find(n=>n.nodeId===e.fromNode)||{}).displayName||e.fromNode)+' / '+esc(dagPortLabel(e.fromPort))+' → '+esc((draft.nodes.find(n=>n.nodeId===e.toNode)||{}).displayName||e.toNode)+' / '+esc(dagPortLabel(e.toPort))+'</div></div><div class="gen-row-right">'+(custom?'<button class="btn tiny danger" onclick="expertRemoveEdge('+i+')">删除</button>':'')+'</div></div>').join('')+(custom?'<div class="inspector-actions"><select class="gen-select" id="expertEdge">'+edges.map((x,i)=>'<option value="'+i+'">'+esc((x.a.displayName||x.a.nodeId)+' / '+dagPortLabel(x.out.name)+' → '+(x.b.displayName||x.b.nodeId)+' / '+dagPortLabel(x.input.name))+'</option>').join('')+'</select><button class="btn tiny" onclick="expertAddEdge()">添加连线</button></div>':'')+'</div><details class="module-help"><summary>诊断 JSON（只读）</summary><textarea readonly style="width:100%;min-height:180px;font-family:Consolas,monospace;font-size:11px">'+esc(JSON.stringify(draft,null,2))+'</textarea></details>'}catch(e){pane.innerHTML='<div class="inspector-empty">读取专家流程失败：'+esc(e.message||String(e))+'</div>'}}
 function expertSelectWorkflow(id){DAG_EDITOR.selected=id;DAG_EDITOR.draft=null;renderDagEditor()}
@@ -4578,9 +4460,8 @@ function organizeDagNodes(){
   (draft.nodes||[]).filter(node=>!connected.has(node.nodeId)).forEach((node,index)=>{node.uiPosition={x:(levels.length+1)*280,y:index*128}});
   showToast('已按数据依赖整理节点位置；请校验并保存。');renderDagEditor();
 }
-async function saveVisualDag(){const check=await bridge.api.validate_dag_workflow(DAG_EDITOR.draft);if(!check.valid){alert('流程校验失败：\n'+check.errors.join('\n'));return}const saved=await bridge.api.save_dag_workflow(DAG_EDITOR.draft);if(!saved.ok){alert('保存失败：\n'+saved.errors.join('\n'));return}showSettingsStatus('DAG 已保存');DAG_EDITOR.draft=null;renderDagEditor();if(auditExtrasUnlocked())renderDagExtras()}
+async function saveVisualDag(){const check=await bridge.api.validate_dag_workflow(DAG_EDITOR.draft);if(!check.valid){alert('流程校验失败：\n'+check.errors.join('\n'));return}const saved=await bridge.api.save_dag_workflow(DAG_EDITOR.draft);if(!saved.ok){alert('保存失败：\n'+saved.errors.join('\n'));return}showSettingsStatus('DAG 已保存');DAG_EDITOR.draft=null;renderDagEditor()}
 function cloneDagWorkflow(){const copy=deepCopy(DAG_EDITOR.draft),baseId=(copy.settings&&copy.settings.base_workflow_id)||copy.workflowId;copy.workflowId='custom:'+Date.now();copy.name=String(copy.name||'流程')+'（自定义）';copy.version='1';copy.settings=Object.assign({},copy.settings||{},{base_workflow_id:baseId});DAG_EDITOR.selected=copy.workflowId;DAG_EDITOR.draft=copy;renderDagEditor()}
-async function renderDagExtras(){const box=document.getElementById('dagCustomList');if(!box)return;try{const data=await bridge.api.get_dag_editor_data();const customs=(data.workflows||[]).filter(item=>String(item.workflowId||'').startsWith('custom:'));box.innerHTML=customs.map(item=>'<button type="button" class="btn" onclick="startDagFlow(\''+esc(item.workflowId)+'\')">'+esc(item.name)+'</button>').join('')}catch(e){box.innerHTML=''}}
 
 /* ---- 普通业务流程编辑器：业务草稿由后端编译成显式端口 DAG。 ---- */
 let BUSINESS_FLOW_EDITOR={mode:'normal',draft:null,selectedWorkflowId:''};
@@ -4617,8 +4498,8 @@ function businessFlowBlueprintHtml(data){
   return '<div class="gen-card"><p class="gen-card-title">内置流程蓝图</p><div class="gen-row"><div class="gen-row-left"><div class="gen-row-name">查看流程</div><div class="gen-row-desc">只读展示已验收的默认流程，不影响实际执行。</div></div><div class="gen-row-right"><select class="gen-select" onchange="businessBlueprintSelect(this.value)">'+flows.map(item=>'<option value="'+esc(item.workflowId)+'"'+(item.workflowId===flow.workflowId?' selected':'')+'>'+esc(item.name)+'</option>').join('')+'</select>'+buttons+'</div></div>'+content+'</div>'
 }
 function businessDraftHtml(data){const draft=BUSINESS_FLOW_EDITOR.draft;if(!draft)return '';const template=businessTemplateById(data,draft.templateId);if(!template)return '<div class="inspector-empty">流程模板已不存在。</div>';const planConfig=draft.templateId==='combine_sheets'?dagBusinessConfigHtml():'';const steps=(draft.steps||[]).map((step,index)=>{const meta=(template.steps||[]).find(item=>item.nodeId===step.nodeId)||{};return '<details class="module-help"'+(Object.keys(meta.configSchema||{}).length?' open':'')+'><summary>'+(index+1)+'. '+esc(step.displayName||meta.name||step.nodeId)+(step.enabled?'':'（已停用）')+'</summary><p class="module-help-desc">'+esc(meta.description||'')+'</p>'+businessParameterHtml(step,meta)+'<div class="gen-row"><div class="gen-row-left"><div class="gen-row-name">失败后处理</div><div class="gen-row-desc">默认沿用已验收流程；如需调整可选择明确策略。</div></div><div class="gen-row-right"><select class="gen-select" onchange="businessSetFailure(\''+esc(step.nodeId)+'\',this.value)"><option value=""'+(!step.failurePolicy?' selected':'')+'>沿用流程默认</option><option value="FAIL_WORKFLOW"'+(step.failurePolicy==='FAIL_WORKFLOW'?' selected':'')+'>终止流程</option><option value="SKIP_ITEM"'+(step.failurePolicy==='SKIP_ITEM'?' selected':'')+'>跳过当前文件</option><option value="SKIP_NODE"'+(step.failurePolicy==='SKIP_NODE'?' selected':'')+'>跳过当前步骤</option><option value="CONTINUE_WITH_PARTIAL"'+(step.failurePolicy==='CONTINUE_WITH_PARTIAL'?' selected':'')+'>保留部分结果继续</option></select>'+(meta.allowDisable?'<button class="gen-toggle'+(step.enabled?' on':'')+'" aria-pressed="'+(step.enabled?'true':'false')+'" onclick="businessToggleStep(\''+esc(step.nodeId)+'\')"></button>':'')+'</div></div></details>'}).join('');return planConfig+'<div class="gen-card"><p class="gen-card-title">流程配置</p><div class="gen-row"><div class="gen-row-left"><div class="gen-row-name">流程名称</div><div class="gen-row-desc">保存后显示在逐笔统计系统的自定义功能区。</div></div><div class="gen-row-right"><input class="gen-select" value="'+esc(draft.name||'')+'" onchange="businessSetName(this.value)"></div></div><div class="gen-row"><div class="gen-row-left"><div class="gen-row-name">业务模板</div><div class="gen-row-desc">'+esc(template.description||'')+'</div></div><div class="gen-row-right"><span class="module-help-hint">'+esc(template.name)+'</span></div></div></div><div class="gen-card"><p class="gen-card-title">业务步骤</p>'+steps+'<div class="inspector-actions"><button class="btn primary" onclick="saveBusinessWorkflow()">保存流程</button><button class="btn" onclick="BUSINESS_FLOW_EDITOR.draft=null;renderDagFlowComposer()">取消</button></div></div>'}
-async function saveBusinessWorkflow(){const draft=BUSINESS_FLOW_EDITOR.draft;if(!draft)return;if(draft.templateId==='combine_sheets'&&CFG.dirty){alert('分组方案有未保存的修改，请先点击设置中心底部的“保存设置”。');return}const result=await bridge.api.save_business_workflow(draft);if(!result.ok){alert('保存失败：\n'+(result.errors||[]).join('\n'));return}showSettingsStatus('已保存流程：'+draft.name);DAG_EDITOR.data=null;BUSINESS_FLOW_EDITOR.draft=null;await renderDagFlowComposer();if(auditExtrasUnlocked())renderDagExtras()}
-async function deleteBusinessWorkflow(id){const flow=((DAG_EDITOR.data||{}).workflows||[]).find(item=>item.workflowId===id),name=flow?flow.name:id;if(!confirm('确定删除自定义流程“'+name+'”？此操作不会删除已输出的 Excel 文件。'))return;const result=await bridge.api.delete_dag_workflow(id);if(!result.ok){alert('删除失败：'+((result.errors||[]).join('；')||'未知错误'));return}showSettingsStatus('已删除流程：'+name);DAG_EDITOR.data=null;BUSINESS_FLOW_EDITOR.draft=null;await renderDagFlowComposer();if(auditExtrasUnlocked())renderDagExtras()}
+async function saveBusinessWorkflow(){const draft=BUSINESS_FLOW_EDITOR.draft;if(!draft)return;if(draft.templateId==='combine_sheets'&&CFG.dirty){alert('分组方案有未保存的修改，请先点击设置中心底部的“保存设置”。');return}const result=await bridge.api.save_business_workflow(draft);if(!result.ok){alert('保存失败：\n'+(result.errors||[]).join('\n'));return}showSettingsStatus('已保存流程：'+draft.name);DAG_EDITOR.data=null;BUSINESS_FLOW_EDITOR.draft=null;await renderDagFlowComposer()}
+async function deleteBusinessWorkflow(id){const flow=((DAG_EDITOR.data||{}).workflows||[]).find(item=>item.workflowId===id),name=flow?flow.name:id;if(!confirm('确定删除自定义流程“'+name+'”？此操作不会删除已输出的 Excel 文件。'))return;const result=await bridge.api.delete_dag_workflow(id);if(!result.ok){alert('删除失败：'+((result.errors||[]).join('；')||'未知错误'));return}showSettingsStatus('已删除流程：'+name);DAG_EDITOR.data=null;BUSINESS_FLOW_EDITOR.draft=null;await renderDagFlowComposer()}
 function flowDesignerSetMode(mode){
   // 保留兼容入口，但普通与专家不再在同一页面切换。
   if(mode==='expert'){openSettingsWorkbench();setTimeout(()=>setSettingsTab('dag'),0);return}
@@ -4693,8 +4574,7 @@ async function renderDagEditor(){
   }catch(e){pane.innerHTML='<div class="inspector-empty">读取 DAG 专家模式失败：'+esc(e.message||String(e))+'</div>'}
 }
 
-window.addEventListener('bridgeready',()=>{applyEggState();refresh()});
-applyEggState();
+window.addEventListener('bridgeready',()=>{refresh()});
 updateAuditWorkbenchMode();
 document.getElementById('explanationList').addEventListener('click',e=>{
   const row=e.target&&e.target.closest('.explanation-row');

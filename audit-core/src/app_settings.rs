@@ -237,7 +237,6 @@ pub const PREFERENCE_SPECS: &[PreferenceSpec] = preference_specs! {
     "centralCur" => PreferenceKind::File,
     "centralPre" => PreferenceKind::File,
     "centralOutput" => PreferenceKind::Directory,
-    "centralFormOutput" => PreferenceKind::Directory,
     "pcCurDir" => PreferenceKind::Directory,
     "pcPreDir" => PreferenceKind::Directory,
     "pcCentral" => PreferenceKind::File,

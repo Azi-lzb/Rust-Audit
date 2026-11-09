@@ -57,6 +57,30 @@
 
 回归：audit-core lib 283/283。
 
+**界面功能收缩：F3/F4/F5 按钮、组合设置导航、金融表单目录、彩蛋（2026-11-09，用户确认）**
+
+- **主界面 F3/F4/F5 按钮删除**：组合工作表（核查表）/ 组合工作表（按配置）/
+  制作联合模板三个按钮及 `dagExtrasCard` 卡片从主界面移除；设置中心「组合设置」
+  导航页签删除（导航只剩 常规设置 / 操作指引 / 帮助与更新 / 高级设置）。
+  `start_dag_flow` 后端 API 保留——S1-F01/F02 主按钮仍走该路由。
+- **金融表单输出目录字段删除**：S3-F05 输出目录与 S3 输出目录合并为同一个
+  `centralOutput`（用户确认「金融表单目录就和输出结果是同一个」）；
+  `centralFormOutput*` 状态字段、联动逻辑与「最近输出目录：」回显行全部移除。
+- **五连击彩蛋删除**：低频功能入口已不存在，`auditExtrasUnlocked` /
+  `applyEggState` / `dag-extras-locked` CSS / `uiAuditExtrasUnlocked` 存储键、
+  操作指引中 `egg:true` 的 S1F5 条目一并删除；`createTemplateMerge` /
+  `doCreateTemplateMerge`（后端路由早已删除的死代码）同步清理。
+- **帮助与更新精简**：保留「常见问题」与「安装 LibreOffice」两个子页
+  （betteroffice 内置后 LO 仍是 Linux 主回退，安装入口保留）。
+- **残留文案清理**：重算失败日志不再引用已删除的 S1-F3 入口，改为完整指引
+  「用 Excel 打开审核副本 → Ctrl+Alt+F9 强制重算 → Ctrl+S 保存 → 在 Excel 中
+  查看校验区域结果」；恢复发布路径的内部上下文改称 S1-F01（该路径现在是
+  S1-F01 失败保留流程的一部分）；测试符号 `write_s1_f3_recovery_fixture` →
+  `write_s1_recovery_fixture` 等同步重命名。前端 index.html 内联 JS 全量
+  语法解析通过；`cargo fmt --check` 干净。
+
+回归：audit-core lib **283/283**。
+
 **S1-F3 恢复功能整体删除（2026-11-09，用户确认）**
 
 多重兜底（betteroffice → COM/WPS → LibreOffice）下重算失败已属罕见，S1-F3

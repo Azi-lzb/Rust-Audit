@@ -424,14 +424,11 @@ impl AppState {
             },
             "centralCrossOutputAuto": true,
             "centralOutputAuto": true,
-            "centralFormOutputAuto": true,
             "centralOutput": "",
-            "centralFormOutput": "",
             "centralCompareFile": "",
             "centralExplainFile": "",
             "centralCommonConfig": central_common_config,
             "centralFormsConfig": central_forms_config,
-            "centralFormOutputLastResult": "",
             "advancedSettings": {
                 "calcEngine": crate::app_settings::AppSettings::load().calc_engine.as_str(),
                 "editEngine": crate::app_settings::AppSettings::load().edit_engine.as_str(),
@@ -2244,7 +2241,7 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest, task_started
                 "waitingManualRecalc": output.waiting_manual_recalc,
                 "partialFiles": output.partial_files,
                 "failedFiles": output.failed_files,
-                "manualRecalcInstructions": "自动公式重算不可用或失败，已保留待计算的审核副本。请使用 Microsoft Excel 打开审核副本：1. 按 Ctrl+Alt+F9 强制重新计算；2. 等待 Excel 完成计算；3. 按 Ctrl+S 保存；4. 关闭工作簿；5. 返回审核工具，使用 S1-F3『从审核副本汇总校验核查表』继续审核。如果使用 WPS 或 LibreOffice，请采用对应软件支持的重新计算方式并保存。请勿修改原始报表文件。",
+                "manualRecalcInstructions": "自动公式重算不可用或失败，已保留待计算的审核副本。请使用 Microsoft Excel 打开审核副本：1. 按 Ctrl+Alt+F9 强制重新计算；2. 等待 Excel 完成计算；3. 按 Ctrl+S 保存；4. 直接在 Excel 中查看「校验区域」工作表的计算结果。如果使用 WPS 或 LibreOffice，请采用对应软件支持的重新计算方式并保存。请勿修改原始报表文件。",
                 "externalData": request.external_data,
                 "recalculationSidecarFound": request.sidecar_path.is_some(),
                 "recalculationSidecar": request.sidecar_path,
@@ -2325,7 +2322,7 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest, task_started
                     format!("S1-F01 结果文件：{}", result_path.display()),
                 );
             } else if output.waiting_manual_recalc > 0 {
-                push_log(&mut ui.value, "自动公式重算不可用或失败。请按 Ctrl+Alt+F9、等待计算、Ctrl+S 保存并关闭审核副本，然后使用 S1-F3 恢复审核。请勿修改原始报表文件。".to_owned());
+                push_log(&mut ui.value, "自动公式重算不可用或失败，已保留待计算的审核副本。请用 Excel 打开审核副本：按 Ctrl+Alt+F9 强制重算，等待计算完成后按 Ctrl+S 保存，即可在 Excel 中查看「校验区域」结果。请勿修改原始报表文件。".to_owned());
             }
             push_log(
                 &mut ui.value,
@@ -3002,13 +2999,13 @@ fn write_s1_recovery_manifest_result(
     manifest: &mut S1RecoveryManifest,
 ) -> Result<S1ResultWriteSummary> {
     let prepared = prepare_s1_manifest_result(manifest)?;
-    let input_bytes = serde_json::to_vec(&prepared.issues).context("序列化 S1-F3 结果输入")?;
+    let input_bytes = serde_json::to_vec(&prepared.issues).context("序列化 S1-F01 结果输入")?;
     let input_sha256 = format!("{:x}", Sha256::digest(input_bytes));
     let result_path = s1_recovery_result_path(manifest, &input_sha256);
     let result_name = result_path
         .file_name()
         .and_then(|name| name.to_str())
-        .context("生成 S1-F3 结果文件名")?;
+        .context("生成 S1-F01 结果文件名")?;
     let candidate_path = result_path.with_file_name(format!(".{result_name}.candidate.xlsx"));
 
     if manifest.recovery_result_path.as_deref() != Some(result_path.as_path()) {
@@ -3016,21 +3013,21 @@ fn write_s1_recovery_manifest_result(
         manifest.recovery_result_candidate_path = Some(candidate_path.clone());
         manifest.recovery_result_input_sha256 = Some(input_sha256.clone());
         manifest.recovery_result_sha256 = None;
-        store.save(manifest).context("保存 S1-F3 结果发布意图")?;
+        store.save(manifest).context("保存 S1-F01 结果发布意图")?;
     }
     ensure!(
         manifest.recovery_result_input_sha256.as_deref() == Some(input_sha256.as_str()),
-        "S1-F3 结果发布意图与当前审核结果不一致"
+        "S1-F01 结果发布意图与当前审核结果不一致"
     );
 
     if result_path.exists() {
         let expected_sha256 = manifest
             .recovery_result_sha256
             .as_deref()
-            .context("S1-F3 结果文件已存在，但持久化状态缺少发布摘要；拒绝覆盖或复用")?;
+            .context("S1-F01 结果文件已存在，但持久化状态缺少发布摘要；拒绝覆盖或复用")?;
         ensure!(
             file_sha256(&result_path)? == expected_sha256,
-            "S1-F3 已发布结果文件摘要变化；拒绝复用或覆盖"
+            "S1-F01 已发布结果文件摘要变化；拒绝复用或覆盖"
         );
         return summary_for_s1_result(&result_path, &prepared);
     }
@@ -3038,16 +3035,16 @@ fn write_s1_recovery_manifest_result(
     let persisted_candidate = manifest
         .recovery_result_candidate_path
         .as_deref()
-        .context("S1-F3 结果发布状态缺少候选文件路径")?;
+        .context("S1-F01 结果发布状态缺少候选文件路径")?;
     ensure!(
         persisted_candidate == candidate_path,
-        "S1-F3 候选结果路径与当前恢复结果不一致"
+        "S1-F01 候选结果路径与当前恢复结果不一致"
     );
     if candidate_path.exists() {
         match manifest.recovery_result_sha256.as_deref() {
             Some(expected_sha256) => ensure!(
                 file_sha256(&candidate_path)? == expected_sha256,
-                "S1-F3 候选结果文件摘要变化；拒绝发布"
+                "S1-F01 候选结果文件摘要变化；拒绝发布"
             ),
             None => {
                 // A crash may leave an incomplete private candidate before its
@@ -3058,30 +3055,30 @@ fn write_s1_recovery_manifest_result(
                     candidate_path.parent() == Some(manifest.run_directory.as_path())
                         && candidate_path.file_name().and_then(|name| name.to_str())
                             == Some(expected_candidate_name.as_str()),
-                    "S1-F3 中断候选路径不在本次运行目录，拒绝删除"
+                    "S1-F01 中断候选路径不在本次运行目录，拒绝删除"
                 );
-                fs::remove_file(&candidate_path).context("清理摘要尚未持久化的 S1-F3 中断候选")?;
+                fs::remove_file(&candidate_path).context("清理摘要尚未持久化的 S1-F01 中断候选")?;
             }
         }
     }
 
     if !candidate_path.exists() {
         manifest.recovery_result_sha256 = None;
-        store.save(manifest).context("保存 S1-F3 候选创建状态")?;
+        store.save(manifest).context("保存 S1-F01 候选创建状态")?;
         write_s1_result_workbook(&candidate_path, None, &prepared.issues)
-            .context("生成 S1-F3 暂存结果工作簿")?;
+            .context("生成 S1-F01 暂存结果工作簿")?;
         let candidate_sha256 = file_sha256(&candidate_path)?;
         manifest.recovery_result_sha256 = Some(candidate_sha256);
-        store.save(manifest).context("持久化 S1-F3 候选结果摘要")?;
+        store.save(manifest).context("持久化 S1-F01 候选结果摘要")?;
     }
 
     ensure!(
         !result_path.exists(),
-        "S1-F3 结果路径在发布前被其他文件占用；拒绝覆盖"
+        "S1-F01 结果路径在发布前被其他文件占用；拒绝覆盖"
     );
     fs::rename(&candidate_path, &result_path).with_context(|| {
         format!(
-            "发布 S1-F3 结果工作簿 {} → {}",
+            "发布 S1-F01 结果工作簿 {} → {}",
             candidate_path.display(),
             result_path.display()
         )
@@ -3089,7 +3086,7 @@ fn write_s1_recovery_manifest_result(
     let published_sha256 = file_sha256(&result_path)?;
     ensure!(
         manifest.recovery_result_sha256.as_deref() == Some(published_sha256.as_str()),
-        "发布后的 S1-F3 结果摘要与候选摘要不一致"
+        "发布后的 S1-F01 结果摘要与候选摘要不一致"
     );
     summary_for_s1_result(&result_path, &prepared)
 }
@@ -3349,7 +3346,7 @@ fn execute_s1_f1_workflow(
                     // Formula-copy editing is independent per source. Prepare
                     // all candidates first, then reuse one LibreOffice process
                     // for the full batch. A batch failure returns retained
-                    // cache-cleared copies for the existing S1-F3 recovery flow.
+                    // cache-cleared copies for the existing S1 recovery flow.
                     linux_batch_results = Some(VecDeque::from(
                         execute_s1_formula_copy_batch_with_manual_recovery(
                             &batch_items,
@@ -3579,7 +3576,7 @@ where
         .context("计算 S1-F01 映射配置摘要")?;
     let store = match recovery_store {
         Some(store) => store,
-        None => S1RecoveryStore::user_default().context("初始化 S1-F3 持久化恢复任务目录")?,
+        None => S1RecoveryStore::user_default().context("初始化 S1 审核副本恢复目录")?,
     };
     let mut recovery_files = Vec::with_capacity(accepted.len());
     for (index, item) in accepted.iter().enumerate() {
@@ -3748,7 +3745,7 @@ where
                         Ok(_) => {
                             manifest.files[file_index].status = S1RecoveryStatus::ResumeFailed;
                             manifest.files[file_index].reason = Some(
-                                "重算输出中未发现公式，保留副本并等待 S1-F3 复核。".to_owned(),
+                                "重算输出中未发现公式，已保留审核副本；可用 Excel 打开后按 Ctrl+Alt+F9 强制重算查看。".to_owned(),
                             );
                             manifest.files[file_index].audit_copy = Some(audit_workbook.clone());
                             file_results.push(json!({
@@ -3876,9 +3873,8 @@ where
                     }
                     Err(error) => {
                         manifest.files[file_index].status = S1RecoveryStatus::ResumeFailed;
-                        manifest.files[file_index].reason = Some(format!(
-                            "自动重算完成，但审核异常提取失败；可用 S1-F3 重试：{error:#}"
-                        ));
+                        manifest.files[file_index].reason =
+                            Some(format!("自动重算完成，但审核异常提取失败：{error:#}"));
                     }
                 }
                 if !recalculation_engines
@@ -4731,7 +4727,7 @@ fn choose_central(state: &AppState, args: &[Value]) -> std::result::Result<Value
         | "centralFormsConfig"
         | "centralCrossCur"
         | "centralCrossConfig" => true,
-        "centralOutput" | "centralFormOutput" => false,
+        "centralOutput" => false,
         _ => {
             return Err(ApiError::new(
                 StatusCode::NOT_IMPLEMENTED,
@@ -4831,12 +4827,8 @@ fn choose_central(state: &AppState, args: &[Value]) -> std::result::Result<Value
             if ui.value["centralOutputAuto"] == true {
                 ui.value["centralOutput"] = json!(parent);
             }
-            if ui.value["centralFormOutputAuto"] == true {
-                ui.value["centralFormOutput"] = json!(parent);
-            }
         }
         "centralOutput" => ui.value["centralOutputAuto"] = json!(false),
-        "centralFormOutput" => ui.value["centralFormOutputAuto"] = json!(false),
         _ => {}
     }
     drop(ui);
@@ -5093,11 +5085,6 @@ fn run_s3_execution_compare_worker(
         Ok(report) => {
             let output = report.output_path.to_string_lossy().into_owned();
             ui.value["centralCompareFile"] = json!(output);
-            if ui.value["centralFormOutputAuto"] == true {
-                if let Some(parent) = report.output_path.parent() {
-                    ui.value["centralFormOutput"] = json!(parent.to_string_lossy());
-                }
-            }
             ui.value["status"] = json!(format!("执行比较完成：{} 行", report.rows));
             push_log(
                 &mut ui.value,
@@ -5228,20 +5215,12 @@ fn start_central_explanation_export(state: &AppState) -> std::result::Result<Val
         let output_directory = ui.value["centralOutput"]
             .as_str()
             .filter(|path| !path.trim().is_empty())
-            .or_else(|| {
-                ui.value["centralFormOutput"]
-                    .as_str()
-                    .filter(|path| !path.trim().is_empty())
-            })
             .map(PathBuf::from)
             .or_else(|| comparison_file.parent().map(Path::to_path_buf))
             .map(|path| {
                 if ui.value["centralOutput"]
                     .as_str()
                     .is_some_and(|value| !value.is_empty())
-                    || ui.value["centralFormOutput"]
-                        .as_str()
-                        .is_some_and(|value| !value.is_empty())
                 {
                     path
                 } else {
@@ -5765,12 +5744,13 @@ fn start_central_indicator_split(state: &AppState) -> std::result::Result<Value,
                     "请先选择 3.3 大集中指标比较拆分配置.xlsx",
                 )
             })?;
-        let output_directory = ui.value["centralFormOutput"]
+        // 金融表单输出目录 = 主输出目录（用户确认 2026-11-09：不再单设）。
+        let output_directory = ui.value["centralOutput"]
             .as_str()
             .filter(|path| !path.trim().is_empty())
             .map(PathBuf::from)
             .or_else(|| comparison_file.parent().map(Path::to_path_buf))
-            .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "请先选择表单输出目录"))?;
+            .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "请先选择输出目录"))?;
         for (label, path) in [
             ("比较结果", &comparison_file),
             ("3.0 大集中通用配置", &common_config),
@@ -5819,7 +5799,6 @@ fn start_central_indicator_split(state: &AppState) -> std::result::Result<Value,
         }
         ui.value["busy"] = json!(true);
         clear_run_summary(&mut ui.value);
-        ui.value["centralFormOutputLastResult"] = json!("");
         ui.value["status"] = json!("正在生成 S3-F05 金融表单……");
         ui.value["currentWork"] = json!({
             "feature": "S3-F05",
@@ -6136,7 +6115,6 @@ fn run_s3_indicator_split_worker(
     match result {
         Ok(report) => {
             let output = report.output_directory.to_string_lossy().into_owned();
-            ui.value["centralFormOutputLastResult"] = json!(output);
             ui.value["status"] = json!(format!(
                 "S3-F05 完成：{} 家机构，{} 个指标匹配",
                 report.institution_count, report.matched_indicators
@@ -6527,7 +6505,7 @@ fn toggle_central_output_pin(
         .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "缺少大集中输出目录类型"))?;
     let (auto_key, source_key) = match kind {
         "centralOutput" => ("centralOutputAuto", "centralCur"),
-        "centralFormOutput" => ("centralFormOutputAuto", "centralCompareFile"),
+
         _ => {
             return Err(ApiError::new(
                 StatusCode::NOT_IMPLEMENTED,
@@ -6618,8 +6596,7 @@ fn clear_path(state: &AppState, args: &[Value]) -> std::result::Result<Value, Ap
         | "centralFormsConfig"
         | "centralCrossCur"
         | "centralCrossConfig"
-        | "centralOutput"
-        | "centralFormOutput"),
+        | "centralOutput"),
     ) = arg_string(args, 0)
     {
         let mut ui = state.lock();
@@ -8208,9 +8185,9 @@ mod tests {
 
     #[test]
     fn s1_f1_template_preflight_cache_reuses_one_immutable_plan_per_path() -> anyhow::Result<()> {
-        let directory = S1F3RealProbeDirectory::create()?;
+        let directory = S1RecoveryProbeDirectory::create()?;
         let template = directory.0.join("template.xlsx");
-        write_s1_f3_recovery_fixture(&template, None)?;
+        write_s1_recovery_fixture(&template, None)?;
         let mut cache = std::collections::HashMap::new();
 
         let first = cached_s1_f1_template_preflight(&mut cache, &template, None)?;
@@ -8228,18 +8205,18 @@ mod tests {
     #[cfg(windows)]
     fn s1_f1_gui_batch_reuses_template_preflight_and_preserves_legal_recalc_state(
     ) -> anyhow::Result<()> {
-        let directory = S1F3RealProbeDirectory::create()?;
+        let directory = S1RecoveryProbeDirectory::create()?;
         let input = directory.0.join("input");
         let templates = directory.0.join("templates");
         let output = directory.0.join("output");
         fs::create_dir_all(&input)?;
         fs::create_dir_all(&templates)?;
         let template = templates.join("template.xlsx");
-        write_s1_f3_recovery_fixture(&template, None)?;
+        write_s1_recovery_fixture(&template, None)?;
         let mut source_hashes = Vec::new();
         for index in 1..=3 {
             let source = input.join(format!("机构甲_2026-07_{index}.xlsx"));
-            write_s1_f3_recovery_fixture(&source, None)?;
+            write_s1_recovery_fixture(&source, None)?;
             source_hashes.push((source.clone(), file_sha256(&source)?));
         }
         let template_hash = file_sha256(&template)?;
@@ -8276,18 +8253,18 @@ mod tests {
         Ok(())
     }
 
-    struct S1F3RealProbeDirectory(PathBuf);
+    struct S1RecoveryProbeDirectory(PathBuf);
 
-    impl S1F3RealProbeDirectory {
+    impl S1RecoveryProbeDirectory {
         fn create() -> anyhow::Result<Self> {
             let suffix = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
-            let path = std::env::temp_dir().join(format!("audit_s1_f3_real_{suffix}"));
+            let path = std::env::temp_dir().join(format!("audit_s1_recovery_real_{suffix}"));
             fs::create_dir_all(&path)?;
             Ok(Self(path))
         }
     }
 
-    impl Drop for S1F3RealProbeDirectory {
+    impl Drop for S1RecoveryProbeDirectory {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
@@ -8310,9 +8287,9 @@ mod tests {
         let source = root.join("机构甲_部分审核.xlsx");
         let template = root.join("template.xlsx");
         let audit_copy = root.join("audit-copy.xlsx");
-        write_s1_f3_recovery_fixture(&source, None)?;
-        write_s1_f3_recovery_fixture(&template, None)?;
-        write_s1_f3_recovery_fixture(&audit_copy, Some("错误|公式核查|测试指标|测试异常"))?;
+        write_s1_recovery_fixture(&source, None)?;
+        write_s1_recovery_fixture(&template, None)?;
+        write_s1_recovery_fixture(&audit_copy, Some("错误|公式核查|测试指标|测试异常"))?;
         let preflight = s1_f1_template_preflight(&template, None)?;
         let item = S1F1AcceptedSource {
             source: source.clone(),
@@ -8386,10 +8363,7 @@ mod tests {
     }
 
     /// 生成 S1-F01 测试样本（含校验区域/条件格式区域/表结构区域三个命名区域）。
-    fn write_s1_f3_recovery_fixture(
-        path: &Path,
-        cached_result: Option<&str>,
-    ) -> anyhow::Result<()> {
+    fn write_s1_recovery_fixture(path: &Path, cached_result: Option<&str>) -> anyhow::Result<()> {
         let mut workbook = Workbook::new();
         let worksheet = workbook.add_worksheet();
         worksheet.set_name("检查表")?;
@@ -8425,9 +8399,9 @@ mod tests {
         let calculated_source = input_dir.join("机构甲_2026-07_自动重算.xlsx");
         let pending_source = input_dir.join("机构乙_2026-07_待人工重算.xlsx");
         let template = template_dir.join("template.xlsx");
-        write_s1_f3_recovery_fixture(&calculated_source, None)?;
-        write_s1_f3_recovery_fixture(&pending_source, None)?;
-        write_s1_f3_recovery_fixture(&template, None)?;
+        write_s1_recovery_fixture(&calculated_source, None)?;
+        write_s1_recovery_fixture(&pending_source, None)?;
+        write_s1_recovery_fixture(&template, None)?;
 
         let accepted = vec![
             S1F1AcceptedSource {
@@ -8489,7 +8463,7 @@ mod tests {
                     {
                         // Model an external engine that completed and saved this
                         // one synthetic workbook while leaving the other waiting.
-                        write_s1_f3_recovery_fixture(
+                        write_s1_recovery_fixture(
                             &manual.audit_copy,
                             Some("错误|公式核查|测试指标|自动重算异常"),
                         )?;
@@ -9088,7 +9062,9 @@ mod tests {
         assert!(super::ORIGINAL_HTML.contains("bridge.api.start_central_cross_period()"));
         assert!(super::ORIGINAL_HTML.contains("onclick=\"runCentralForms()\""));
         assert!(super::ORIGINAL_HTML.contains("centralFormsConfig:'config'"));
-        assert!(super::ORIGINAL_HTML.contains("最近输出目录："));
+        // 金融表单输出目录已并入输出目录：独立目录字段与其回显行不再输出。
+        assert!(!super::ORIGINAL_HTML.contains("最近输出目录："));
+        assert!(!super::ORIGINAL_HTML.contains("centralFormOutput"));
     }
 
     #[test]
@@ -10106,7 +10082,7 @@ mod tests {
             "GUI task should create the result workbook"
         );
         assert_eq!(
-            value["centralFormOutput"],
+            value["centralOutput"],
             output.parent().unwrap().to_string_lossy().as_ref()
         );
         let logs = value["log"].as_array().expect("GUI log array");
