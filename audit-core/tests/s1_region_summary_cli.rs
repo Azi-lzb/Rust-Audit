@@ -95,7 +95,7 @@ fn write_sample_workbook_with_metadata(
 }
 
 fn run_summary(root: &Path, output: &Path, developer_view: bool) -> Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_open-data-audit"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_AuditTools"));
     command
         .arg("s1-region-summary")
         .arg("--template-workbook")
@@ -123,7 +123,7 @@ fn run_summary_with_history(
     output: &Path,
     developer_view: bool,
 ) -> Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_open-data-audit"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_AuditTools"));
     command
         .arg("s1-region-summary")
         .arg("--template-workbook")
@@ -151,7 +151,7 @@ fn run_fallback_summary(
     feature_name: &str,
     developer_view: bool,
 ) -> Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_open-data-audit"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_AuditTools"));
     command
         .arg("s1-region-summary")
         .arg("--template-workbook")

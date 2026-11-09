@@ -10,7 +10,7 @@ fn fixture() -> PathBuf {
 
 fn run_cli(developer_view: bool) -> std::process::Output {
     let workbook = fixture();
-    let mut command = Command::new(env!("CARGO_BIN_EXE_open-data-audit"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_AuditTools"));
     command
         .arg("conditional-audit")
         .arg("--workbook")

@@ -69,7 +69,7 @@ fn write_sample_workbook(path: &PathBuf, sheets: &[(&str, Vec<Vec<SampleCell<'_>
 }
 
 fn run_merge(input_dir: &PathBuf, output_path: &PathBuf, developer_view: bool) -> Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_open-data-audit"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_AuditTools"));
     command
         .arg("s1-merge-workbook-tables")
         .arg("--input-dir")

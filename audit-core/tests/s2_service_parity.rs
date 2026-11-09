@@ -155,7 +155,7 @@ fn s2_service_runs_both_file_based_paths_and_keeps_inputs_unchanged() {
     ] {
         let scenario_root = cli_root.join(scenario);
         let output_directory = scenario_root.join("output");
-        let mut command = Command::new(env!("CARGO_BIN_EXE_open-data-audit"));
+        let mut command = Command::new(env!("CARGO_BIN_EXE_AuditTools"));
         command
             .arg("s2")
             .arg("--current-dir")

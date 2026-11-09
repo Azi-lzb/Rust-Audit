@@ -62,7 +62,7 @@ fn run_cli_with_mapping(
     scan_area: Option<&str>,
     selected_file: Option<&Path>,
 ) -> Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_open-data-audit"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_AuditTools"));
     command
         .arg("conditional-audit-directory")
         .arg("--input-dir")

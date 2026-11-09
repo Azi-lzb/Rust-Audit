@@ -40,7 +40,7 @@ fn template_with_formula_rules() -> PathBuf {
 }
 
 fn run_cli(path: &PathBuf, developer_view: bool, include_definition: bool) -> Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_open-data-audit"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_AuditTools"));
     command
         .arg("s1-template-rules")
         .arg("--template-workbook")

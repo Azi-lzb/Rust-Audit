@@ -41,7 +41,7 @@ fn issue(issue_id: &str, period: &str, triggered: bool) -> Value {
 }
 
 fn run(input: &std::path::Path, developer_view: bool) -> std::process::Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_open-data-audit"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_AuditTools"));
     command.arg("s1-history-classify").arg("--input").arg(input);
     if developer_view {
         command.arg("--developer-view");

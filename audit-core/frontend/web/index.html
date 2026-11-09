@@ -1244,9 +1244,8 @@ let run=null,runTimer=null,prevLogTail='';
 let LOG_RENDER_STATE={version:null,baseFirstSeq:null,lastSeq:0,filterKey:''};
 let LOG_CLEARED_THROUGH_SEQ=0;
 let unseenLogCount=0;
-// 页面明细与已有性能摘要分别显示；运行日志 Excel 由后端独立开关控制。
+// 单一开关：开启后页面显示全部 detail 行（技术路径、回退原因、各阶段耗时）。
 let showRunDetailLogs=false;
-let showPerformanceDiagnostics=false;
 function countNew(arr,prevTail){ /* 日志条目是 {text,detail} 对象，JSON 往返后引用会变，须按 text 值比较 */
   if(!arr.length)return 0;
   if(!prevTail)return arr.length;
@@ -2344,9 +2343,7 @@ function renderGeneral(){
         +Array.from({length:10},(_,index)=>index+1).map(function(depth){return '<option value="'+depth+'"'+(Number(s.recursiveDepth??-1)===depth?' selected':'')+'>'+depth+' 层子目录</option>';}).join('')
         +'</select>'),
       row('执行前确认','点执行按钮先显示本次动作、输入、输出和文件摘要，确认后才开始运行。',toggle('setConfirmBeforeRun',!!s.confirmBeforeRun)),
-      row('运行明细日志','开启后在页面显示已有的详细运行记录；关闭后仅显示简洁记录。',toggle('setShowRunDetailLogs',!!s.showRunDetailLogs)),
-      row('导出运行日志 Excel','独立控制是否生成“流程名_运行日志_时间戳.xlsx”，不影响页面日志显示。',toggle('setExportRunLogs',!!s.exportRunLogs)),
-      row('性能与运行诊断信息','显示运行记录中已有的耗时、实际引擎、渲染器、写入和求值方式；只控制页面显示，不新增采集。',toggle('setShowPerformanceDiagnostics',!!s.showPerformanceDiagnostics)),
+      row('运行明细日志','开启后显示详细运行记录：实际技术路径（编辑后端/重算引擎/条件格式来源）、回退原因、各阶段耗时分解。关闭后仅显示简洁记录。',toggle('setShowRunDetailLogs',!!s.showRunDetailLogs)),
     ])
     +group('背景')
     +card([
@@ -2604,8 +2601,6 @@ function toggleGenSetting(btn){
   btn.classList.toggle('on',on);
   btn.setAttribute('aria-pressed',on?'true':'false');
   if(btn.id==='setShowRunDetailLogs')setShowRunDetailLogs(on);
-  else if(btn.id==='setExportRunLogs')setExportRunLogs(on);
-  else if(btn.id==='setShowPerformanceDiagnostics')setShowPerformanceDiagnostics(on);
   else if(btn.id==='setConfirmBeforeRun')setConfirmBeforeRun(on);
   else if(btn.id==='setConditionalFormatIncludeBlankCells')setConditionalFormatIncludeBlankCells(on);
   else if(btn.id==='setCentralTrimIndicatorNames')setCentralTrimIndicatorNames(on);
@@ -2623,12 +2618,10 @@ function syncGeneralControls(){
   syncSel('setRecursiveDepth',String(s.recursiveDepth??-1));
   syncSel('setCentralTolerance',String(s.centralTolerance??100));
   syncToggle('setShowRunDetailLogs',!!s.showRunDetailLogs);
-  syncToggle('setExportRunLogs',!!s.exportRunLogs);
   syncToggle('setConditionalFormatIncludeBlankCells',s.conditionalFormatIncludeBlankCells!==false);
   syncSel('setConditionalFormatEvaluator',String(s.conditionalFormatEvaluator||'PYTHON'));
   syncToggle('setCentralTrimIndicatorNames',!!s.centralTrimIndicatorNames);
   syncToggle('setCentralAutoOpenResult',!!s.centralAutoOpenResult);
-  syncToggle('setShowPerformanceDiagnostics',!!s.showPerformanceDiagnostics);
   syncToggle('setConfirmBeforeRun',s.confirmBeforeRun!==false);
   syncToggle('setShowCustom',!!s.showCustomFeatures);
 }
@@ -2644,32 +2637,6 @@ async function removeExtraFile(path){
   if(state&&state.busy)return;
   try{ await bridge.api.remove_extra_file(path); }catch(e){ alert('移除失败：'+((e&&e.message)?e.message:String(e))); }
   await refresh();
-}
-async function setWriteFlowLogs(checked){
-  const next=await bridge.api.update({writeFlowLogs:checked});
-  if(next&&typeof next==='object')state=next;
-  else if(state){state.writeFlowLogs=!!checked;state.showRunDetailLogs=!!checked;state.exportRunLogs=!!checked;}
-  showRunDetailLogs=!!checked;
-  renderLog();
-}
-async function setShowRunDetailLogs(checked){
-  const next=await bridge.api.update({showRunDetailLogs:checked});
-  if(next&&typeof next==='object')state=next;
-  else if(state)state.showRunDetailLogs=!!checked;
-  showRunDetailLogs=!!checked;
-  renderLog();
-}
-async function setExportRunLogs(checked){
-  const next=await bridge.api.update({exportRunLogs:checked});
-  if(next&&typeof next==='object')state=next;
-  else if(state){state.exportRunLogs=!!checked;state.writeFlowLogs=!!checked;}
-}
-async function setShowPerformanceDiagnostics(checked){
-  const next=await bridge.api.update({showPerformanceDiagnostics:checked});
-  if(next&&typeof next==='object')state=next;
-  else if(state)state.showPerformanceDiagnostics=!!checked;
-  showPerformanceDiagnostics=!!checked;
-  renderLog();
 }
 async function setConfirmBeforeRun(checked){await bridge.api.update({confirmBeforeRun:checked});await refresh()}
 async function setRecursiveDepth(value){
@@ -3703,7 +3670,7 @@ function askResetGeneralSettings(){
   pendingConfirm={type:'resetGeneral'};
   document.getElementById('confirmTitle').textContent='常规设置恢复默认';
   document.getElementById('confirmOk').textContent='恢复默认';
-  document.getElementById('confirmMsg').textContent='将还原计算引擎为“自动”、扫描深度为“最深处”、开启执行前检查，并关闭运行明细、运行日志 Excel 和性能与运行诊断信息；高级设置恢复为默认值（直接填充模板与写入、读取已保存结果、内置规则求值；Linux 公式复制与规则读取采用平台固定方式）。不会修改路径、报表采集系统、逐笔统计系统、配置文件或历史审核说明。是否继续？';
+  document.getElementById('confirmMsg').textContent='将还原计算引擎为“自动”、扫描深度为“最深处”、开启执行前检查，并关闭运行明细日志；高级设置恢复为默认值（直接填充模板与写入、读取已保存结果、内置规则求值；Linux 公式复制与规则读取采用平台固定方式）。不会修改路径、报表采集系统、逐笔统计系统、配置文件或历史审核说明。是否继续？';
   document.getElementById('confirmMask').style.display='flex';
 }
 async function doResetGeneralSettings(){
@@ -4114,13 +4081,14 @@ function renderCurrentWork(s){
 function logIsAtBottom(el){return el.scrollHeight-el.scrollTop-el.clientHeight<=8}
 function logFilterKey(){
   const filter=document.getElementById('logLevelFilter');
-  return (filter?filter.value:'all')+'|'+(showRunDetailLogs?'detail':'normal')+'|'+(showPerformanceDiagnostics?'perf':'no-perf')+'|'+LOG_CLEARED_THROUGH_SEQ;
+  return (filter?filter.value:'all')+'|'+(showRunDetailLogs?'detail':'normal')+'|'+LOG_CLEARED_THROUGH_SEQ;
 }
 function visibleLogBody(entry){
   const lines=String(entry.text||'').split(/\r?\n/);
-  const isPerformanceLine=line=>/(耗时分解：|引擎生命周期：|非节点收尾：|引擎启动与流程收尾|已连接表格引擎：|正在启动表格引擎：|条件格式判定方式：|规则读取方式：|外部文件添加方式：|公式校验复制方式：|^\s*Renderer:|\bWriter:|\bCalculator:|^\s*总计\s)/.test(line);
-  const visible=entry.detail?(showRunDetailLogs?lines:(showPerformanceDiagnostics?lines.filter(isPerformanceLine):[])):lines;
-  const body=visible.filter(line=>showPerformanceDiagnostics||!isPerformanceLine(line)).join('\n');
+  // 明细日志开：显示全部 detail 行（技术路径、回退原因、各阶段耗时分解等）；
+  // 关：普通日志照常显示，detail 行整体隐藏。不再单独区分"性能行"。
+  const visible=entry.detail&&!showRunDetailLogs?[]:lines;
+  const body=visible.join('\n');
   const filter=document.getElementById('logLevelFilter');
   const rank={all:0,warn:1,error:2};
   const minLevel=filter?filter.value:'all';
@@ -4332,7 +4300,6 @@ async function refresh(){
   applyTheme(s.uiTheme||'日间');
   applyAccent(s.uiAccent||localStorage.getItem('uiAccent')||'默认蓝');
   showRunDetailLogs=!!s.showRunDetailLogs;
-  showPerformanceDiagnostics=!!s.showPerformanceDiagnostics;
   renderCentral(s);
   const rm=document.getElementById('centralRenderMode');
   if(rm)rm.textContent='当前生成方式：'+(String(s.xlsxRenderMode||'FAST_OOXML')==='FAST_OOXML'?'直接填充模板':'通过工作簿修改器');

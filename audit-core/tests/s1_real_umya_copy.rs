@@ -52,8 +52,12 @@ fn real_s1_f1_copy_preserves_lookup_formulas_references_and_recalculated_values(
     let external_copy = temp.join("external-source-copy.xlsx");
     let external_recalculated = temp.join("external-recalculated.xlsx");
     fs::copy(&external, &external_copy)?;
-    let baseline_report =
-        recalculate_s1_formula_copy(&sidecar, &external_copy, &external_recalculated, "auto")?;
+    let baseline_report = recalculate_s1_formula_copy(
+        Some(&sidecar),
+        &external_copy,
+        &external_recalculated,
+        "auto",
+    )?;
 
     let external_dump = read_workbook(&external).context("read real S1 external workbook")?;
     let reference = sheet(&external_dump.sheets, "参照表")?;
@@ -300,7 +304,7 @@ fn real_source_survives_umya_roundtrip_with_calculation_when_needed() -> Result<
     } else {
         let sidecar = required_path("AUDIT_S1_REAL_SIDECAR")?;
         ensure!(sidecar.is_file(), "recalculation sidecar is not a file");
-        recalculate_s1_formula_copy(&sidecar, &roundtrip, &recalculated, "auto")
+        recalculate_s1_formula_copy(Some(&sidecar), &roundtrip, &recalculated, "auto")
             .context("open and recalculate Umya roundtrip in Excel/LibreOffice")?;
         read_workbook(&recalculated).context("reopen recalculated Umya roundtrip")?
     };

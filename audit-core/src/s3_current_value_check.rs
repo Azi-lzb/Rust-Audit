@@ -89,7 +89,6 @@ pub struct S3CurrentValueCheckConfig {
 pub struct S3CurrentValueCheckReport {
     pub status: &'static str,
     pub output_workbook: PathBuf,
-    pub log_workbook: Option<PathBuf>,
     pub rows: usize,
     pub total_rules: usize,
     pub enabled_rules: usize,
@@ -453,7 +452,6 @@ pub fn run_current_value_check_files(
     previous_paths: &[PathBuf],
     config_paths: &[PathBuf],
     output_path: impl AsRef<Path>,
-    log_path: Option<&Path>,
     scope_matches: impl FnMut(&str, &str) -> bool,
 ) -> Result<S3CurrentValueCheckReport> {
     run_current_value_check_files_with_progress(
@@ -461,7 +459,6 @@ pub fn run_current_value_check_files(
         previous_paths,
         config_paths,
         output_path,
-        log_path,
         scope_matches,
         |_| {},
     )
@@ -472,7 +469,6 @@ pub fn run_current_value_check_files_with_progress<F>(
     previous_paths: &[PathBuf],
     config_paths: &[PathBuf],
     output_path: impl AsRef<Path>,
-    log_path: Option<&Path>,
     scope_matches: impl FnMut(&str, &str) -> bool,
     mut on_progress: F,
 ) -> Result<S3CurrentValueCheckReport>
@@ -482,15 +478,6 @@ where
     let total_started = Instant::now();
     ensure!(!current_paths.is_empty(), "本期数值核对：请先选择数据文件");
     let output_path = resolve_new_xlsx_path(output_path.as_ref(), "本期数值核对结果")?;
-    let log_path = log_path
-        .map(|path| resolve_new_xlsx_path(path, "本期数值核对运行日志"))
-        .transpose()?;
-    if let Some(log_path) = &log_path {
-        ensure!(
-            !same_path(&output_path, log_path),
-            "结果工作簿和运行日志不能使用同一输出路径"
-        );
-    }
 
     on_progress("读取 3.0 通用配置和 3.2 本期核对规则");
     let config_started = Instant::now();
@@ -587,9 +574,6 @@ where
     let workbook_started = Instant::now();
     write_check_workbook(&output_path, &result.rows)?;
     validate_check_workbook(&output_path, result.rows.len())?;
-    if let Some(path) = log_path.as_deref() {
-        write_log_workbook(path, &result.logs)?;
-    }
     let workbook_write_time_ms = workbook_started.elapsed().as_millis();
     on_progress(&format!("数值核对结果已保存：{}", output_path.display()));
 
@@ -598,7 +582,6 @@ where
     Ok(S3CurrentValueCheckReport {
         status: "completed",
         output_workbook: output_path,
-        log_workbook: log_path,
         rows: result.rows.len(),
         total_rules: config.rules.len(),
         enabled_rules,
@@ -1077,46 +1060,6 @@ fn write_check_workbook(path: &Path, rows: &[S3CurrentValueCheckRow]) -> Result<
     workbook
         .save(path)
         .with_context(|| format!("保存 S3-F04 结果工作簿失败：{}", path.display()))?;
-    Ok(())
-}
-
-fn write_log_workbook(path: &Path, logs: &[S3CurrentValueCheckLog]) -> Result<()> {
-    let header_format = Format::new()
-        .set_bold()
-        .set_font_color(Color::RGB(0xFF_FF_FF))
-        .set_background_color(Color::RGB(0x1F_4E_78));
-    let mut workbook = Workbook::new();
-    let worksheet = workbook.add_worksheet();
-    worksheet
-        .set_name("运行日志")
-        .context("设置 S3-F04 运行日志工作表名称失败")?;
-    set_python_default_page_margins(worksheet);
-    for (column, header) in ["时间", "机构类代码", "地区代码", "错误类型", "规则", "详情"]
-        .iter()
-        .enumerate()
-    {
-        worksheet.write_string_with_format(0, column as u16, *header, &header_format)?;
-    }
-    for (index, log) in logs.iter().enumerate() {
-        let row = index as u32 + 1;
-        let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        for (column, value) in [
-            timestamp.as_str(),
-            log.institution_code.as_str(),
-            log.region_code.as_str(),
-            log.error_type.as_str(),
-            log.rule.as_str(),
-            log.detail.as_str(),
-        ]
-        .iter()
-        .enumerate()
-        {
-            worksheet.write_string(row, column as u16, *value)?;
-        }
-    }
-    workbook
-        .save(path)
-        .with_context(|| format!("保存 S3-F04 运行日志失败：{}", path.display()))?;
     Ok(())
 }
 
@@ -2422,12 +2365,11 @@ mod tests {
     }
 
     #[test]
-    fn csv_service_writes_python_contract_workbook_and_flow_log() {
+    fn csv_service_writes_python_contract_workbook() {
         let config_path = temporary_path("service-config", "xlsx");
         let current_path = temporary_path("current", "csv");
         let previous_path = temporary_path("previous", "csv");
         let output_path = temporary_path("output", "xlsx");
-        let log_path = temporary_path("logs", "xlsx");
         create_test_config(&config_path);
         let header = EXPECTED_HEADERS.join(",");
         fs::write(
@@ -2450,7 +2392,6 @@ mod tests {
             std::slice::from_ref(&previous_path),
             std::slice::from_ref(&config_path),
             &output_path,
-            Some(&log_path),
             |pattern, value| {
                 pattern.is_empty() || value.contains(pattern.trim_matches('^').trim_matches('$'))
             },
@@ -2470,55 +2411,23 @@ mod tests {
             result_sheet.values.get("O2"),
             Some(&CellValue::Text("请核实".to_owned()))
         );
-        let log_sheet = read_value_columns(&log_path, 6).unwrap().remove(0);
-        assert_eq!(log_sheet.name, "运行日志");
-        assert_eq!(log_sheet.max_row, 4);
-
-        for path in [
-            config_path,
-            current_path,
-            previous_path,
-            output_path,
-            log_path,
-        ] {
+        for path in [config_path, current_path, previous_path, output_path] {
             let _ = fs::remove_file(path);
         }
     }
 
     #[test]
-    fn output_paths_are_preflighted_before_any_workbook_is_written() {
+    fn result_path_is_preflighted_before_any_workbook_is_written() {
         let output_path = temporary_path("preflight-output", "xlsx");
-        let same_log_path = output_path.clone();
+        fs::write(&output_path, b"keep existing result").unwrap();
         let missing_inputs = [PathBuf::from("not-read.csv")];
 
-        let same_path_error = run_current_value_check_files(
-            &missing_inputs,
-            &[],
-            &[],
-            &output_path,
-            Some(&same_log_path),
-            |_, _| true,
-        )
-        .expect_err("result and log must not share a destination");
-        assert!(format!("{same_path_error:#}").contains("不能使用同一输出路径"));
-        assert!(!output_path.exists());
-
-        let existing_log_path = temporary_path("preflight-existing-log", "xlsx");
-        fs::write(&existing_log_path, b"keep existing log").unwrap();
-        let protected_output_path = temporary_path("preflight-protected-output", "xlsx");
-        let existing_log_error = run_current_value_check_files(
-            &missing_inputs,
-            &[],
-            &[],
-            &protected_output_path,
-            Some(&existing_log_path),
-            |_, _| true,
-        )
-        .expect_err("existing log must reject the run before writing its result");
-        assert!(format!("{existing_log_error:#}").contains("拒绝覆盖已有本期数值核对运行日志"));
-        assert!(!protected_output_path.exists());
-        assert_eq!(fs::read(&existing_log_path).unwrap(), b"keep existing log");
-        let _ = fs::remove_file(existing_log_path);
+        let existing_error =
+            run_current_value_check_files(&missing_inputs, &[], &[], &output_path, |_, _| true)
+                .expect_err("existing result must reject the run before writing");
+        assert!(format!("{existing_error:#}").contains("拒绝覆盖已有本期数值核对结果"));
+        assert_eq!(fs::read(&output_path).unwrap(), b"keep existing result");
+        let _ = fs::remove_file(output_path);
     }
 }
 

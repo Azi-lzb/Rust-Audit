@@ -194,7 +194,7 @@ fn cli_generates_financial_forms_and_keeps_inputs_unchanged() {
     let template_before = fs::read(&template).unwrap();
     let common_before = fs::read(&common).unwrap();
 
-    let result = Command::new(env!("CARGO_BIN_EXE_open-data-audit"))
+    let result = Command::new(env!("CARGO_BIN_EXE_AuditTools"))
         .arg("s3-generate-financial-forms")
         .arg("--comparison-workbook")
         .arg(&comparison)
@@ -317,7 +317,7 @@ fn cli_refuses_missing_configuration_before_writing_outputs() {
     write_comparison(&comparison);
     write_template(&template);
 
-    let result = Command::new(env!("CARGO_BIN_EXE_open-data-audit"))
+    let result = Command::new(env!("CARGO_BIN_EXE_AuditTools"))
         .arg("s3-generate-financial-forms")
         .arg("--comparison-workbook")
         .arg(&comparison)

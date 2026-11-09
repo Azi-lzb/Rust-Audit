@@ -69,7 +69,7 @@ fn audit_copy_with_stored_results() -> PathBuf {
 }
 
 fn run_cli(template: &PathBuf, audit: &PathBuf, developer_view: bool) -> Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_open-data-audit"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_AuditTools"));
     command
         .arg("s1-formula-audit")
         .arg("--template-workbook")

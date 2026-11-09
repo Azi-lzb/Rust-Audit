@@ -265,7 +265,7 @@ fn run_cli_with_options(
     history_result_workbook: Option<&Path>,
     developer_view: bool,
 ) -> Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_open-data-audit"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_AuditTools"));
     command
         .arg("s1-audit-directory")
         .arg("--input-dir")
@@ -906,7 +906,7 @@ fn cli_reads_nonempty_history_before_classification_and_reports_reader_and_timin
 #[test]
 fn production_s1_directory_command_requires_fresh_formula_calculation() {
     let root = temporary_directory("recalculation_required");
-    let output = Command::new(env!("CARGO_BIN_EXE_open-data-audit"))
+    let output = Command::new(env!("CARGO_BIN_EXE_AuditTools"))
         .arg("s1-audit-directory")
         .arg("--input-dir")
         .arg(&root)
@@ -1014,7 +1014,7 @@ fn s1_directory_copies_template_formulas_recalculates_and_combines_real_issues(
     let result_workbook = batch_directory.join("汇总核查表校验.xlsx");
     let history_workbook = batch_directory.join("历史结果.xlsx");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_open-data-audit"))
+    let output = Command::new(env!("CARGO_BIN_EXE_AuditTools"))
         .arg("s1-audit-directory")
         .arg("--input-dir")
         .arg(&input)

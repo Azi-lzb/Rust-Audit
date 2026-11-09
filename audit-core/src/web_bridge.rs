@@ -392,8 +392,6 @@ impl AppState {
             "uiAccent": "默认蓝",
             "confirmBeforeRun": true,
             "showRunDetailLogs": false,
-            "showPerformanceDiagnostics": false,
-            "exportRunLogs": false,
             "s1ConditionalFormatSource": "audit_copy",
             "conditionalFormatIncludeBlankCells": true,
             "centralTolerance": 100.0,
@@ -6211,7 +6209,7 @@ fn run_s3_indicator_split_worker(
 
 fn start_central_cross_period(state: &AppState) -> std::result::Result<Value, ApiError> {
     let task_started = Instant::now();
-    let (current_file, config_workbooks, output_directory, write_flow_logs) = {
+    let (current_file, config_workbooks, output_directory) = {
         let ui = state.lock();
         if ui.value["busy"] == true {
             return Err(ApiError::new(
@@ -6293,7 +6291,6 @@ fn start_central_cross_period(state: &AppState) -> std::result::Result<Value, Ap
             current_file,
             vec![common_config, cross_config],
             output_directory,
-            ui.value["exportRunLogs"] == true,
         )
     };
 
@@ -6316,15 +6313,10 @@ fn start_central_cross_period(state: &AppState) -> std::result::Result<Value, Ap
         .map_err(|error| ApiError::internal(format!("解析本期数值核对输出目录失败：{error}")))?;
     let stamp = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
     let mut output_workbook = output_directory.join(format!("数值核对结果_{stamp}.xlsx"));
-    let mut log_workbook = write_flow_logs
-        .then(|| output_directory.join(format!("本期数值核对_运行日志_{stamp}.xlsx")));
-    if output_workbook.exists() || log_workbook.as_ref().is_some_and(|path| path.exists()) {
+    if output_workbook.exists() {
         let suffix = chrono::Local::now().timestamp_subsec_millis();
         output_workbook = output_directory.join(format!("数值核对结果_{stamp}_{suffix:03}.xlsx"));
-        log_workbook = write_flow_logs.then(|| {
-            output_directory.join(format!("本期数值核对_运行日志_{stamp}_{suffix:03}.xlsx"))
-        });
-        if output_workbook.exists() || log_workbook.as_ref().is_some_and(|path| path.exists()) {
+        if output_workbook.exists() {
             return Err(ApiError::new(
                 StatusCode::CONFLICT,
                 "本期数值核对时间戳输出仍有同名文件，请稍后重试",
@@ -6353,13 +6345,12 @@ fn start_central_cross_period(state: &AppState) -> std::result::Result<Value, Ap
         push_detail_log(
             &mut ui.value,
             format!(
-                "S3-F04 开始：reader={}，writer=rust_xlsxwriter；当前数据 {}；通用配置 {}；本期核对配置 {}；结果输出 {}；运行日志={}",
+                "S3-F04 开始：reader={}，writer=rust_xlsxwriter；当前数据 {}；通用配置 {}；本期核对配置 {}；结果输出 {}",
                 input_reader,
                 current_file.display(),
                 config_workbooks[0].display(),
                 config_workbooks[1].display(),
-                output_workbook.display(),
-                log_workbook.is_some()
+                output_workbook.display()
             ),
         );
     }
@@ -6373,7 +6364,6 @@ fn start_central_cross_period(state: &AppState) -> std::result::Result<Value, Ap
                 current_file,
                 config_workbooks,
                 output_workbook,
-                log_workbook,
                 task_started,
             )
         })
@@ -6395,7 +6385,6 @@ fn run_s3_current_value_check_worker(
     current_file: PathBuf,
     config_workbooks: Vec<PathBuf>,
     output_workbook: PathBuf,
-    log_workbook: Option<PathBuf>,
     task_started: Instant,
 ) {
     let started = Instant::now();
@@ -6406,7 +6395,6 @@ fn run_s3_current_value_check_worker(
         &[],
         &config_workbooks,
         &output_workbook,
-        log_workbook.as_deref(),
         python_regex_scope_matcher(),
         |stage| {
             let mut ui = progress_state.lock();
@@ -6437,12 +6425,6 @@ fn run_s3_current_value_check_worker(
                     report.output_workbook.display()
                 ),
             );
-            if let Some(log_path) = report.log_workbook.as_ref() {
-                push_log(
-                    &mut ui.value,
-                    format!("S3-F04 运行日志文件：{}", log_path.display()),
-                );
-            }
             push_detail_log(
                 &mut ui.value,
                 format!(
@@ -7351,10 +7333,7 @@ fn update_state(state: &AppState, args: &[Value]) -> std::result::Result<Value, 
                     "centralExpressionSchema 必须是 FIVE_SEGMENT_V1 或 LEGACY_8",
                 ));
             }
-            "confirmBeforeRun"
-            | "showRunDetailLogs"
-            | "showPerformanceDiagnostics"
-            | "exportRunLogs" => {
+            "confirmBeforeRun" | "showRunDetailLogs" => {
                 if !value.is_boolean() {
                     return Err(ApiError::new(
                         StatusCode::BAD_REQUEST,
@@ -9263,8 +9242,6 @@ mod tests {
             )
             .unwrap_or_else(|error| panic!("select {field}: {}", error.message));
         }
-        dispatch_api(&state, "update", &[json!({"exportRunLogs": true})])
-            .expect("enable run-log workbook for the integration check");
         assert_eq!(
             dispatch_api(&state, "start_central_cross_period", &[])
                 .expect("start S3-F04 through its Web API"),
@@ -9308,6 +9285,7 @@ mod tests {
                 "一边有，一边无;请核实".to_owned()
             ))
         );
+        // 运行日志 Excel 已按用户要求移除：输出目录里只应有结果工作簿。
         assert_eq!(
             fs::read_dir(&output)
                 .unwrap()
@@ -9318,7 +9296,8 @@ mod tests {
                         .is_some_and(|name| name.starts_with("本期数值核对_运行日志_"))
                 })
                 .count(),
-            1
+            0,
+            "运行日志工作簿不应再生成"
         );
         let logs = final_state["log"].as_array().unwrap();
         assert!(logs.iter().any(|entry| {

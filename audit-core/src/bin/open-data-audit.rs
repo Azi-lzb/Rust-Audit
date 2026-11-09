@@ -702,10 +702,6 @@ struct S3CurrentValueCheckArgs {
     #[arg(long)]
     output_workbook: PathBuf,
 
-    /// Optional new XLSX path for the separate run log.
-    #[arg(long)]
-    log_workbook: Option<PathBuf>,
-
     /// Emit developer-view JSON progress with engines and stage timings.
     #[arg(long, default_value_t = false)]
     developer_view: bool,
@@ -1495,7 +1491,6 @@ fn run_s3_current_value_check(arguments: S3CurrentValueCheckArgs) -> Result<()> 
         &arguments.previous_csvs,
         &arguments.config_workbooks,
         &arguments.output_workbook,
-        arguments.log_workbook.as_deref(),
         python_regex_scope_matcher(),
     ) {
         Ok(report) => report,

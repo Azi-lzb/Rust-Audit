@@ -24,7 +24,7 @@ struct Worker {
 
 impl Worker {
     fn start() -> Result<Self> {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_open-data-audit"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_AuditTools"))
             .args(["__audit-native-com-session", "excel"])
             .creation_flags(0x0800_0000)
             .stdin(Stdio::piped())
@@ -272,7 +272,7 @@ fn native_parent_timeout_terminates_worker_and_owned_excel() -> Result<()> {
     ]);
     let mut session =
         audit_core::s1_recalculation::S1RecalculationSession::new_native_with_executable(
-            env!("CARGO_BIN_EXE_open-data-audit"),
+            env!("CARGO_BIN_EXE_AuditTools"),
             "excel",
         )?;
     let error = session

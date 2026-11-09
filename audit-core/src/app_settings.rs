@@ -209,8 +209,6 @@ pub const PREFERENCE_SPECS: &[PreferenceSpec] = preference_specs! {
     "historyConfig" => PreferenceKind::File,
     "confirmBeforeRun" => PreferenceKind::Boolean,
     "showRunDetailLogs" => PreferenceKind::Boolean,
-    "showPerformanceDiagnostics" => PreferenceKind::Boolean,
-    "exportRunLogs" => PreferenceKind::Boolean,
     "s1ConditionalFormatSource" => {
         PreferenceKind::Enumeration(&S1_CONDITIONAL_FORMAT_SOURCE_VALUES)
     },

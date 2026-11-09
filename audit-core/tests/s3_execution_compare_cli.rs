@@ -252,7 +252,7 @@ fn run_cli_with_schema(
     output: &Path,
     schema: Option<&str>,
 ) -> Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_open-data-audit"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_AuditTools"));
     command
         .arg("s3-execution-compare")
         .arg("--current-data")
