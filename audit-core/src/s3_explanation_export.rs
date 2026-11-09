@@ -31,7 +31,12 @@ const REQUIRED_HEADERS: [&str; 10] = [
     "输出说明",
     "说明内容",
 ];
-const SELECTED_VALUES: [&str; 7] = ["是", "y", "yes", "true", "1", "√", "✓"];
+/// 显式表示「不要说明」的标记；除这些之外，`输出说明`列只要有文本就导出。
+///
+/// 旧实现只认白名单（是/y/yes/true/1/√/✓），用户写「1」「需要」「要说明」
+/// 之类的任意标记都会被静默漏掉（2026-11 现场反馈）。改为「有文本就提取，
+/// 空白才跳过」，同时保留对明确否定词的排除，避免把标了"否"的行导出去。
+const EXPLICITLY_SKIPPED_VALUES: [&str; 4] = ["否", "no", "false", "0"];
 const ORG_REFERENCE_SHEET: &str = "机构地区参照";
 const ENGINE_READER: &str = "calamine";
 const ENGINE_WRITER: &str = "rust_xlsxwriter";
@@ -378,7 +383,10 @@ fn load_org_reference(
 
 fn is_selected(value: &CellValue) -> bool {
     let text = python_string_or_empty(value).trim().to_lowercase();
-    SELECTED_VALUES.contains(&text.as_str())
+    if text.is_empty() {
+        return false;
+    }
+    !EXPLICITLY_SKIPPED_VALUES.contains(&text.as_str())
 }
 
 fn clean_code(value: &CellValue) -> String {
@@ -711,25 +719,36 @@ mod tests {
     }
 
     #[test]
-    fn explanation_markers_follow_python_text_coercion() {
+    fn any_non_empty_marker_selects_the_row() {
+        // 有文本就导出：不限白名单（是/1/任意业务写法都算）。
         for value in [
             CellValue::Text("是".to_owned()),
             CellValue::Text(" YES ".to_owned()),
             CellValue::Text("√".to_owned()),
             CellValue::Text("✓".to_owned()),
+            CellValue::Text("1".to_owned()),
+            CellValue::Text("1.0".to_owned()),
+            CellValue::Text("需要".to_owned()),
+            CellValue::Text("要说明".to_owned()),
+            CellValue::Text("2".to_owned()),
+            CellValue::Text("y".to_owned()),
             CellValue::Integer(1),
+            CellValue::Number(1.0),
             CellValue::Boolean(true),
         ] {
-            assert!(is_selected(&value));
+            assert!(is_selected(&value), "{value:?} 有文本就必须导出");
         }
+        // 空白才不提，以及明确否定词。
         for value in [
+            CellValue::Empty,
+            CellValue::Text(String::new()),
+            CellValue::Text("   ".to_owned()),
             CellValue::Text("否".to_owned()),
-            CellValue::Text("1.0".to_owned()),
+            CellValue::Text(" NO ".to_owned()),
             CellValue::Integer(0),
             CellValue::Boolean(false),
-            CellValue::Empty,
         ] {
-            assert!(!is_selected(&value));
+            assert!(!is_selected(&value), "{value:?} 不应导出");
         }
         assert_eq!(python_string_or_empty(&CellValue::Number(1.0)), "1.0");
     }
