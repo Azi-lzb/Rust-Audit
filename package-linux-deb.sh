@@ -47,10 +47,14 @@ if [[ -d "$PRODUCT_ROOT/config-real" ]]; then
     for name in '1.逐笔统计系统_配置.xlsx' '2.报表采集系统_配置.xlsx'; do
       [[ -f "$PRODUCT_ROOT/config-real/$name" ]] &&         cp "$PRODUCT_ROOT/config-real/$name" "$PKG_ROOT/opt/open-data-audit/config-real/"
     done
+    # GUI 默认绑定（settings.json 播种）依赖：大集中外部文件与模板目录
+    [[ -f "$PRODUCT_ROOT/config-real/外部文件-大集中相关数据.xlsx" ]] &&       cp "$PRODUCT_ROOT/config-real/外部文件-大集中相关数据.xlsx" "$PKG_ROOT/opt/open-data-audit/config-real/"
+    [[ -d "$PRODUCT_ROOT/config-real/模板文件_命名区域" ]] &&       cp -r "$PRODUCT_ROOT/config-real/模板文件_命名区域" "$PKG_ROOT/opt/open-data-audit/config-real/"
     GUIDE="${DOCS_DIR:-$PRODUCT_ROOT/docs}/使用说明-S1S2版.docx"
     [[ -f "$GUIDE" ]] && cp "$GUIDE" "$PKG_ROOT/opt/open-data-audit/使用说明.docx"
   else
     cp "$PRODUCT_ROOT/config-real"/*.xlsx "$PKG_ROOT/opt/open-data-audit/config-real/" 2>/dev/null || true
+    [[ -d "$PRODUCT_ROOT/config-real/模板文件_命名区域" ]] &&       cp -r "$PRODUCT_ROOT/config-real/模板文件_命名区域" "$PKG_ROOT/opt/open-data-audit/config-real/"
     GUIDE="${DOCS_DIR:-$PRODUCT_ROOT/docs}/使用说明-全量版.docx"
     [[ -f "$GUIDE" ]] && cp "$GUIDE" "$PKG_ROOT/opt/open-data-audit/使用说明.docx"
   fi

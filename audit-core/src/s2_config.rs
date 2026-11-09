@@ -73,6 +73,10 @@ pub fn resolve_default_config_path() -> Result<PathBuf> {
         .and_then(|executable| executable.parent().map(Path::to_path_buf));
     if let Some(exe_directory) = &executable_directory {
         directories.push(exe_directory.join("config-real"));
+        // 开发目录里直接双击 dist/open-data-audit.exe 时，真实配置在源码树
+        // 的 audit-core/config-real 下（exe 上级或上两级）。
+        directories.push(exe_directory.join("../audit-core/config-real"));
+        directories.push(exe_directory.join("../../audit-core/config-real"));
     }
     directories.extend([
         current_directory.join("audit-core/config-real"),

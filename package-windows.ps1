@@ -45,6 +45,17 @@ foreach ($name in $configFiles) {
     }
 }
 
+# GUI 默认绑定（settings.json 播种）依赖这两项随包分发：
+# S1/S2 的「大集中系统数据」外部文件与 S1 模板文件目录。
+$externalSource = Join-Path $configSource '外部文件-大集中相关数据.xlsx'
+if (-not (Test-Path -LiteralPath $externalSource -PathType Leaf)) {
+    throw "Required external data is missing: $externalSource"
+}
+$templateDirSource = Join-Path $configSource '模板文件_命名区域'
+if (-not (Test-Path -LiteralPath $templateDirSource -PathType Container)) {
+    throw "Required template directory is missing: $templateDirSource"
+}
+
 if ($Edition -eq 's1s2') {
     $includedConfigs = $s1s2ConfigFiles
     $guideName = '使用说明-S1S2版.docx'
@@ -82,6 +93,8 @@ try {
     foreach ($name in $includedConfigs) {
         Copy-Item -LiteralPath (Join-Path $configSource $name) -Destination $stageConfig
     }
+    Copy-Item -LiteralPath $externalSource -Destination $stageConfig
+    Copy-Item -LiteralPath $templateDirSource -Destination $stageConfig -Recurse
 
     if ($Edition -eq 's1s2') {
         Set-Content -LiteralPath (Join-Path $stage 'edition-s1s2') -Value 's1s2' -NoNewline -Encoding utf8

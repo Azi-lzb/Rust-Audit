@@ -1,5 +1,31 @@
 # Rust-Audit 独立开发目标与状态
 
+**config-real 默认绑定播种进 settings.json（2026-11-09，用户反馈「配置还是没有绑定上去」）**
+
+现象：S3 四个配置框（通用/执行比较/本期数值核对/指标比较拆分）显示「未选择」。
+原因：启动默认依赖 `resolve_default_config_path` 找 config-real，用户直接双击
+`dist\open-data-audit.exe` 时 CWD=dist、exe 同级无 config-real → 解析失败；
+且默认值只存在于内存状态，settings.json 里没有。
+
+- **默认绑定表**（`app_settings::BUNDLED_CONFIG_DEFAULTS`，键 → config-real 相对路径）：
+  templateDir → `模板文件_命名区域`（目录）；external（S1 大集中系统数据）与
+  pcCentral（S2 大集中系统数据）→ `外部文件-大集中相关数据.xlsx`；
+  historyConfig → `1.逐笔统计系统_配置.xlsx`；pcConfig → `2.报表采集系统_配置.xlsx`；
+  centralCommonConfig/centralComparisonConfig/centralCrossConfig/centralFormsConfig →
+  `3.0/3.1/3.2/3.3` 四份配置。
+- **播种**：serve 启动即调 `seed_bundled_config_defaults()`——仅当字段缺失/为空/
+  失效时填充并**写盘 settings.json**；用户手动选择的有效路径永不覆盖。
+  S1S2 包没有 3.x 配置时对应字段留空。
+- **config-real 目录解析**（`config_real_directory`）：`AUDIT_CONFIG_REAL_DIR` 显式
+  覆盖 → `<exe>/config-real`（发行包）→ `<exe>/../audit-core/config-real` 与
+  `<exe>/../../audit-core/config-real`（开发目录双击 dist exe）→ CWD 两个候选；
+  目录须含 1./2./3.0 标记文件之一。`resolve_default_config_path` 同步补 exe 上级候选。
+- **打包**：发行包 config-real 新增「外部文件-大集中相关数据.xlsx」与
+  「模板文件_命名区域/」文件夹（全量与 S1S2 都带，S1S2 仍无 3.x）；
+  package-windows.ps1 与 package-linux-deb.sh 同步。
+
+回归：audit-core lib **284/284**（新增播种单测：填缺失、换失效、不动用户选择）。
+
 ## 2026-11-07 对齐基线（da7b1c3）八功能真实数据对比：S1F1 逐条一致、S3F4 逐格一致、S3F1 收敛至 15 处
 
 - **对齐基线**：3.open-data-audit@da7b1c3 新增 rustaudit_alignment 基线 JSON（8 功能真实数据生产入口跑出）；驱动 `tests/compare/rustaudit_alignment_p1.py`（每功能两跑、367 输入 SHA-256 前后核验）。引擎口径：calc=auto(Excel COM)、S1 条件格式提取来源=source、空白格纳入、centralTolerance=100 元。

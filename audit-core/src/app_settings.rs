@@ -632,6 +632,116 @@ pub fn apply_preferences_to_state(state: &mut serde_json::Value) {
     }
 }
 
+/// 已知真实配置的标记文件：目录里至少存在其一，才认为是可用的 config-real。
+const CONFIG_REAL_MARKERS: &[&str] = &[
+    "1.逐笔统计系统_配置.xlsx",
+    "2.报表采集系统_配置.xlsx",
+    "3.0大集中通用配置.xlsx",
+];
+
+/// GUI 字段 → 随包真实配置的默认绑定（相对 config-real 目录）。
+/// 每个字段首次启动（或记忆路径失效）时写入 settings.json，用户改选后不再覆盖。
+const BUNDLED_CONFIG_DEFAULTS: &[(&str, &str)] = &[
+    ("templateDir", "模板文件_命名区域"),
+    ("external", "外部文件-大集中相关数据.xlsx"),
+    ("historyConfig", "1.逐笔统计系统_配置.xlsx"),
+    ("pcConfig", "2.报表采集系统_配置.xlsx"),
+    ("pcCentral", "外部文件-大集中相关数据.xlsx"),
+    ("centralCommonConfig", "3.0大集中通用配置.xlsx"),
+    ("centralComparisonConfig", "3.1大集中执行比较_配置.xlsx"),
+    ("centralCrossConfig", "3.2大集中本期数值核对_配置.xlsx"),
+    ("centralFormsConfig", "3.3大集中指标比较拆分_配置.xlsx"),
+];
+
+/// 定位真实配置目录 config-real：
+/// - `AUDIT_CONFIG_REAL_DIR` 显式覆盖（测试/自定义部署）；
+/// - 发行包布局：`<exe 目录>/config-real/`；
+/// - 开发目录直接双击 `dist/open-data-audit.exe`：`<exe 上级>/audit-core/config-real/`；
+/// - run.bat / cargo 工作目录：`<CWD>/audit-core/config-real/`、`<CWD>/config-real/`。
+pub fn config_real_directory() -> Option<PathBuf> {
+    if let Some(directory) = std::env::var_os("AUDIT_CONFIG_REAL_DIR").filter(|v| !v.is_empty()) {
+        let directory = PathBuf::from(directory);
+        if is_config_real_directory(&directory) {
+            return Some(directory);
+        }
+        return None;
+    }
+    let executable_directory = std::env::current_exe()
+        .ok()
+        .and_then(|executable| executable.parent().map(std::path::Path::to_path_buf));
+    let mut directories = Vec::new();
+    if let Some(exe_directory) = &executable_directory {
+        directories.push(exe_directory.join("config-real"));
+        directories.push(exe_directory.join("../audit-core/config-real"));
+        directories.push(exe_directory.join("../../audit-core/config-real"));
+    }
+    let current_directory = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    directories.push(current_directory.join("audit-core/config-real"));
+    directories.push(current_directory.join("config-real"));
+    directories
+        .into_iter()
+        .find(|directory| is_config_real_directory(directory))
+}
+
+fn is_config_real_directory(directory: &std::path::Path) -> bool {
+    directory.is_dir()
+        && CONFIG_REAL_MARKERS
+            .iter()
+            .any(|marker| directory.join(marker).is_file())
+}
+
+/// 把 config-real 的默认绑定播种进 settings.json：
+/// 仅当字段当前没有有效记忆路径（缺失/为空/指向已失效位置）时才填充，
+/// 用户手动选择的路径永远不被覆盖。S1S2 发行包不含 S3 配置时对应字段留空。
+/// 返回本次实际填充的字段数；写入失败不影响启动（下次启动重试）。
+pub fn seed_bundled_config_defaults() -> usize {
+    let mut settings = AppSettings::load();
+    let Some(config_real) = config_real_directory() else {
+        return 0;
+    };
+    let mut seeded = 0usize;
+    for (key, relative) in BUNDLED_CONFIG_DEFAULTS {
+        let Some(spec) = preference_spec(key) else {
+            continue;
+        };
+        let kind = match &spec.kind {
+            PreferenceKind::Directory => PreferenceKind::Directory,
+            PreferenceKind::File => PreferenceKind::File,
+            _ => continue,
+        };
+        let remembered_valid = settings
+            .preferences
+            .get(*key)
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+            .map(|text| match kind {
+                PreferenceKind::Directory => PathBuf::from(text).is_dir(),
+                _ => PathBuf::from(text).is_file(),
+            })
+            .unwrap_or(false);
+        if remembered_valid {
+            continue;
+        }
+        let candidate = config_real.join(relative);
+        let candidate_valid = match kind {
+            PreferenceKind::Directory => candidate.is_dir(),
+            _ => candidate.is_file(),
+        };
+        if candidate_valid {
+            settings.preferences.insert(
+                (*key).to_owned(),
+                serde_json::Value::String(candidate.to_string_lossy().into_owned()),
+            );
+            seeded += 1;
+        }
+    }
+    if seeded > 0 {
+        let _ = AppSettings::write(settings);
+    }
+    seeded
+}
+
 /// Mirrors the S1 recovery store's base-directory resolution so acceptance
 /// runs can isolate both with one environment variable.
 fn state_base_dir() -> Result<PathBuf> {
@@ -952,5 +1062,111 @@ mod tests {
             std::env::set_var("AUDIT_STATE_DIR", previous);
         }
         fs::remove_dir_all(root).expect("remove settings test directory");
+    }
+
+    #[test]
+    fn seed_bundled_defaults_fill_missing_fields_and_respect_user_choices() {
+        let _settings_env_guard = AUDIT_STATE_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "audit_app_settings_seed_defaults_{}_{}",
+            std::process::id(),
+            nonce
+        ));
+        let state_dir = root.join("state");
+        let config_real = root.join("config-real");
+        fs::create_dir_all(&state_dir).expect("create isolated settings directory");
+        fs::create_dir_all(config_real.join("模板文件_命名区域"))
+            .expect("create bundled template directory");
+        fs::write(config_real.join("1.逐笔统计系统_配置.xlsx"), b"marker")
+            .expect("write config-real marker");
+        fs::write(
+            config_real.join("外部文件-大集中相关数据.xlsx"),
+            b"external data",
+        )
+        .expect("write bundled external data");
+        fs::write(
+            config_real.join("模板文件_命名区域").join("模板.xlsx"),
+            b"template",
+        )
+        .expect("write bundled template");
+        let user_choice = root.join("custom-3.0-config.xlsx");
+        fs::write(&user_choice, b"user chosen").expect("write user-chosen config");
+
+        let previous_state_dir = std::env::var("AUDIT_STATE_DIR").ok();
+        let previous_config_real = std::env::var("AUDIT_CONFIG_REAL_DIR").ok();
+        std::env::set_var("AUDIT_STATE_DIR", &state_dir);
+        std::env::set_var("AUDIT_CONFIG_REAL_DIR", &config_real);
+
+        // 用户已选择且仍有效的 centralCommonConfig；external 指向已失效的旧位置。
+        AppSettings::store_preferences(
+            "auto",
+            "umya",
+            BTreeMap::from([
+                (
+                    "centralCommonConfig".to_owned(),
+                    serde_json::Value::String(user_choice.to_string_lossy().into_owned()),
+                ),
+                (
+                    "external".to_owned(),
+                    serde_json::Value::String(
+                        root.join("gone.xlsx").to_string_lossy().into_owned(),
+                    ),
+                ),
+            ]),
+        )
+        .expect("save user preferences");
+
+        let seeded = seed_bundled_config_defaults();
+        assert_eq!(
+            seeded, 4,
+            "templateDir/external/historyConfig/pcCentral 应被填充"
+        );
+
+        let preferences = AppSettings::load().preferences;
+        let bundled_external = config_real.join("外部文件-大集中相关数据.xlsx");
+        let bundled_templates = config_real.join("模板文件_命名区域");
+        assert_eq!(
+            preferences["external"].as_str(),
+            Some(bundled_external.to_string_lossy().as_ref()),
+            "失效记忆应被随包默认替换"
+        );
+        assert_eq!(
+            preferences["templateDir"].as_str(),
+            Some(bundled_templates.to_string_lossy().as_ref()),
+            "模板文件目录应默认绑定 config-real/模板文件_命名区域"
+        );
+        assert_eq!(
+            preferences["centralCommonConfig"].as_str(),
+            Some(user_choice.to_string_lossy().as_ref()),
+            "用户手动选择的有效路径不得被覆盖"
+        );
+
+        // 播种结果通过 apply_preferences_to_state 进入 GUI 状态。
+        let mut state = serde_json::json!({"templateDir": "", "external": ""});
+        apply_preferences_to_state(&mut state);
+        assert_eq!(
+            state["templateDir"].as_str(),
+            Some(bundled_templates.to_string_lossy().as_ref())
+        );
+        assert_eq!(
+            state["external"].as_str(),
+            Some(bundled_external.to_string_lossy().as_ref())
+        );
+
+        std::env::remove_var("AUDIT_STATE_DIR");
+        std::env::remove_var("AUDIT_CONFIG_REAL_DIR");
+        if let Some(previous) = previous_state_dir {
+            std::env::set_var("AUDIT_STATE_DIR", previous);
+        }
+        if let Some(previous) = previous_config_real {
+            std::env::set_var("AUDIT_CONFIG_REAL_DIR", previous);
+        }
+        fs::remove_dir_all(root).expect("remove seed test directory");
     }
 }

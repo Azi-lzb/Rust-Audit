@@ -823,6 +823,12 @@ fn run() -> Result<()> {
                 Some(path) => path,
                 None => audit_core::s2_config::resolve_default_config_path()?,
             };
+            // 启动即把随包 config-real 的默认绑定写进 settings.json（仅空缺/失效
+            // 字段；用户手动选择的路径不被覆盖），GUI 各配置框首次打开即有值。
+            let seeded = audit_core::app_settings::seed_bundled_config_defaults();
+            if seeded > 0 {
+                eprintln!("已从 config-real 预绑定 {seeded} 项默认配置路径（settings.json）");
+            }
             serve_web_ui(arguments.port, config_path)?;
         }
         Command::S2(arguments) => {
