@@ -90,6 +90,29 @@ impl PickRequest {
     }
 }
 
+/// 扩展名对应的 MIME 类型（带点或不带点都接受）。
+///
+/// XDG Desktop Portal 允许过滤器同时写 glob 与 MIME；部分国产化实现
+/// （麒麟 V10 的 portal 组件）只认 MIME，glob 会在内部转换失败后被丢弃，
+/// 导致对话框里出现"标签写着支持 csv、文件却是灰的"。这里为常用类型补上
+/// MIME，glob 与 MIME 并存，两类后端都能命中。
+fn extension_mime_type(extension: &str) -> Option<&'static str> {
+    let normalized = extension.trim_start_matches('.').to_ascii_lowercase();
+    Some(match normalized.as_str() {
+        "csv" => "text/csv",
+        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "xlsm" => "application/vnd.ms-excel.sheet.macroEnabled.12",
+        "xls" => "application/vnd.ms-excel",
+        "zip" => "application/zip",
+        "deb" => "application/vnd.debian.binary-package",
+        "gz" => "application/gzip",
+        "tgz" => "application/gzip",
+        "txt" => "text/plain",
+        "json" => "application/json",
+        _ => return None,
+    })
+}
+
 /// 按当前平台调用原生选择器；统一超时与结果契约。
 pub async fn pick(request: PickRequest) -> PickOutcome {
     let future = platform_pick(request);
@@ -193,10 +216,22 @@ async fn portal_pick(request: PickRequest) -> PickOutcome {
         .directory(matches!(request.kind, PickKind::Directory));
     if !request.extensions.is_empty() {
         let mut filter = FileFilter::new(request.filter_label().as_str());
-        for extension in request.extensions {
+        for extension in &request.extensions {
+            // 同时给大小写两种 glob：部分后端按字节比较，*.CSV 不会命中 *.csv。
             filter = filter.glob(format!("*{extension}").as_str());
+            filter = filter.glob(format!("*{}", extension.to_uppercase()).as_str());
+            // 同时给 MIME 类型：麒麟等国产化 terminal 的 xdg-desktop-portal
+            // 实现会把 glob 转成 MIME，转换失败时**静默丢弃该条规则**——
+            // 表现为筛选器标签里写着 .csv、但 CSV 文件在对话框里是灰的
+            // （2026-11 现场问题）。补上 MIME 后两端都能命中。
+            if let Some(mime) = extension_mime_type(extension) {
+                filter = filter.mimetype(mime);
+            }
         }
         builder = builder.filter(filter);
+        // 兜底：再给一个"所有文件"过滤器。若某个桌面环境的 portal 仍然
+        // 丢规则，用户可以手动切换筛选器选到任意文件，不至于被卡死。
+        builder = builder.filter(FileFilter::new("所有文件").glob("*"));
     }
     if let Some(start) = &request.start {
         builder = match builder.current_folder(start) {
@@ -291,4 +326,51 @@ fn percent_decode(input: &str) -> Option<String> {
 async fn platform_pick(request: PickRequest) -> PickOutcome {
     let _ = request;
     PickOutcome::unavailable("none", "当前平台未实现原生文件选择器。".to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{extension_mime_type, PickRequest};
+
+    /// 过滤器标签必须如实列出全部支持的扩展名（它会显示在系统对话框里）。
+    #[test]
+    fn filter_label_lists_every_supported_extension() {
+        let request = PickRequest {
+            title: "选择本期数据文件".to_owned(),
+            kind: super::PickKind::File,
+            extensions: &[".csv", ".xlsx", ".xls"],
+            start: None,
+        };
+        assert_eq!(
+            request.filter_label(),
+            "支持的文件类型（.csv、.xlsx、.xls）"
+        );
+        let empty = PickRequest {
+            extensions: &[],
+            ..request
+        };
+        assert_eq!(empty.filter_label(), "所有文件");
+    }
+
+    /// 关键扩展名都要有 MIME：麒麟 portal 只认 MIME 时会用它命中文档。
+    #[test]
+    fn spreadsheet_and_csv_extensions_have_mime_types() {
+        assert_eq!(extension_mime_type(".csv"), Some("text/csv"));
+        assert_eq!(extension_mime_type("csv"), Some("text/csv"));
+        assert_eq!(extension_mime_type(".CSV"), Some("text/csv"));
+        assert_eq!(
+            extension_mime_type(".xlsx"),
+            Some("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        );
+        assert_eq!(
+            extension_mime_type(".xlsm"),
+            Some("application/vnd.ms-excel.sheet.macroEnabled.12")
+        );
+        assert_eq!(
+            extension_mime_type(".xls"),
+            Some("application/vnd.ms-excel")
+        );
+        // 未知扩展名不返回 MIME（只靠 glob 匹配）。
+        assert_eq!(extension_mime_type(".unknown-ext"), None);
+    }
 }
