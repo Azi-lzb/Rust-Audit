@@ -10,6 +10,7 @@
 #     config-real/*.xlsx        真实配置（S1S2 版只含 1./2.）
 #     libexec/.../openpyxl_worker.py
 #     使用说明.docx
+#     创建快捷方式.bat         双击后加到开始菜单/桌面
 #     [edition-s1s2]            仅 S1S2 版：界面只显示 S1/S2
 
 param(
@@ -88,6 +89,8 @@ try {
     Copy-Item -LiteralPath (Join-Path $root 'crates\excel-editor\python\openpyxl_worker.py') `
         -Destination (Join-Path $stageWorker 'openpyxl_worker.py')
     Copy-Item -LiteralPath $guide -Destination (Join-Path $stage '使用说明.docx')
+    # 开始菜单 / 桌面快捷方式创建脚本（免安装布局，仅写当前用户）。
+    Copy-Item -LiteralPath (Join-Path $root '创建快捷方式.bat') -Destination $stage
     foreach ($name in $includedConfigs) {
         Copy-Item -LiteralPath (Join-Path $configSource $name) -Destination $stageConfig
     }
