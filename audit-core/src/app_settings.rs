@@ -252,7 +252,6 @@ pub const PREFERENCE_SPECS: &[PreferenceSpec] = preference_specs! {
     "boCalcFallback" => {
         PreferenceKind::Enumeration(&["auto", "com", "libreoffice", "none"])
     },
-    "recalcFormulaGuard" => PreferenceKind::Boolean,
 };
 
 pub fn preference_spec(key: &str) -> Option<&'static PreferenceSpec> {
@@ -419,18 +418,6 @@ impl AppSettings {
             .get("boCalcFallback")
             .and_then(serde_json::Value::as_str)
             .filter(|value| ["auto", "com", "libreoffice", "none"].contains(value))
-    }
-
-    /// 重算公式文本一致性守卫（默认开启）。
-    ///
-    /// 开启时逐格比对重算前后的公式文本；关闭只跳过这一层比对，
-    /// **公式数量、缓存节点完整性、结果可读性三层检查始终保留**——
-    /// 那是防"引擎丢公式/丢缓存"的底线。
-    pub fn recalc_formula_guard_enabled(&self) -> bool {
-        self.preferences
-            .get("recalcFormulaGuard")
-            .and_then(serde_json::Value::as_bool)
-            .unwrap_or(true)
     }
 
     /// 大集中核对差异容差（元）。保存时已做范围校验；手工改坏的设置文件

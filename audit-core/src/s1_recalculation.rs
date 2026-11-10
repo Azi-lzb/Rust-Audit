@@ -24,6 +24,8 @@ pub struct S1RecalculationReport {
     pub input: PathBuf,
     pub output: PathBuf,
     pub elapsed_ms: u128,
+    /// 非致命提示（公式文本被引擎等价改写等），由界面写进详细运行日志。
+    pub warnings: Vec<String>,
 }
 
 /// Reuses one native Windows Office COM session across an S1-F1 batch. The
@@ -1038,7 +1040,7 @@ pub fn recalculate_s1_formula_copy_batch(
         validate_s1_engine(&engine)?;
         // 与「已规范化基线」比对（sidecar 读的就是同一份基线），
         // 避免把 shared ref 归一误判成「重算改变公式」。
-        validate_recalculated_copy(&batch_baselines[pending_index], output)?;
+        let warnings = validate_recalculated_copy(&batch_baselines[pending_index], output)?;
         let engine = match betteroffice_reasons[original_index].as_ref() {
             Some(reason) => format!("{engine}；{reason}"),
             None => engine,
@@ -1048,6 +1050,7 @@ pub fn recalculate_s1_formula_copy_batch(
             input: pending_pairs[pending_index].1.clone(),
             output: output.clone(),
             elapsed_ms: elapsed_per_book_ms,
+            warnings,
         });
     }
     Ok(outcomes)
@@ -1264,7 +1267,7 @@ fn finish_recalculation(
         candidate.is_file() && fs::metadata(candidate)?.len() > 0,
         "公式重算工作进程未生成有效输出工作簿"
     );
-    validate_recalculated_copy(input_path, candidate)?;
+    let warnings = validate_recalculated_copy(input_path, candidate)?;
     // The staging directory is inside the destination directory, so a hard
     // link publishes atomically and refuses a concurrent destination.
     fs::hard_link(candidate, output_path).with_context(|| {
@@ -1278,6 +1281,7 @@ fn finish_recalculation(
         input: input_path.to_path_buf(),
         output: output_path.to_path_buf(),
         elapsed_ms: started.elapsed().as_millis(),
+        warnings,
     })
 }
 
@@ -1285,28 +1289,53 @@ fn finish_recalculation(
 /// and typed cached-result readability before publishing the recalculated
 /// candidate. This proves the calculation result is consumable, not that it
 /// matches a business-specific expected value.
-fn validate_recalculated_copy(input: &Path, output: &Path) -> Result<()> {
+fn validate_recalculated_copy(input: &Path, output: &Path) -> Result<Vec<String>> {
     let source = excel_reader::read_workbook_with_unknown_error_tokens_as_text(input)
         .with_context(|| format!("重开重算前的 S1 公式副本：{}", input.display()))?;
     let result = excel_reader::read_workbook_with_unknown_error_tokens_as_text(output)
         .with_context(|| format!("重开重算后的 S1 公式副本：{}", output.display()))?;
     let source = source.workbook;
     let result = result.workbook;
-    // 第一层（可关闭）：逐格公式文本/位置比对。高级设置
-    // recalcFormulaGuard=false 时跳过——引擎的等价规范化（shared ref、
-    // 布尔字面量、表名引号）会产生假阳性，把整簿判死。
-    if crate::app_settings::AppSettings::load().recalc_formula_guard_enabled() {
+
+    // 结构层（硬失败）：工作表数量/名称/顺序、每表公式格坐标集合。
+    // 这些是真事故（引擎丢表、丢公式、搬动公式），不受任何文本规范化影响。
+    ensure!(
+        source.sheets.len() == result.sheets.len(),
+        "S1 重算改变了工作表数量：{} -> {}",
+        source.sheets.len(),
+        result.sheets.len()
+    );
+    for (before, after) in source.sheets.iter().zip(&result.sheets) {
         ensure!(
-            excel_reader::formula_texts_equivalent_after_recalculation(&source, &result),
-            "S1 重算修改了工作表结构、公式位置或公式文本（不含 LibreOffice 对 TRUE/FALSE 字面量的等价规范化）；
-             如确认是引擎等价规范化导致的假阳性，可在高级设置关闭「重算公式文本守卫」（默认开启）"
+            before.name == after.name,
+            "S1 重算改变了工作表名称或顺序：{:?} -> {:?}",
+            before.name,
+            after.name
         );
-    } else {
-        eprintln!(
-            "S1-F01 警告：重算公式文本一致性守卫已在高级设置中关闭（{}）；             公式数量、缓存节点与结果可读性检查仍然生效",
-            output.display()
+        let before_cells = before
+            .formulas
+            .keys()
+            .collect::<std::collections::BTreeSet<_>>();
+        let after_cells = after
+            .formulas
+            .keys()
+            .collect::<std::collections::BTreeSet<_>>();
+        ensure!(
+            before_cells == after_cells,
+            "S1 重算改变了工作表 {:?} 的公式格坐标（新增 {} 个、丢失 {} 个）",
+            before.name,
+            after_cells.difference(&before_cells).count(),
+            before_cells.difference(&after_cells).count()
         );
     }
+
+    // 文本层（软警告）：逐格公式文本比对降级为提示，不阻断发布。
+    //
+    // 依据（2026-11 用户决定，对齐 Rust-Tools 口径）：引擎重存会合法改写
+    // 公式书写形式——shared formula 展开、_xlfn. 前缀、sheet 名补引号、
+    // TRUE/FALSE 字面量；逐字比对误报率高，且这些改写不改变计算结果。
+    // 结构性事故由上面的硬检查兜底，这里如实记录差异供事后核对。
+    let warnings = formula_text_drift_warnings(&source, &result);
     // 以下三层始终启用：公式数量、缓存节点完整性、结果可读性。
     let formula_count = source
         .sheets
@@ -1347,7 +1376,58 @@ fn validate_recalculated_copy(input: &Path, output: &Path) -> Result<()> {
                 result_values.formula_cell_count, result_values.typed_result_cell_count
             ))
     );
-    Ok(())
+    Ok(warnings)
+}
+
+/// 逐格公式文本差异（软警告）。
+///
+/// 只统计"引擎等价规范化之后仍不等价"的单元格，最多保留若干条样例，
+/// 避免日志被单簿上千处改写淹没。返回空列表表示文本完全一致。
+fn formula_text_drift_warnings(
+    source: &excel_reader::WorkbookDump,
+    result: &excel_reader::WorkbookDump,
+) -> Vec<String> {
+    const MAX_SAMPLES: usize = 5;
+    let sheet_names = source
+        .sheets
+        .iter()
+        .map(|sheet| sheet.name.as_str())
+        .collect::<Vec<_>>();
+    let mut total = 0usize;
+    let mut samples: Vec<String> = Vec::new();
+    for (before, after) in source.sheets.iter().zip(&result.sheets) {
+        for (cell, formula) in &before.formulas {
+            let Some(result_formula) = after.formulas.get(cell) else {
+                continue;
+            };
+            if excel_reader::formula_text_equivalent_after_recalculation(
+                formula,
+                result_formula,
+                &sheet_names,
+            ) {
+                continue;
+            }
+            total += 1;
+            if samples.len() < MAX_SAMPLES {
+                samples.push(format!(
+                    "{}!{cell}: {:?} -> {:?}",
+                    before.name, formula, result_formula
+                ));
+            }
+        }
+    }
+    if total == 0 {
+        return Vec::new();
+    }
+    let mut warnings = vec![format!(
+        "S1-F01 提示：重算后有 {total} 个公式格的文本被引擎改写（结构未变，计算结果不受影响；         引擎重存会合法规范化 shared formula/_xlfn/表名引号等书写形式）"
+    )];
+    let shown = samples.len();
+    warnings.extend(samples);
+    if total > shown {
+        warnings.push(format!("…其余 {} 处略", total - shown));
+    }
+    warnings
 }
 
 pub fn s1_recalculated_filename(index: usize, source_path: impl AsRef<Path>) -> Result<String> {
@@ -1544,50 +1624,66 @@ mod tests {
         path.is_file().then_some(path)
     }
 
-    /// 公式文本守卫的可配置性：默认开启；关闭只影响第一层（文本比对），
-    /// 公式数量/缓存/结果三层检查仍在 validate_recalculated_copy 中无条件执行。
+    /// 公式文本差异只产生警告，不再阻断发布（2026-11 用户决定，对齐 Rust-Tools
+    /// 口径）：引擎重存会合法规范化公式书写形式，逐字比对误报率高。结构性事故
+    /// （丢表、丢公式、公式格坐标变化）仍由 validate_recalculated_copy 硬失败。
     #[test]
-    fn formula_text_guard_defaults_on_and_is_configurable() {
-        use crate::app_settings::AppSettings;
-        let _guard = crate::app_settings::AUDIT_STATE_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let state = std::env::temp_dir().join(format!(
-            "audit_recalc_guard_{}",
-            std::time::SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("clock")
-                .as_nanos()
-        ));
-        std::env::set_var("AUDIT_STATE_DIR", &state);
+    fn formula_text_drift_becomes_warnings_not_errors() {
+        use excel_reader::{SheetDump, WorkbookDump};
 
-        // 默认：开启（未设置键）。
-        assert!(AppSettings::load().recalc_formula_guard_enabled());
-
-        // 显式关闭。
-        AppSettings::store_preferences(
-            "auto",
-            "auto",
-            [("recalcFormulaGuard".to_owned(), serde_json::json!(false))]
-                .into_iter()
+        let sheet = |name: &str, formulas: &[(&str, &str)]| SheetDump {
+            name: name.to_owned(),
+            values: Default::default(),
+            formulas: formulas
+                .iter()
+                .map(|(cell, formula)| ((*cell).to_owned(), (*formula).to_owned()))
                 .collect(),
-        )
-        .expect("store guard preference");
-        assert!(!AppSettings::load().recalc_formula_guard_enabled());
+            formula_status: "ok".to_owned(),
+            merges: Vec::new(),
+            merge_status: "ok".to_owned(),
+            comments: Default::default(),
+            comments_status: "ok".to_owned(),
+            conditional_formatting: Vec::new(),
+            conditional_formatting_status: "ok".to_owned(),
+            data_validations: Vec::new(),
+            data_validations_status: "ok".to_owned(),
+        };
+        let workbook = |sheets: Vec<SheetDump>| WorkbookDump {
+            schema_version: 1,
+            reader: "test",
+            elapsed_ms: 0,
+            sheets,
+        };
 
-        // 再开回来。
-        AppSettings::store_preferences(
-            "auto",
-            "auto",
-            [("recalcFormulaGuard".to_owned(), serde_json::json!(true))]
-                .into_iter()
-                .collect(),
-        )
-        .expect("restore guard preference");
-        assert!(AppSettings::load().recalc_formula_guard_enabled());
+        // 文本被改写（结构不变）：应产生警告而非空列表，也不 panic。
+        let source = workbook(vec![sheet("Sheet1", &[("A1", "=SUM(B1:B2)")])]);
+        let rewritten = workbook(vec![sheet("Sheet1", &[("A1", "=SUM(Sheet1!B1:B2)")])]);
+        let warnings = formula_text_drift_warnings(&source, &rewritten);
+        assert_eq!(
+            warnings.len(),
+            2,
+            "应有一条汇总 + 一条样例，实际 {warnings:?}"
+        );
+        assert!(warnings[0].contains("1 个公式格"), "{:?}", warnings[0]);
+        assert!(warnings[1].contains("Sheet1!A1"), "{:?}", warnings[1]);
 
-        std::env::remove_var("AUDIT_STATE_DIR");
-        let _ = std::fs::remove_dir_all(&state);
+        // 文本完全一致：无警告。
+        let same = formula_text_drift_warnings(&source, &source);
+        assert!(same.is_empty(), "文本一致时不应产生警告：{same:?}");
+
+        // 等价规范化（含全角括号等强制引号字符的表名补引号）不算漂移。
+        let named = workbook(vec![sheet(
+            "汇总（一）",
+            &[("A1", "=SUM(汇总（一）!B1:B2)")],
+        )]);
+        let quoted = workbook(vec![sheet(
+            "汇总（一）",
+            &[("A1", "=SUM('汇总（一）'!B1:B2)")],
+        )]);
+        assert!(
+            formula_text_drift_warnings(&named, &quoted).is_empty(),
+            "表名补引号属等价规范化，不应记为漂移"
+        );
     }
 
     #[test]

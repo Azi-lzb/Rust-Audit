@@ -2327,6 +2327,11 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest, task_started
                     s1_f1_technical_path(&request, &output)
                 ),
             );
+            // 重算阶段的非致命提示（公式文本被引擎等价改写等）。结构性事故
+            // 在重算校验里已硬失败，这里只是如实留痕，供事后核对。
+            for warning in &output.recalculation_warnings {
+                push_warn_log(&mut ui.value, warning.clone());
+            }
             if let Some(result_path) = output.result_path.as_ref() {
                 push_log(
                     &mut ui.value,
@@ -2490,6 +2495,8 @@ struct S1F1WorkflowOutput {
     failed_files: usize,
     result_error: Option<String>,
     performance_timings: Value,
+    /// 重算阶段的非致命提示（公式文本被引擎等价改写等）。
+    recalculation_warnings: Vec<String>,
 }
 
 struct S1ExtractedAuditCopy {
@@ -3625,6 +3632,7 @@ where
 
     let mut audit_copies = Vec::with_capacity(accepted.len());
     let mut recalculation_engines = Vec::new();
+    let mut recalculation_warnings: Vec<String> = Vec::new();
     let mut file_results = Vec::with_capacity(accepted.len());
     let workflow_setup_us = workflow_setup_started.elapsed().as_micros();
     let mut copy_executor_us = 0u128;
@@ -3894,6 +3902,15 @@ where
                 {
                     recalculation_engines.push(execution.recalculation.engine.clone());
                 }
+                // 重算的非致命提示（公式文本被引擎等价改写等）随审核副本结果
+                // 一起返回，由界面统一写进详细日志；不阻断发布。
+                for warning in &execution.recalculation.warnings {
+                    recalculation_warnings.push(format!(
+                        "{}（{}）",
+                        warning,
+                        item.source.display()
+                    ));
+                }
                 audit_copies.push(json!({
                     "sourceFile": item.source,
                     "template": item.template,
@@ -4074,6 +4091,7 @@ where
         failed_files,
         result_error,
         performance_timings,
+        recalculation_warnings,
     })
 }
 
@@ -8537,6 +8555,7 @@ mod tests {
                                     input: recalculated_path.clone(),
                                     output: recalculated_path,
                                     elapsed_ms: 1,
+                                    warnings: Vec::new(),
                                 },
                                 formula_cells_prepared: manual.formula_cells_prepared,
                                 cached_values_cleared: manual.cached_values_cleared,
