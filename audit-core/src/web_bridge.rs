@@ -2856,7 +2856,10 @@ where
             "diagnostics":validation_report.read_diagnostics
         }));
     }
+    // 校验区域规则格读不到结果 = 真的会漏结论 → 标注部分完成（不静默）。
+    let region_missing = formula_result.summary.rules_missing_result;
     let partial = conditional_partial
+        || region_missing > 0
         || !formula_result
             .summary
             .read_diagnostics
@@ -2872,7 +2875,8 @@ where
             .map(|error| format!("；条件格式阶段失败，已保留公式审核结果：{error}"))
             .unwrap_or_default();
         format!(
-            "审核结果含部分诊断：条件格式诊断 {} 条、未识别指标 {} 个、未知公式错误值 {} 个{}",
+            "审核结果含部分诊断：校验区域规则格无结果 {} 个、条件格式诊断 {} 条、             未识别指标 {} 个、未知公式错误值 {} 个{}",
+            region_missing,
             conditional_diagnostic_count,
             unresolved_indicator_count,
             formula_result
@@ -8406,6 +8410,62 @@ mod tests {
         assert_eq!(extracted.diagnostics.len(), 1);
         assert_eq!(extracted.diagnostics[0]["kind"], "conditional_format");
         assert_eq!(extracted.diagnostics[0]["status"], "error");
+
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    /// 校验区域规则格读不到结果时必须标注"部分完成"，不能让缺失静默通过。
+    ///
+    /// 这是"整簿不再硬失败"之后唯一会真正漏掉审核结论的场景：其它差异
+    /// （公式坐标变化、缓存数量、文本改写）只进日志。
+    #[test]
+    fn missing_validation_region_result_marks_the_audit_copy_partial() -> anyhow::Result<()> {
+        let suffix = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+        let root = std::env::temp_dir().join(format!("audit_s1_region_missing_{suffix}"));
+        fs::create_dir_all(&root)?;
+        let source = root.join("机构甲_区域缺失.xlsx");
+        let template = root.join("template.xlsx");
+        // 审核副本的校验区域公式格没有缓存结果（fixture 的 None）。
+        let audit_copy = root.join("audit-copy.xlsx");
+        write_s1_recovery_fixture(&source, None)?;
+        write_s1_recovery_fixture(&template, None)?;
+        write_s1_recovery_fixture(&audit_copy, None)?;
+        let preflight = s1_f1_template_preflight(&template, None)?;
+        let item = S1F1AcceptedSource {
+            source: source.clone(),
+            template,
+            preflight: std::sync::Arc::new(preflight),
+        };
+        let extracted = extract_s1_audit_copy_with_conditional_extractor(
+            &item,
+            &source,
+            &audit_copy,
+            "source",
+            &S1FormulaMetadata {
+                period: "2026-07".to_owned(),
+                batch_id: "region-missing-test".to_owned(),
+                audit_time: "2026-11-10 12:00:00".to_owned(),
+                org_code: "1001".to_owned(),
+                org_name: "测试机构".to_owned(),
+            },
+            |_, _, _, _, _| anyhow::bail!("本测试不关心条件格式阶段"),
+        )?;
+
+        assert!(
+            extracted.partial,
+            "校验区域读不到结果时必须标注部分完成，实际 reason={:?}",
+            extracted.reason
+        );
+        assert!(
+            extracted
+                .reason
+                .as_deref()
+                .unwrap_or_default()
+                .contains("校验区域规则格无结果"),
+            "原因应指出校验区域缺失，实际 {:?}",
+            extracted.reason
+        );
 
         fs::remove_dir_all(root)?;
         Ok(())

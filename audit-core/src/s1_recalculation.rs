@@ -1297,8 +1297,17 @@ fn validate_recalculated_copy(input: &Path, output: &Path) -> Result<Vec<String>
     let source = source.workbook;
     let result = result.workbook;
 
-    // 结构层（硬失败）：工作表数量/名称/顺序、每表公式格坐标集合。
-    // 这些是真事故（引擎丢表、丢公式、搬动公式），不受任何文本规范化影响。
+    // 硬失败只保留「工作表数量 / 名称 / 顺序」。
+    //
+    // 依据（2026-11 用户决定，进一步对齐 Rust-Tools 口径）：本流程只从
+    // **校验区域**提取公式结果关键字，不追求整簿逐格一致。引擎重存会合法
+    // 改写公式坐标（shared formula 展开）、规范化文本、丢弃非校验区域的
+    // 冗余公式——这些都不影响提取结果，硬失败只会制造误报。
+    //
+    // 唯一有业务风险的场景是「校验区域某格的公式缓存丢失」：提取会把该格
+    // 当成空值静默跳过，漏掉一条审核结论。这一条不再在整簿层拦截，改为在
+    // 提取阶段对**实际要读的规则单元格**做定向检查并标注"部分完成"
+    // （见 s1_formula_audit::extract_s1_formula_issues）。
     ensure!(
         source.sheets.len() == result.sheets.len(),
         "S1 重算改变了工作表数量：{} -> {}",
@@ -1312,6 +1321,29 @@ fn validate_recalculated_copy(input: &Path, output: &Path) -> Result<Vec<String>
             before.name,
             after.name
         );
+    }
+
+    // 以下全部降级为提示：公式格坐标变化、公式数量、缓存节点完整性、
+    // 结果可读性。如实写进详细运行日志，供事后核对，但不阻断发布。
+    let mut warnings = formula_text_drift_warnings(&source, &result);
+    warnings.extend(structure_drift_warnings(&source, &result, output));
+    Ok(warnings)
+}
+
+/// 结构/缓存/可读性差异（软提示）。
+///
+/// 这些差异不影响「校验区域关键字提取」的正确性，故只作留痕；真正会造成
+/// 漏报的"校验区域公式缓存缺失"由提取阶段定向检查并标注部分完成。
+fn structure_drift_warnings(
+    source: &excel_reader::WorkbookDump,
+    result: &excel_reader::WorkbookDump,
+    output: &Path,
+) -> Vec<String> {
+    const MAX_SAMPLES: usize = 5;
+    let mut warnings = Vec::new();
+
+    // 1) 公式格坐标集合（按表）。
+    for (before, after) in source.sheets.iter().zip(&result.sheets) {
         let before_cells = before
             .formulas
             .keys()
@@ -1320,63 +1352,71 @@ fn validate_recalculated_copy(input: &Path, output: &Path) -> Result<Vec<String>
             .formulas
             .keys()
             .collect::<std::collections::BTreeSet<_>>();
-        ensure!(
-            before_cells == after_cells,
-            "S1 重算改变了工作表 {:?} 的公式格坐标（新增 {} 个、丢失 {} 个）",
-            before.name,
-            after_cells.difference(&before_cells).count(),
-            before_cells.difference(&after_cells).count()
-        );
+        if before_cells == after_cells {
+            continue;
+        }
+        let added = after_cells.difference(&before_cells).count();
+        let removed = before_cells.difference(&after_cells).count();
+        warnings.push(format!(
+            "S1-F01 提示：工作表 {:?} 的公式格坐标有变化（新增 {added} 个、消失 {removed} 个）；             校验区域结果提取不受影响",
+            before.name
+        ));
+        for cell in before_cells.difference(&after_cells).take(MAX_SAMPLES) {
+            warnings.push(format!("  消失：{}!{cell}", before.name));
+        }
     }
 
-    // 文本层（软警告）：逐格公式文本比对降级为提示，不阻断发布。
-    //
-    // 依据（2026-11 用户决定，对齐 Rust-Tools 口径）：引擎重存会合法改写
-    // 公式书写形式——shared formula 展开、_xlfn. 前缀、sheet 名补引号、
-    // TRUE/FALSE 字面量；逐字比对误报率高，且这些改写不改变计算结果。
-    // 结构性事故由上面的硬检查兜底，这里如实记录差异供事后核对。
-    let warnings = formula_text_drift_warnings(&source, &result);
-    // 以下三层始终启用：公式数量、缓存节点完整性、结果可读性。
+    // 2) 整簿公式数量与缓存节点。
     let formula_count = source
         .sheets
         .iter()
         .map(|sheet| sheet.formulas.len())
         .sum::<usize>();
-    ensure!(formula_count > 0, "S1 公式副本中没有可重算的公式");
+    if formula_count == 0 {
+        warnings.push("S1-F01 提示：公式副本中没有可重算的公式".to_owned());
+    }
+    match excel_reader::inspect_formula_cache_nodes(output) {
+        Ok(inventory) => {
+            if inventory.formula_cell_count != formula_count
+                || inventory.cached_formula_cell_count != formula_count
+                || !inventory.missing_cache_cells.is_empty()
+            {
+                warnings.push(format!(
+                    "S1-F01 提示：重算副本公式 {} 个、OOXML 公式单元格 {} 个、带缓存 {} 个、                     缺缓存 {} 个；校验区域如有缺失会在提取阶段标注部分完成",
+                    formula_count,
+                    inventory.formula_cell_count,
+                    inventory.cached_formula_cell_count,
+                    inventory.missing_cache_cells.len()
+                ));
+                for location in inventory.missing_cache_cells.iter().take(MAX_SAMPLES) {
+                    warnings.push(format!(
+                        "  缺缓存：{}!{}",
+                        location.sheet_name, location.cell
+                    ));
+                }
+            }
+        }
+        Err(error) => warnings.push(format!("S1-F01 提示：重算副本缓存节点检查失败：{error:#}")),
+    }
 
-    let cache_inventory = excel_reader::inspect_formula_cache_nodes(output)
-        .context("检查 S1 重算副本中的公式缓存节点")?;
-    ensure!(
-        cache_inventory.formula_cell_count == formula_count,
-        "S1 重算副本公式数量不一致：公式文本 {formula_count} 个，OOXML 公式单元格 {} 个",
-        cache_inventory.formula_cell_count
-    );
-    ensure!(
-        cache_inventory.cached_formula_cell_count == formula_count
-            && cache_inventory.missing_cache_cells.is_empty(),
-        "S1 重算副本存在缺失公式缓存节点：{}",
-        cache_inventory
-            .missing_cache_cells
-            .first()
-            .map(|location| format!("{}!{}", location.sheet_name, location.cell))
-            .unwrap_or_else(|| "缓存计数不一致".to_owned())
-    );
-    let result_values = excel_reader::formula_result_value_coverage(&result);
-    ensure!(
-        result_values.formula_cell_count == formula_count
-            && result_values.typed_result_cell_count == formula_count
-            && result_values.missing_result_cells.is_empty(),
-        "S1 重算副本有公式结果无法通过 Calamine 读取：{}",
-        result_values
-            .missing_result_cells
-            .first()
-            .map(|location| format!("{}!{}", location.sheet_name, location.cell))
-            .unwrap_or_else(|| format!(
-                "公式 {} 个，可读结果 {} 个",
-                result_values.formula_cell_count, result_values.typed_result_cell_count
-            ))
-    );
-    Ok(warnings)
+    // 3) 结果可读性。
+    let coverage = excel_reader::formula_result_value_coverage(result);
+    if coverage.formula_cell_count != formula_count
+        || coverage.typed_result_cell_count != formula_count
+        || !coverage.missing_result_cells.is_empty()
+    {
+        warnings.push(format!(
+            "S1-F01 提示：公式 {} 个，可读结果 {} 个；校验区域如有缺失会在提取阶段标注部分完成",
+            coverage.formula_cell_count, coverage.typed_result_cell_count
+        ));
+        for location in coverage.missing_result_cells.iter().take(MAX_SAMPLES) {
+            warnings.push(format!(
+                "  无结果：{}!{}",
+                location.sheet_name, location.cell
+            ));
+        }
+    }
+    warnings
 }
 
 /// 逐格公式文本差异（软警告）。

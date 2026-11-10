@@ -53,6 +53,11 @@ pub struct S1FormulaAuditSummary {
     pub rules_enabled: usize,
     pub rules_selected: usize,
     pub formula_result_values_nonempty: usize,
+    /// 校验区域里"公式格无缓存/读不到结果"的规则数。
+    ///
+    /// 只有这部分缺失会真正漏掉审核结论，因此单独计数并由调用方标注
+    /// "部分完成"；非校验区域或整簿的其它差异只进日志，不阻断。
+    pub rules_missing_result: usize,
     pub issue_count: usize,
     pub read_time_ms: u128,
     pub issue_build_time_ms: u128,
@@ -154,6 +159,7 @@ pub fn extract_s1_formula_issues(
     let issue_build_started = Instant::now();
     let mut issues = Vec::new();
     let mut formula_result_values_nonempty = 0;
+    let mut rules_missing_result = 0usize;
     let source_display = resolved_path(source_path);
     let audit_display = resolved_path(audit_path);
     for rule in &selected_rules {
@@ -163,6 +169,11 @@ pub fn extract_s1_formula_issues(
         let formula_result = cell_value(sheet, &rule.formula_cell);
         if !is_empty_formula_result(&formula_result) {
             formula_result_values_nonempty += 1;
+        } else if matches!(formula_result, CellValue::Empty) {
+            // 只有"单元格完全不存在"才算缺失：公式格本身有值但结果为
+            // 空串/0/False 是**正常的无问题结论**（校验通过时公式返回 ""），
+            // 不能算作漏报。
+            rules_missing_result += 1;
         }
 
         if let Some(error) = normalized_formula_errors
@@ -260,6 +271,7 @@ pub fn extract_s1_formula_issues(
         rules_enabled: definition.rules.iter().filter(|rule| rule.enabled).count(),
         rules_selected: selected_rules.len(),
         formula_result_values_nonempty,
+        rules_missing_result,
         issue_count: issues.len(),
         read_time_ms,
         issue_build_time_ms,
