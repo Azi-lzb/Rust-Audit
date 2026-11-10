@@ -1845,7 +1845,7 @@ async function exportDiagInfo(btn){
     if(r&&r.path){
       showToast('诊断已导出：'+r.path);
       var folder=String(r.path).replace(/[\\/][^\\/]+$/,'');
-      try{await bridge.api.open_path(folder);}catch(e){}
+      openPathBridge(folder);
     }else{showToast('导出失败');}
   }catch(e){showToast('导出失败：'+e);}
   btn.textContent='导出本机设置信息';
@@ -3200,7 +3200,18 @@ async function saveSettings(){
 }
 async function toggleOutputPin(){const v=!state.outputPinned;await bridge.api.update({outputPinned:v});await refresh()}
 async function togglePcOutputPin(){await bridge.api.toggle_period_output_pin();await refresh()}
-async function openPath(p){try{await bridge.api.open_path(p);await refresh()}catch(e){showToast('无法打开路径：'+(e&&e.message?e.message:String(e)))}}
+/* 打开文件/文件夹的统一节流入口：0.5 秒内只放行一次。
+   双击路径名会触发两次 click，连点会打开两个资源管理器/Excel 窗口；
+   这里按"任意 open_path 调用"做全局节流，窗口期内静默忽略重复点击。 */
+let OPEN_PATH_LAST_AT=0;
+function openPathBridge(p){
+  const now=Date.now();
+  if(now-OPEN_PATH_LAST_AT<500)return false;
+  OPEN_PATH_LAST_AT=now;
+  bridge.api.open_path(p).catch(e=>showToast('无法打开路径：'+(e&&e.message?e.message:String(e))));
+  return true;
+}
+async function openPath(p){openPathBridge(p);await refresh()}
 async function openGuide(){await bridge.api.open_user_guide()}
 let distributionUnlockClicks=[];
 function openAbout(){distributionUnlockClicks=[];document.getElementById('aboutMask').style.display='flex'}
@@ -3292,7 +3303,7 @@ function renderCentral(s){
 function openCentralPath(key){
   const v=state?state[key]:"";
   if(!v){return}
-  bridge.api.open_path(v);
+  openPathBridge(v);
 }
 async function pickCentral(key){
   if(state&&state.busy)return;
@@ -3524,8 +3535,7 @@ async function openSummaryConfig(){
 async function openPeriodConfig(){
   const v=state&&state.pcConfig;
   if(!v){ alert('尚未绑定报表采集配置；程序目录的“2.报表采集系统_配置.xlsx”将被使用。'); return; }
-  try{ await bridge.api.open_path(v); }
-  catch(e){ alert('打开报表采集配置失败：'+((e&&e.message)?e.message:String(e))); }
+  openPathBridge(v);
 }
 async function openExternalReferenceConfig(){
   try{ await bridge.api.open_external_reference_config(); }
@@ -3555,8 +3565,7 @@ async function openCentralConfig(profile){
   const meta=CENTRAL_CONFIG_META[profile];
   const value=meta&&state&&state[meta.key];
   if(!value){ alert('尚未找到'+(meta?meta.name:'大集中配置')+'。'); return; }
-  try{ await bridge.api.open_path(value); }
-  catch(e){ alert('打开配置失败：'+((e&&e.message)?e.message:String(e))); }
+  openPathBridge(value);
   await refresh();
 }
 function askResetSummaryConfig(){
@@ -3776,12 +3785,12 @@ function renderProgressDetail(progress){
 function openPeriodResult(kind){
   const summary=state&&state.periodSummary;
   const path=summary&&summary[kind];
-  if(path)bridge.api.open_path(path);
+  if(path)openPathBridge(path);
 }
 /* 配对清单里的工作簿名精简：去掉代码/导出方式前缀段 */
 document.getElementById('pairList').addEventListener('click',e=>{
   const book=e.target.closest('[data-open]');
-  if(book&&book.dataset.open){bridge.api.open_path(book.dataset.open)}
+  if(book&&book.dataset.open){openPathBridge(book.dataset.open)}
 });
 function shortPairBook(name){
   const parts=String(name||'').replace(/\.xls$/i,'').split('#');
@@ -3888,7 +3897,7 @@ function renderPairList(pairs){
 function openPcPath(key){
   const v=state?state[key]:'';
   if(!v){return}
-  bridge.api.open_path(v);
+  openPathBridge(v);
 }
 async function pickPc(key){
   if(state&&state.busy)return;
