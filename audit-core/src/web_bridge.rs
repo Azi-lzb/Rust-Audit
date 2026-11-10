@@ -854,7 +854,7 @@ fn dispatch_api(
         "choose_history_config" => choose_history_config(state, args),
         "clear_path" => clear_path(state, args),
         "open_path" => open_path(state, args),
-        "recognize" => recognize_s1_sources(state),
+        "recognize" => recognize_s1_sources_with_mode(state, true),
         "set_selected_files" => set_selected_files(state, args),
         "get_faq" => Ok(crate::faq::items(distribution_profile())),
         "get_config_update" => Ok(crate::config_update::inspect()),
@@ -1113,7 +1113,16 @@ fn choose_history_config(state: &AppState, args: &[Value]) -> std::result::Resul
     Ok(json!(value))
 }
 
-fn recognize_s1_sources(state: &AppState) -> std::result::Result<Value, ApiError> {
+/// 识别 S1 源文件并做模板推荐。
+///
+/// `explicit` = 用户点了「自动识别模板」按钮：此时按"最后写入者获胜"更新
+/// 模板框（收敛到唯一模板则采用，多个/零个则清空并说明原因）。
+/// `explicit` = false（后台刷新：递归深度变化、追加文件、choose 路径联动）：
+/// 保持旧粘性口径——用户手选过模板（templateManual）时不覆盖。
+fn recognize_s1_sources_with_mode(
+    state: &AppState,
+    explicit: bool,
+) -> std::result::Result<Value, ApiError> {
     let (input_dir, template_dir, manual_template, busy, scan_depth) = {
         let ui = state.lock();
         (
@@ -1227,9 +1236,42 @@ fn recognize_s1_sources(state: &AppState) -> std::result::Result<Value, ApiError
         .filter_map(|path| path.file_name())
         .map(|name| name.to_string_lossy().into_owned())
         .collect::<Vec<_>>());
-    if !manual_template && matched_templates.len() == 1 {
-        if let Some(template) = matched_templates.iter().next() {
+    // 自动识别模板的赋值口径（2026-11 用户反馈修正）：
+    //
+    // 旧逻辑在 `!manual_template && matched_templates.len() == 1` 时才写入
+    // `template`，有两个漏洞：
+    //   1. `templateManual` 是「用户手动选过模板」的粘性标志——一旦置位，
+    //      之后源数据目录整个换掉，再点「自动识别模板」也永远不会切换模板，
+    //      界面上还挂着旧目录的模板（现场截图即此场景：源目录是"单位贷款
+    //      核查表"，模板框却停在另一目录识别出的"汇总校验结果及报送说明"）。
+    //   2. `matched_templates.len() == 1` 要求全部源文件收敛到同一个模板；
+    //      用户点「自动识别模板」时的明确意图就是"重新算一遍并采用结果"。
+    //
+    // 新口径：用户显式点了「自动识别模板」（本函数的直接调用路径）时，
+    // 按"最后写入者获胜"更新：
+    //   - 恰好收敛到一个模板 → 采用；
+    //   - 多个/零个 → 清空并记录原因，绝不保留旧值冒充本次识别结果。
+    // `templateManual` 仅保留一个用途：后台自动刷新（choose 路径、递归深度
+    // 变化等，见 refresh_s1_sources_for_scan_depth）不覆盖用户手选的模板。
+    // 为区分这两个入口，本函数通过 parameter 显式传入。
+    if explicit || !manual_template {
+        if matched_templates.len() == 1 {
+            let template = matched_templates.iter().next().expect("len == 1");
             ui.value["template"] = json!(template.to_string_lossy());
+            ui.value["templateManual"] = json!(false);
+        } else {
+            if !ui.value["template"].as_str().unwrap_or_default().is_empty() {
+                let reason = if matched_templates.is_empty() {
+                    "源文件未匹配到任何模板"
+                } else {
+                    "源文件匹配到多个模板，请按报表类型分目录"
+                };
+                push_log(
+                    &mut ui.value,
+                    format!("S1 自动识别模板：已清空旧选择（{reason}）"),
+                );
+            }
+            ui.value["template"] = json!("");
         }
     }
     ui.value["status"] = json!(format!("已扫描 {} 个 S1 源工作簿", files.len()));
@@ -1274,7 +1316,7 @@ fn refresh_s1_sources_for_scan_depth(state: &AppState) {
         return;
     }
 
-    if let Err(error) = recognize_s1_sources(state) {
+    if let Err(error) = recognize_s1_sources_with_mode(state, false) {
         let mut ui = state.lock();
         ui.value["sourceFiles"] = json!([]);
         ui.value["selectedFiles"] = json!([]);
@@ -1474,7 +1516,7 @@ fn refresh_s1_source_list(state: &AppState) {
     if !PathBuf::from(input_dir.trim()).is_dir() {
         return;
     }
-    let _ = recognize_s1_sources(state);
+    let _ = recognize_s1_sources_with_mode(state, false);
 }
 
 fn choose_file(state: &AppState, args: &[Value]) -> std::result::Result<Value, ApiError> {
@@ -10136,6 +10178,92 @@ mod tests {
     }
 
     #[test]
+    /// 回归（2026-11 现场反馈）：源目录整个换掉后，再点「自动识别模板」
+    /// 必须把模板框切到新目录识别出的模板；识别不出时要清空并说明，
+    /// 绝不能继续挂着旧目录的模板。
+    #[test]
+    fn explicit_recognize_switches_template_and_clears_when_unmatched() {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("audit_recog_switch_{suffix}"));
+        let dir_a = root.join("dir_a");
+        let dir_b = root.join("dir_b_empty");
+        let templates = root.join("templates");
+        fs::create_dir_all(&dir_a).unwrap();
+        fs::create_dir_all(&dir_b).unwrap();
+        fs::create_dir_all(&templates).unwrap();
+
+        let template_path = templates.join("单位贷款模板.xlsx");
+        fs::copy(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/s1_region_summary_template.xlsx"),
+            &template_path,
+        )
+        .unwrap();
+        // 目录 A：放一个能匹配该模板的源文件。
+        fs::copy(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/s1_region_summary_template.xlsx"),
+            dir_a.join("机构甲_20260731.xlsx"),
+        )
+        .unwrap();
+        // 目录 B：空目录（识别不出任何模板）。
+
+        let state = test_state();
+        dispatch_api(
+            &state,
+            "update",
+            &[json!({"templateDir": templates.to_string_lossy(), "input": dir_a.to_string_lossy()})],
+        )
+        .expect("choose template dir and dir A");
+        dispatch_api(&state, "recognize", &[]).expect("recognize in dir A");
+
+        let state_value = state.get_state();
+        let first_template = state_value["template"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned();
+        assert!(
+            !first_template.is_empty(),
+            "目录 A 应识别出模板，实际 template={first_template:?}"
+        );
+
+        // 模拟现场：切到目录 B（原实现要求用户先清空模板才能切换）。
+        dispatch_api(
+            &state,
+            "update",
+            &[json!({"input": dir_b.to_string_lossy()})],
+        )
+        .expect("choose dir B");
+        dispatch_api(&state, "recognize", &[]).expect("recognize in dir B");
+
+        let state_value = state.get_state();
+        assert_eq!(
+            state_value["template"].as_str().unwrap_or_default(),
+            "",
+            "目录 B 识别不出模板时必须清空，而不是保留目录 A 的模板"
+        );
+
+        // 再切回目录 A：显式识别应重新填上模板。
+        dispatch_api(
+            &state,
+            "update",
+            &[json!({"input": dir_a.to_string_lossy()})],
+        )
+        .expect("choose dir A again");
+        dispatch_api(&state, "recognize", &[]).expect("recognize again in dir A");
+        let state_value = state.get_state();
+        assert_eq!(
+            state_value["template"].as_str().unwrap_or_default(),
+            first_template,
+            "切回目录 A 后应重新识别出同一模板"
+        );
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
     fn state_reports_s2_paths_and_s3_enabled_by_default() {
         let state = test_state();
         let value = state.get_state();
