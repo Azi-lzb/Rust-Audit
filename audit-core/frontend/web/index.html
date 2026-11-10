@@ -304,6 +304,10 @@ select:disabled{opacity:.6;cursor:not-allowed}
 .app-page{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column}
 .page{flex:1;min-height:0;display:none;flex-direction:column}
 .page.active{display:flex}
+/* hidden 属性的浏览器默认样式（display:none）优先级低于上面的
+   .sidenav-item{display:flex}，必须显式声明才能让 isSystemVisible()
+   的 item.hidden 真正生效（S1S2 版隐藏 S3 导航依赖这条）。 */
+.sidenav-item[hidden]{display:none!important}
 body[data-enabled-systems]:not(.distribution-ui-unlocked):not([data-enabled-systems~="S1"]) .sidenav-item[data-system="S1"],
 body[data-enabled-systems]:not(.distribution-ui-unlocked):not([data-enabled-systems~="S2"]) .sidenav-item[data-system="S2"],
 body[data-enabled-systems]:not(.distribution-ui-unlocked):not([data-enabled-systems~="S3"]) .sidenav-item[data-system="S3"],
@@ -1730,6 +1734,12 @@ function isUpdateSystemIncluded(system){
 function applyDistributionProfile(){
   document.body.classList.toggle('distribution-ui-unlocked',!!(state&&state.distributionUnlocked));
   document.querySelectorAll('.sidenav-item[data-system]').forEach(item=>{item.hidden=!isSystemVisible(item.dataset.system)});
+  // 若当前停留的页面属于本档位不交付的系统（例如切档后），退回 S1。
+  if(currentPage!=='settings'){
+    const active=document.querySelector('.sidenav-item.active[data-system]');
+    const system=active&&active.dataset?active.dataset.system:'S1';
+    if(!isSystemVisible(system))openAuditWorkbench();
+  }
 }
 function includesUndeliveredSystemInfo(text){
   const value=String(text||'');
