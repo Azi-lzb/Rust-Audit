@@ -123,6 +123,10 @@ exit 0
 POSTRM
 chmod 0755 "$PKG_ROOT/DEBIAN/postrm"
 
+# 依赖口径：二进制实际 NEEDED 只有 libc/libm/libpthread/libdl，libgcc 是保险。
+# libgcc1 是 Debian 10 / 麒麟 V10 的包名，libgcc-s1 是 Debian 11+ / Ubuntu 22+ 的
+# 包名，用可选依赖同时兼容；写死 libgcc-s1 会导致麒麟 V10 上 dpkg 配置失败
+# （依赖不满足 → postinst 不执行 → 桌面菜单不刷新、命令不可用）。
 cat > "$PKG_ROOT/DEBIAN/control" <<CONTROL
 Package: audittools${PKG_SUFFIX}
 Version: ${VERSION}
@@ -131,7 +135,7 @@ Priority: optional
 Architecture: amd64
 Maintainer: Azi-lzb <Azi-lzb@users.noreply.github.com>
 Installed-Size: $(du -sk "$PKG_ROOT" | cut -f1)
-Depends: libc6 (>= 2.28), libgcc-s1
+Depends: libc6 (>= 2.28), libgcc1 | libgcc-s1
 Recommends: fonts-noto-cjk
 Conflicts: audit-tools, audit-tools-s1-s2, base-audit-v3
 Replaces: audit-tools, audit-tools-s1-s2, base-audit-v3

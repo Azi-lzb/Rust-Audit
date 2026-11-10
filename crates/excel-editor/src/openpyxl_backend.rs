@@ -138,11 +138,23 @@ impl OpenpyxlWorkerConfig {
         }
         #[cfg(not(windows))]
         {
-            let installation_root = binary.parent()?.parent()?;
-            let base = installation_root
-                .join("libexec")
-                .join(product)
-                .join("openpyxl");
+            // 发行布局有两类，必须都支持：
+            //   deb 包：/opt/<product>/AuditTools + /opt/<product>/libexec/<product>/openpyxl
+            //   /usr 布局：/usr/bin/<product>     + /usr/libexec/<product>/openpyxl
+            // 因此依次尝试「可执行文件所在目录」与「其上一级」，各自拼 libexec。
+            // （此前只取 parent().parent()，deb 布局会算成 /opt/libexec/... 而失效。）
+            let mut bases: Vec<PathBuf> = Vec::new();
+            if let Some(parent) = binary.parent() {
+                bases.push(parent.join("libexec").join(product).join("openpyxl"));
+                if let Some(grand_parent) = parent.parent() {
+                    bases.push(grand_parent.join("libexec").join(product).join("openpyxl"));
+                }
+            }
+            let base = bases
+                .iter()
+                .find(|candidate| candidate.join("worker/openpyxl_worker.py").is_file())
+                .cloned()
+                .or_else(|| bases.first().cloned())?;
             let bundled_worker = base.join("worker/openpyxl_worker.py");
             let worker_script = if bundled_worker.is_file() && !cfg!(debug_assertions) {
                 bundled_worker

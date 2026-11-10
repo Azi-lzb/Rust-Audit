@@ -537,6 +537,103 @@ impl AppState {
     }
 }
 
+/// 端口冲突时向后尝试的个数（默认端口被系统服务占用时自动顺延）。
+const UI_PORT_FALLBACK_ATTEMPTS: u16 = 20;
+
+/// 候选端口序列：请求端口，以及其后 [1..=attempts] 个。
+///
+/// 国产化终端常见问题：麒麟 V10 的 `kysec-sync-daemon` 会占用 8750，桌面
+/// 图标启动时直接绑定失败、进程退出，表现为「双击图标打不开」。这里改为
+/// 顺序尝试，全部被占时再退回系统分配的临时端口。
+fn ui_port_candidates(requested: u16, attempts: u16) -> Vec<u16> {
+    let mut candidates = Vec::with_capacity(attempts as usize + 1);
+    for offset in 0..=attempts {
+        match requested.checked_add(offset) {
+            Some(port) if port != 0 && !candidates.contains(&port) => candidates.push(port),
+            _ => break,
+        }
+    }
+    candidates
+}
+
+/// 探测指定端口上是否已经运行着本工具（用于防止重复双击开两个实例）。
+///
+/// 只发一个只读的 `POST /api/get_state`，响应里含 `distributionProfile`
+/// 说明是本产品的服务。用短超时的阻塞 socket（启动期只跑一次，不占异步
+/// 资源）；任何失败一律视为「不是本工具」。
+fn audit_ui_already_serving(port: u16) -> bool {
+    use std::io::{Read, Write};
+    use std::net::{SocketAddr as StdSocketAddr, TcpStream};
+    use std::time::Duration as StdDuration;
+
+    let Ok(address) = format!("127.0.0.1:{port}").parse::<StdSocketAddr>() else {
+        return false;
+    };
+    let Ok(mut stream) = TcpStream::connect_timeout(&address, StdDuration::from_millis(400)) else {
+        return false;
+    };
+    let _ = stream.set_read_timeout(Some(StdDuration::from_millis(800)));
+    let _ = stream.set_write_timeout(Some(StdDuration::from_millis(400)));
+    let request = format!(
+        "POST /api/get_state HTTP/1.1
+Host: {address}
+Content-Type: application/json
+         Content-Length: 2
+Connection: close
+
+[]"
+    );
+    if stream.write_all(request.as_bytes()).is_err() {
+        return false;
+    }
+    let mut response = Vec::new();
+    if stream.read_to_end(&mut response).is_err() {
+        return false;
+    }
+    String::from_utf8_lossy(&response).contains("distributionProfile")
+}
+
+/// 绑定本机 UI 端口，返回监听器与实际使用的端口号。
+///
+/// 请求端口被占用时：先判断占用者是不是本工具的另一个实例（是则返回 None
+/// 让调用方直接复用，不再开第二个进程），否则顺延到后续端口，最后退回系统
+/// 分配的临时端口。
+async fn bind_local_ui(requested: u16) -> Result<Option<(TcpListener, u16)>> {
+    for (index, candidate) in ui_port_candidates(requested, UI_PORT_FALLBACK_ATTEMPTS)
+        .into_iter()
+        .enumerate()
+    {
+        let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), candidate);
+        match TcpListener::bind(address).await {
+            Ok(listener) => {
+                if index > 0 {
+                    eprintln!(
+                        "端口 {requested} 不可用（可能被系统服务占用），已自动改用 {candidate}"
+                    );
+                }
+                return Ok(Some((listener, candidate)));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => {
+                if index == 0 && audit_ui_already_serving(candidate) {
+                    return Ok(None);
+                }
+                continue;
+            }
+            Err(error) => {
+                return Err(error).with_context(|| format!("listen on http://{address}"));
+            }
+        }
+    }
+    // 全部候选都被占用：退回系统分配的临时端口，保证界面仍能打开。
+    let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0);
+    let listener = TcpListener::bind(address)
+        .await
+        .with_context(|| format!("listen on http://{address}"))?;
+    let port = listener.local_addr()?.port();
+    eprintln!("端口 {requested} 及后续候选均不可用，已改用系统分配端口 {port}");
+    Ok(Some((listener, port)))
+}
+
 /// Run the local-only frontend/API service. It never binds to a LAN address.
 pub fn serve_web_ui(port: u16, config_path: PathBuf) -> Result<()> {
     let runtime = Builder::new_multi_thread()
@@ -544,10 +641,15 @@ pub fn serve_web_ui(port: u16, config_path: PathBuf) -> Result<()> {
         .build()
         .context("create Rust web runtime")?;
     runtime.block_on(async move {
-        let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port);
-        let listener = TcpListener::bind(address)
-            .await
-            .with_context(|| format!("listen on http://{address}"))?;
+        let Some((listener, _actual_port)) = bind_local_ui(port).await? else {
+            // 已有实例在跑：直接把界面指向它，避免开第二个服务和第二个窗口。
+            let url = format!("http://127.0.0.1:{port}");
+            println!("审核工具已在运行：{url}");
+            if let Err(error) = open_default_browser(&url) {
+                eprintln!("无法自动打开浏览器，请手动访问 {url}：{error}");
+            }
+            return Ok(());
+        };
         let address = listener
             .local_addr()
             .context("read the bound Audit UI address")?;
@@ -10017,6 +10119,20 @@ mod tests {
             2,
             "rejected input must not change state"
         );
+    }
+
+    #[test]
+    /// 默认端口被系统服务占用时要能自动顺延，而不是直接退出。
+    #[test]
+    fn ui_port_candidates_skip_zero_and_overflow_safely() {
+        assert_eq!(
+            super::ui_port_candidates(8750, 3),
+            vec![8750, 8751, 8752, 8753]
+        );
+        // 接近 u16 上限时不 panic，只产出能表示的部分。
+        assert_eq!(super::ui_port_candidates(65534, 5), vec![65534, 65535]);
+        // requested=0（系统分配）不进入候选，交给最终兜底分支。
+        assert!(super::ui_port_candidates(0, 3).is_empty());
     }
 
     #[test]
