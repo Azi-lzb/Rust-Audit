@@ -33,7 +33,8 @@ esac
 
 PKG_ROOT="$WORK/pkg"
 mkdir -p "$PKG_ROOT/DEBIAN" "$PKG_ROOT/opt/audittools" \
-         "$PKG_ROOT/usr/bin" "$PKG_ROOT/usr/share/applications"
+         "$PKG_ROOT/usr/bin" "$PKG_ROOT/usr/share/applications" \
+         "$PKG_ROOT/usr/share/icons/hicolor/256x256/apps"
 
 install -m 0755 "$BINARY" "$PKG_ROOT/opt/audittools/AuditTools"
 cp -a "$PRODUCT_DIR"/. "$PKG_ROOT/opt/audittools/"
@@ -67,6 +68,61 @@ if [[ "$EDITION" == "s1s2" ]]; then
   printf 's1s2' > "$PKG_ROOT/opt/audittools/edition-s1s2"
 fi
 
+# 桌面菜单入口（Kylin/UOS 的应用菜单，类似 Windows 开始菜单）。
+# 图标装进 hicolor 主题并在 .desktop 里按名字引用，主题切换时跟随。
+install -m 0644 "$PKG_ROOT/opt/audittools/assets/app-icon.png"   "$PKG_ROOT/usr/share/icons/hicolor/256x256/apps/audittools.png"
+if [[ "$EDITION" == "s1s2" ]]; then
+  DESKTOP_NAME="审核工具（S1S2）"
+else
+  DESKTOP_NAME="审核工具"
+fi
+cat > "$PKG_ROOT/usr/share/applications/audittools.desktop" <<DESKTOP
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=${DESKTOP_NAME}
+Name[zh_CN]=${DESKTOP_NAME}
+GenericName=数据审核工具
+GenericName[zh_CN]=数据审核工具
+Comment=逐笔统计 / 报表采集 / 大集中统计审核
+Comment[zh_CN]=逐笔统计 / 报表采集 / 大集中统计审核
+Exec=/usr/bin/audittools
+Icon=audittools
+Terminal=false
+StartupNotify=true
+StartupWMClass=AuditTools
+Categories=Office;Finance;
+Keywords=audit;excel;审核;财务;
+DESKTOP
+chmod 0644 "$PKG_ROOT/usr/share/applications/audittools.desktop"
+
+cat > "$PKG_ROOT/DEBIAN/postinst" <<'POSTINST'
+#!/bin/sh
+set -e
+# 刷新桌面数据库，让应用菜单立即出现图标（无 GUI 环境下失败不影响安装）。
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database -q /usr/share/applications || true
+fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+  gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor || true
+fi
+exit 0
+POSTINST
+chmod 0755 "$PKG_ROOT/DEBIAN/postinst"
+
+cat > "$PKG_ROOT/DEBIAN/postrm" <<'POSTRM'
+#!/bin/sh
+set -e
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database -q /usr/share/applications || true
+fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+  gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor || true
+fi
+exit 0
+POSTRM
+chmod 0755 "$PKG_ROOT/DEBIAN/postrm"
+
 cat > "$PKG_ROOT/DEBIAN/control" <<CONTROL
 Package: audittools${PKG_SUFFIX}
 Version: ${VERSION}
@@ -77,9 +133,12 @@ Maintainer: Azi-lzb <Azi-lzb@users.noreply.github.com>
 Installed-Size: $(du -sk "$PKG_ROOT" | cut -f1)
 Depends: libc6 (>= 2.28), libgcc-s1
 Recommends: fonts-noto-cjk
+Conflicts: audit-tools, audit-tools-s1-s2, base-audit-v3
+Replaces: audit-tools, audit-tools-s1-s2, base-audit-v3
 Description: AuditTools 审核工具（Rust 实现）
  S1 逐笔统计核查、S2 报表采集核对、S3 大集中统计比较与金融表单生成。
  纯 Rust 计算引擎（betteroffice）内置，无需安装 Excel/WPS/LibreOffice/JVM。
+ 本包与旧版 Python 审核工具（audit-tools）互斥，安装时由 dpkg 卸载旧版。
 CONTROL
 
 # glibc 2.28 上限校验：防止误打包新版工具链产物
