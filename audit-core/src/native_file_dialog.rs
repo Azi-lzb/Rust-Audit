@@ -216,7 +216,7 @@ async fn portal_pick(request: PickRequest) -> PickOutcome {
         .directory(matches!(request.kind, PickKind::Directory));
     if !request.extensions.is_empty() {
         let mut filter = FileFilter::new(request.filter_label().as_str());
-        for extension in &request.extensions {
+        for extension in request.extensions {
             // 同时给大小写两种 glob：部分后端按字节比较，*.CSV 不会命中 *.csv。
             filter = filter.glob(format!("*{extension}").as_str());
             filter = filter.glob(format!("*{}", extension.to_uppercase()).as_str());
