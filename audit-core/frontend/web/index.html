@@ -199,8 +199,10 @@ select:disabled{opacity:.6;cursor:not-allowed}
 .path-name.empty{min-height:0;padding:6px 10px;color:var(--text-3);border-style:dashed}
 .path-link{display:inline-flex;align-items:center;gap:6px;flex:1;min-width:0;max-width:100%;color:var(--accent);text-decoration:none;border-bottom:1px solid var(--accent-line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .path-link:hover{color:var(--accent-hover);border-bottom-color:var(--accent-hover);text-decoration:underline}
-.path-clear{flex:none;width:20px;height:20px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--text-3);font:18px/18px Arial,sans-serif;cursor:pointer;opacity:0;transition:opacity .15s,background .15s,color .15s}
-.path-name:hover .path-clear,.path-name:focus-within .path-clear{opacity:1}
+.path-clear,.path-copy{flex:none;width:20px;height:20px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--text-3);cursor:pointer;opacity:0;transition:opacity .15s,background .15s,color .15s;display:inline-flex;align-items:center;justify-content:center}
+.path-clear{font:18px/18px Arial,sans-serif}
+.path-copy svg{width:13px;height:13px}
+.path-name:hover .path-clear,.path-name:focus-within .path-clear,.path-name:hover .path-copy,.path-name:focus-within .path-copy{opacity:1}
 .path-clear:hover{background:var(--danger-soft);color:var(--danger)}
 .path-clear:focus-visible{opacity:1;outline:2px solid var(--accent-ring);outline-offset:1px}
 .engine-detail{display:block;margin-top:6px;color:var(--text-3);font-size:11.5px;line-height:1.55}
@@ -1462,6 +1464,38 @@ async function pickHistoryConfig(){
   });
   if(picked.paths[0])await bridge.api.choose_history_config(picked.paths[0]);
   await refresh();
+}
+/* 把完整路径复制到剪贴板；http://127.0.0.1 属安全上下文，clipboard API 可用，
+   失败时退回 execCommand 方案。 */
+async function copyPathToClipboard(p){
+  const text=String(p==null?'':p);
+  if(!text)return false;
+  try{ await navigator.clipboard.writeText(text); return true; }
+  catch(e){
+    const ta=document.createElement('textarea');
+    ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    let ok=false;
+    try{ ok=document.execCommand('copy'); }catch(e2){ ok=false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+}
+function appendPathCopy(box,fullPath){
+  if(!box||!fullPath)return;
+  const button=document.createElement('button');
+  button.type='button';
+  button.className='path-copy';
+  button.title='复制完整路径';
+  button.setAttribute('aria-label','复制完整路径');
+  button.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  button.onclick=async function(event){
+    event.preventDefault();
+    event.stopPropagation();
+    const ok=await copyPathToClipboard(fullPath);
+    showToast(ok?'已复制完整路径':'复制失败');
+  };
+  box.appendChild(button);
 }
 function appendPathClear(box,field){
   if(!box||!state||state.busy)return;
@@ -3291,7 +3325,7 @@ function renderCentral(s){
     box.classList.toggle('empty',!v);
     box.classList.toggle('link',!!v);
     box.title=v?'点击打开：'+v:'';
-    if(v)appendPathClear(box,key);
+    if(v){appendPathCopy(box,v);appendPathClear(box,key);}
   });
   const pin=document.getElementById('centralCrossOutputPin');
   if(pin){const fixed=!s.centralCrossOutputAuto;pin.classList.toggle('on',fixed);pin.title=fixed?'取消固定输出目录':'固定输出目录';pin.setAttribute('aria-label',pin.title);pin.disabled=!!s.busy;}
@@ -3740,7 +3774,7 @@ function renderCollect(state){
     el.classList.toggle('empty',!v);
     el.classList.toggle('link',!!v);
     el.title=v?'点击打开：'+v:'';
-    if(v)appendPathClear(el,key);
+    if(v){appendPathCopy(el,v);appendPathClear(el,key);}
   }
   renderPairList(state.periodPairs||[]);
   renderPeriodSourceWarning(state.periodSourceWarning||'');
