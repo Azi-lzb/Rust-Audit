@@ -155,7 +155,10 @@ fi
 echo "glibc 要求：${MAX_GLIBC:-unknown}（基线 2.28）"
 
 mkdir -p "$OUT_DIR"
-DEB="$OUT_DIR/AuditTools${PKG_SUFFIX}_${VERSION}_amd64.deb"
+# 产物文件名带打包时间戳（与 Windows 包的命名口径一致），
+# 避免连续重打时新旧包混淆——旧包被进程锁定删不掉的场景吃过亏。
+STAMP="$(date +%Y%m%d-%H%M%S)"
+DEB="$OUT_DIR/AuditTools${PKG_SUFFIX}_${VERSION}_${STAMP}_amd64.deb"
 dpkg-deb --root-owner-group --build "$PKG_ROOT" "$DEB" >/dev/null
 echo "已生成：$DEB ($(du -h "$DEB" | cut -f1))"
 dpkg-deb --info "$DEB" | head -8
