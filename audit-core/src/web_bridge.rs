@@ -6980,7 +6980,7 @@ fn browse_dir(_state: &AppState, args: &[Value]) -> std::result::Result<Value, A
     let requested = arg_string(args, 0).unwrap_or_default();
     let mode = arg_string(args, 1).unwrap_or_default();
     let root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let cleaned = unquote_path(requested.trim());
+    let cleaned = normalize_pasted_path(&unquote_path(requested.trim()));
     let mut target = if cleaned.is_empty() {
         root.clone()
     } else {
@@ -7793,6 +7793,27 @@ fn browse_error(target: &Path, root: &Path, error: &str, selected_file: &str) ->
         "selectedFile": selected_file,
         "error": error
     })
+}
+
+/// 归一化用户粘贴的路径：剥 `file://` URI 前缀并做百分号解码。
+///
+/// 页面内选择器的输入框提示"可粘贴资源管理器中的目录或文件路径"，但用户
+/// 经常从浏览器地址栏 / 结果工作簿超链接 / 某些文件管理器的"复制位置"里
+/// 复制，拿到的是 `file:///home/azi/%E6%A1%8C%E9%9D%A2/测试数据` 这样的
+/// URI——此前必须手工删掉 `file://` 前缀才能「前往」（2026-11 现场问题）。
+/// 非法 URI 或普通路径原样返回，不影响现有粘贴行为。
+fn normalize_pasted_path(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.len() >= 8
+        && trimmed
+            .get(..7)
+            .is_some_and(|part| part.eq_ignore_ascii_case("file://"))
+    {
+        if let Some(path) = crate::native_file_dialog::file_uri_to_path(trimmed) {
+            return path.to_string_lossy().into_owned();
+        }
+    }
+    trimmed.to_owned()
 }
 
 fn unquote_path(value: &str) -> String {
@@ -10262,6 +10283,38 @@ mod tests {
         );
 
         fs::remove_dir_all(root).unwrap();
+    }
+
+    /// 页面内选择器输入框粘贴 `file://` URI 时应自动归一化为本地路径。
+    #[test]
+    fn normalize_pasted_path_strips_file_uri() {
+        use super::normalize_pasted_path;
+        // 普通路径不动。
+        assert_eq!(
+            normalize_pasted_path("/home/azi/桌面/测试数据"),
+            "/home/azi/桌面/测试数据"
+        );
+        assert_eq!(
+            normalize_pasted_path(r#"  C:\数据\核查表  "#),
+            r#"C:\数据\核查表"#
+        );
+        // file:///（三斜杠）与 file://localhost/ 两种形式都解码。
+        assert_eq!(
+            normalize_pasted_path(
+                "file:///home/azi/%E6%A1%8C%E9%9D%A2/%E6%B5%8B%E8%AF%95%E6%95%B0%E6%8D%AE"
+            ),
+            "/home/azi/桌面/测试数据"
+        );
+        assert_eq!(normalize_pasted_path("file://localhost/home/x"), "/home/x");
+        assert_eq!(
+            normalize_pasted_path("FILE:///C:/Audit/a%20b.xlsx"),
+            "C:/Audit/a b.xlsx"
+        );
+        // 非法百分号序列：file_uri_to_path 返回 None，原样保留。
+        assert_eq!(
+            normalize_pasted_path("file:///home/%ZZ"),
+            "file:///home/%ZZ"
+        );
     }
 
     fn state_reports_s2_paths_and_s3_enabled_by_default() {

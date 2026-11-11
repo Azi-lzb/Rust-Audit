@@ -284,24 +284,53 @@ fn portal_diagnostic(error: &ashpd::Error) -> String {
     }
 }
 
-/// 把门户返回的 `file:///带%20空格` URI 解码为本地路径。
-#[cfg(target_os = "linux")]
-fn file_uri_to_path(uri: &str) -> Option<PathBuf> {
-    let rest = uri.strip_prefix("file://")?;
+/// 把 `file:///带%20空格` 的 URI 解码为本地路径。
+///
+/// 两个消费方：
+/// - Linux 门户（ashpd）返回的选中结果；
+/// - 用户从资源管理器/浏览器地址栏/结果工作簿超链接里复制出 `file://…`
+///   粘贴到页面内选择器的输入框（2026-11 现场问题：粘贴后必须手工删掉
+///   `file://` 前缀才能「前往」）。
+pub(crate) fn file_uri_to_path(uri: &str) -> Option<PathBuf> {
+    // file:// 后的主机段大小写不敏感（FILE://、File:// 也应命中）。
+    let rest = uri.get(7..).filter(|_| {
+        uri.get(..7)
+            .is_some_and(|part| part.eq_ignore_ascii_case("file://"))
+    })?;
+
     // 个别实现可能返回 file://localhost/path；去掉主机名段。
     let rest = match rest.strip_prefix("localhost") {
         Some(after_host) => after_host,
         None => rest,
     };
-    let decoded = percent_decode(rest)?;
+    // Windows 盘符形式 file:///C:/... 与 file://C:/...：去掉多余的起始斜杠，
+    // 只保留盘符开头，否则 PathBuf 会把它当根/UNC 路径。
+    let rest = {
+        let bytes = rest.as_bytes();
+        let mut slashes = 0usize;
+        while slashes < 3 && bytes.get(slashes) == Some(&b'/') {
+            slashes += 1;
+        }
+        let after = &rest[slashes..];
+        let looks_like_drive = after
+            .as_bytes()
+            .first()
+            .is_some_and(u8::is_ascii_alphabetic)
+            && after.as_bytes().get(1) == Some(&b':');
+        if looks_like_drive {
+            after.to_owned()
+        } else {
+            rest.to_owned()
+        }
+    };
+    let decoded = percent_decode(&rest)?;
     if decoded.is_empty() {
         return None;
     }
     Some(PathBuf::from(decoded))
 }
 
-#[cfg(target_os = "linux")]
-fn percent_decode(input: &str) -> Option<String> {
+pub(crate) fn percent_decode(input: &str) -> Option<String> {
     let bytes = input.as_bytes();
     let mut decoded = Vec::with_capacity(bytes.len());
     let mut index = 0;

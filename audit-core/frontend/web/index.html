@@ -1468,7 +1468,15 @@ async function pickHistoryConfig(){
 /* 把完整路径复制到剪贴板；http://127.0.0.1 属安全上下文，clipboard API 可用，
    失败时退回 execCommand 方案。 */
 async function copyPathToClipboard(p){
-  const text=String(p==null?'':p);
+  let text=String(p==null?'':p);
+  // 状态里若存过 file:// URI（如从结果簿超链接粘贴回来的值），复制时还原
+  // 成普通路径：剥前缀 + 百分号解码，避免用户拿到 file:///xxx 还得手删。
+  if(text.slice(0,7).toLowerCase()==='file://'){
+    let rest=text.slice(7);
+    if(rest.slice(0,9).toLowerCase()==='localhost'){rest=rest.slice(9);}
+    try{ rest=decodeURIComponent(rest); }catch(e){ /* 含非法编码时保留原样 */ }
+    text=rest;
+  }
   if(!text)return false;
   try{ await navigator.clipboard.writeText(text); return true; }
   catch(e){
