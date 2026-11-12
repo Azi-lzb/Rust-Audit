@@ -1,0 +1,11 @@
+时间：2026-11-12（Asia/Shanghai）
+执行者：Codex
+仓库/分支：Rust-Audit / main；基线 c79369b。
+授权：用户要求重新打包并 git push。
+修改范围：本次高级设置 UI 说明与条件格式阶段日志修正；对应修改记录。
+构建：build-release.bat 通过，release/offline/locked，CARGO_TARGET_DIR=F:\RustBuild\audit；存在旧 API、未使用代码警告，无编译错误。
+打包：全量版 AuditTools-windows-x64-full-20261112-165622.zip；S1S2 版 AuditTools-windows-x64-s1s2-20261112-165628.zip。
+验证：AuditTools.exe --version 返回 26.3.0.0；EXE 内新版界面/日志字符串存在；两个 ZIP CRC 完整，包内 EXE SHA-256 与 dist 新 EXE 相同，包含模板、外部参照表及 openpyxl worker；未跑 Cargo 测试套件或 GUI 手动验收。
+组件版本：沿用 26.3.0.0；设置与运行日志修正。
+WIP：本地性能报告、测试输出和调试脚本保留且不纳入提交。发布包在 ignored dist 内，不上传 Git。
+删除：无。可通过后续正常 Git 变更回滚本次局部改动。

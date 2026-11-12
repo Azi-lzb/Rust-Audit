@@ -1,0 +1,12 @@
+时间：2026-11-12（Asia/Shanghai）
+执行者：Codex
+仓库/分支/修改前后 commit：Rust-Audit / main / c79369b，未提交。
+目的：修正默认内置规则求值也显示“读取实际显示填充色”的误导日志。
+修改文件：audit-core/src/web_bridge.rs；新增本记录。
+修改内容：根据当前工作流是否传入 display_probe 分别输出 COM_DISPLAY 显示色扫描或内置 Rust 规则及扫描区域读取阶段。生产入口仅在 conditional_format_evaluator == COM_DISPLAY 时传入扫描器，默认 PYTHON 枚举实际对应 Rust 求值器。未调整业务路由、算法、计时和配置。
+组件版本：GUI 运行阶段日志说明修正；全局版本未改。
+验证：静态检查路由及调用链；git diff --check 通过。
+未执行：Cargo 编译或测试、GUI 运行验收及重新打包。现有 EXE 尚未包含修正。
+WIP：保留前一任务高级设置 index.html 改动、性能报告及所有已有测试输出。
+删除：无。回滚仅撤销此日志参数的局部修改。
+未提交、未 push。

@@ -3951,7 +3951,11 @@ where
                 publish_stage(
                     Some(item),
                     Some(accepted_index + 1),
-                    "读取条件格式区域实际显示填充色",
+                    if display_probe.is_some() {
+                        "读取条件格式区域实际显示填充色（COM_DISPLAY）"
+                    } else {
+                        "读取条件格式规则与扫描区域（内置 Rust 求值）"
+                    },
                 );
                 let extraction_started = Instant::now();
                 let conditional_workbook = s1_conditional_format_workbook(

@@ -1,0 +1,13 @@
+时间：2026-11-12（Asia/Shanghai）
+执行者：Codex
+修改前/后 commit：c79369b（未提交）；分支 main。
+WIP：保留已有性能报告、测试输出和调试脚本，不纳入本次修改。
+目的：设置界面准确呈现 betteroffice 优先及外部引擎可选的现有行为。
+修改：audit-core/frontend/web/index.html；新增本记录。
+变化：合并计算引擎卡片，明确 betteroffice 主计算选项、外部引擎覆盖与回退关系；LibreOffice 安装入口收进默认折叠的可选引擎菜单，移除 Linux 必装提示；纠正 pywin32、Python、WebView2 依赖说明；移除重复条件格式说明和无依据的完全一致承诺；修正恢复默认说明。保留现有设置键及事件处理，不改计算、复制或审核算法。
+组件版本：设置中心界面说明更新；未修改全局产品版本。
+验证：提取页面内联 JavaScript 后 node --check 通过；git diff --check 通过。首次语法检查受 Python 管道默认 GBK 编码影响，改为 UTF-8 后通过。
+未执行：Cargo 编译、测试套件、浏览器运行验收、EXE 打包。现有 dist EXE 尚不包含此次前端修改。
+删除：无文件删除。仅删除重复说明及旧卡片布局。
+回滚：按本次 diff 撤销上述前端局部变更，保留其他工作区文件。
+Git：未提交、未 push。
