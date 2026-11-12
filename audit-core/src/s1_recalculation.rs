@@ -149,6 +149,9 @@ impl S1RecalculationSession {
         output_path: impl AsRef<Path>,
     ) -> Result<S1RecalculationReport> {
         let bo_config = crate::bo_calc::BoCalcConfig::from_app();
+        crate::gui_diagnostics::trace("calculation_route", serde_json::json!({"file":input_path.as_ref(),
+            "engineRequest":self.engine_request,"betterofficeEnabled":bo_config.enabled,"rounds":bo_config.rounds,
+            "fallbackCom":bo_config.fallback_com,"fallbackLibreOffice":bo_config.fallback_libreoffice}));
         let mut bo_fallback_reason: Option<String> = None;
         if bo_config.enabled {
             match self.recalculate_betteroffice(
@@ -159,7 +162,7 @@ impl S1RecalculationSession {
                 Ok(report) => return Ok(report),
                 Err(error) => {
                     let reason = format!("{error:#}");
-
+                    crate::gui_diagnostics::trace("betteroffice_refused",serde_json::json!({"file":input_path.as_ref(),"reason":reason}));
                     if !self.bo_fallback_allowed(&bo_config) {
                         bail!("betteroffice 校验区域重算不可采用且未配置可用回退：{reason}");
                     }
@@ -387,6 +390,7 @@ impl S1RecalculationSession {
     }
 
     fn start_process(&mut self) -> Result<()> {
+        crate::gui_diagnostics::trace("office_worker_start",serde_json::json!({"engineRequest":self.engine_request,"nativeOffice":self.native_office}));
         let mut command = Command::new(&self.sidecar_path);
         // Keep automatic engine routing under the parent session so a stalled
         // COM call can be stopped before starting the bounded LibreOffice
@@ -467,6 +471,9 @@ impl S1RecalculationSession {
             "持久公式重算工作进程未就绪：{}",
             ready_line.trim()
         );
+        crate::gui_diagnostics::trace("office_worker_ready",serde_json::json!({"engine":ready["engine"],
+            "workerPid":self.child.as_ref().map(std::process::Child::id),"officePid":ready["engine_process_id"],
+            "comAvailable":ready["com_available"],"startupTimings":ready["startup_timings"]}));
         self.excel_process_id = ready
             .get("engine_process_id")
             .and_then(Value::as_u64)
@@ -515,6 +522,8 @@ impl S1RecalculationSession {
     }
 
     fn receive_response(&mut self) -> Result<String> {
+        crate::gui_diagnostics::trace("office_worker_ipc_wait",serde_json::json!({"engine":self.engine_request,
+            "workerPid":self.child.as_ref().map(std::process::Child::id)}));
         let timeout = recalculation_session_timeout();
         let response = self
             .responses
@@ -775,6 +784,8 @@ impl S1RecalculationSession {
 
 impl Drop for S1RecalculationSession {
     fn drop(&mut self) {
+        crate::gui_diagnostics::trace("office_session_shutdown",serde_json::json!({"engine":self.active_engine,
+            "workerPid":self.child.as_ref().map(std::process::Child::id),"officePid":self.excel_process_id}));
         let mut shutdown_acknowledged = !self.native_office;
         if let Some(stdin) = self.stdin.as_mut() {
             let _ = serde_json::to_writer(&mut *stdin, &serde_json::json!({"type":"shutdown"}));

@@ -1,0 +1,17 @@
+AuditTools GUI 日志内容与业务统计规范化
+
+完成日期：2026-11-13。仓库 Rust-Audit，分支 main，基线 999c543。
+
+改动：现有 GUI 日志分流，正常技术阶段写独立有界异步 JSONL；runId/currentWork/真实报告统计和最终摘要；错误业务化与重名文件定位；S1 既有计算/路由/COM/IPC 诊断节点；八个功能的启动失败摘要。正常仅保留开始、必要业务异常和最终摘要。审核异常、跳过、待重算、执行失败与结果发布分开，不虚构检查或通过数。
+
+没有修改审核规则、Excel 读写语义、引擎路由、计算算法、输出内容、顺序或 GUI 布局/交互。旧 Python、Rust-Tools 和真实输入未修改。
+
+实测：最终 Debug 构建成功；10 个实际 GUI/API 场景断言通过，S3-F03/F05 实际写入/拆表通过；真实七本 322 条结果前后逐格/Sheet/链接/合并区域一致，普通日志58减为2；真实129本全部完成，3352公式+257条件格式=3609条，与输出表行数相等，日志2条、开发事件1340条，输入哈希不变。批量摘要实际27分13.7秒，仅作Debug日志验收，不与旧Release比性能。
+
+测试：最终核心304 passed/0 failed/11 ignored。全workspace在lo-convert缺conditional_format模块处编译失败，修改前亦同。排除lo-convert完成525 passed/9 failed/24 ignored；失败保留，不降低断言或修改无关业务，详见验收文档。四份验收助手语法及git diff --check通过。Linux/打包/浏览器人工交互未测。
+
+文件：audit-core/src/{web_bridge.rs,gui_diagnostics.rs,lib.rs,bo_calc.rs,s1_recalculation.rs}；四份AUDITTOOLS_LOGGING_*.md；tests/compare/gui_logging_{acceptance,s3_acceptance,real_batch,output_parity}_20261112.py；本记录。
+
+完整证据：F:/RustBuild/audit/tmp/gui-logging-20261112。真实资料与诊断正文仅本地保留。
+
+保护：原index.html高级设置/LO隐藏入口修改未变，不纳入本轮提交；既有20261112_192503记录、性能报告和probe资料不纳入提交。无checkout/reset、无新分支/worktree；仅本地提交本轮14个文件，不push、不合并。

@@ -276,6 +276,11 @@ pub fn recalculate(source_copy: &Path, config: &BoCalcConfig) -> Result<BoCalcOu
         }));
     }
 
+    crate::gui_diagnostics::trace("betteroffice_calculation_complete", serde_json::json!({
+        "file":source_copy,"engine":"betteroffice","rounds":config.rounds,
+        "changedCells":changed_cells_total,"limitedCells":limited_cells,"errorCells":error_cells,
+        "openUs":open_elapsed.as_micros(),"calculateUs":calc_elapsed.as_micros(),"saveUs":save_elapsed.as_micros()
+    }));
     Ok(BoCalcOutcome {
         application: "betteroffice (pure Rust)",
         rounds_used: config.rounds,
