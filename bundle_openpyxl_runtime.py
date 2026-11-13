@@ -60,7 +60,10 @@ def main() -> int:
             continue
         target = dest / entry.name
         if entry.is_dir():
-            shutil.copytree(entry, target, dirs_exist_ok=True)
+            shutil.copytree(
+                entry, target, dirs_exist_ok=True,
+                ignore=shutil.ignore_patterns("site-packages", "__pycache__"),
+            )
         else:
             shutil.copy2(entry, target)
 

@@ -1,6 +1,6 @@
 use anyhow::{ensure, Context, Result};
 use roxmltree::Document;
-use rust_xlsxwriter::Workbook;
+use excel_writer::Workbook;
 use std::{
     env, fs,
     io::{Read, Write},
@@ -15,8 +15,8 @@ const MAIN_NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main
 #[test]
 fn cli_recalculates_formula_and_publishes_validated_xlsx() -> Result<()> {
     if !libreoffice_available() {
-        if env::var_os("LO_CONVERT_REQUIRE_LO_TEST").is_some() {
-            anyhow::bail!("LO_CONVERT_REQUIRE_LO_TEST is set but soffice is unavailable");
+        if env::var_os("AUDIT_REQUIRE_LO_TEST").is_some() {
+            anyhow::bail!("AUDIT_REQUIRE_LO_TEST is set but soffice is unavailable");
         }
         eprintln!("skipping LibreOffice CLI integration: soffice is unavailable");
         return Ok(());
@@ -46,7 +46,8 @@ fn cli_recalculates_formula_and_publishes_validated_xlsx() -> Result<()> {
     let input_dump = excel_reader::read_workbook(&input)?;
     let source_error = input_dump.sheets[0].values["A3"].clone();
 
-    let result = Command::new(env!("CARGO_BIN_EXE_lo-convert"))
+    let result = Command::new(env!("CARGO_BIN_EXE_AuditTools"))
+        .arg(audit_core::libreoffice_worker::WORKER_COMMAND)
         .args([
             "recalculate",
             "--input",
@@ -153,8 +154,8 @@ fn cli_recalculates_formula_and_publishes_validated_xlsx() -> Result<()> {
 #[test]
 fn cli_recalculates_a_workbook_batch_with_one_lo_conversion_invocation() -> Result<()> {
     if !libreoffice_available() {
-        if env::var_os("LO_CONVERT_REQUIRE_LO_TEST").is_some() {
-            anyhow::bail!("LO_CONVERT_REQUIRE_LO_TEST is set but soffice is unavailable");
+        if env::var_os("AUDIT_REQUIRE_LO_TEST").is_some() {
+            anyhow::bail!("AUDIT_REQUIRE_LO_TEST is set but soffice is unavailable");
         }
         eprintln!("skipping LibreOffice batch integration: soffice is unavailable");
         return Ok(());
@@ -185,7 +186,8 @@ fn cli_recalculates_a_workbook_batch_with_one_lo_conversion_invocation() -> Resu
     }
     fs::write(&pairs_file, pairs_text)?;
 
-    let result = Command::new(env!("CARGO_BIN_EXE_lo-convert"))
+    let result = Command::new(env!("CARGO_BIN_EXE_AuditTools"))
+        .arg(audit_core::libreoffice_worker::WORKER_COMMAND)
         .args([
             "recalculate-batch",
             "--pairs",
@@ -269,7 +271,8 @@ fn manual_s1_formula_recalculation_batch_performance_2_10_33() -> Result<()> {
 
         let per_book_started = std::time::Instant::now();
         for (input, output) in &pairs {
-            let result = Command::new(env!("CARGO_BIN_EXE_lo-convert"))
+            let result = Command::new(env!("CARGO_BIN_EXE_AuditTools"))
+                .arg(audit_core::libreoffice_worker::WORKER_COMMAND)
                 .args([
                     "recalculate",
                     "--input",
@@ -308,7 +311,8 @@ fn manual_s1_formula_recalculation_batch_performance_2_10_33() -> Result<()> {
         }
         fs::write(&pairs_file, pairs_text)?;
         let batch_started = std::time::Instant::now();
-        let batch_result = Command::new(env!("CARGO_BIN_EXE_lo-convert"))
+        let batch_result = Command::new(env!("CARGO_BIN_EXE_AuditTools"))
+            .arg(audit_core::libreoffice_worker::WORKER_COMMAND)
             .args([
                 "recalculate-batch",
                 "--pairs",
@@ -477,8 +481,20 @@ fn libreoffice_available() -> bool {
 fn temp_dir() -> Result<PathBuf> {
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
     Ok(env::temp_dir().join(format!(
-        "lo_convert_integration_{}_{}",
+        "audit_lo_integration_{}_{}",
         std::process::id(),
         nonce
     )))
+}
+
+#[test]
+fn private_lo_worker_rejects_invalid_request_without_starting_gui() -> Result<()> {
+    let output = Command::new(env!("CARGO_BIN_EXE_AuditTools"))
+        .arg(audit_core::libreoffice_worker::WORKER_COMMAND)
+        .args(["recalculate", "--invalid", "value"])
+        .output()?;
+    ensure!(!output.status.success());
+    ensure!(output.stdout.is_empty());
+    ensure!(String::from_utf8_lossy(&output.stderr).contains("unknown worker option"));
+    Ok(())
 }

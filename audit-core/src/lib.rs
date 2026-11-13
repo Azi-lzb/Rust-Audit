@@ -20,6 +20,7 @@ pub mod excel_open_repair;
 pub mod excel_route;
 pub mod faq;
 pub(crate) mod gui_diagnostics;
+pub mod libreoffice_worker;
 pub mod models;
 pub mod name_config;
 pub mod native_file_dialog;

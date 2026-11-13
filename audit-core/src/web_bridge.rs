@@ -713,26 +713,62 @@ fn router(state: AppState) -> Router {
         .with_state(state)
 }
 
-/// 发行版档位：默认 S1+S2+S3 全量。
-///
-/// 用「可执行文件同级的 `edition-s1s2` 标记文件」切换为 S1+S2 版，
-/// 避免为两个版本分别构建（同一 exe，打包时放/不放标记文件即可）。
-/// 若标记文件内容为 `s1s2s3` 则仍按全量处理，便于日后扩展。
+/// Windows embeds its edition in the EXE so a stale slim marker cannot hide S3.
+/// Linux retains its existing package-managed marker convention.
 fn distribution_profile() -> &'static str {
-    let Ok(executable) = std::env::current_exe() else {
-        return "s1s2s3";
-    };
-    let Some(directory) = executable.parent() else {
-        return "s1s2s3";
-    };
-    let marker = directory.join("edition-s1s2");
-    if !marker.is_file() {
-        return "s1s2s3";
+    let executable = std::env::current_exe().ok();
+    distribution_profile_at(executable.as_deref().and_then(std::path::Path::parent))
+}
+
+fn distribution_profile_at(directory: Option<&std::path::Path>) -> &'static str {
+    #[cfg(windows)]
+    {
+        let _ = directory;
+        if cfg!(feature = "windows-s1s2") {
+            "s1s2"
+        } else {
+            "s1s2s3"
+        }
     }
-    match std::fs::read_to_string(&marker) {
-        Ok(text) if text.trim().eq_ignore_ascii_case("s1s2s3") => "s1s2s3",
-        Ok(_) => "s1s2",
-        Err(_) => "s1s2",
+    #[cfg(not(windows))]
+    {
+        let Some(directory) = directory else {
+            return "s1s2s3";
+        };
+        let marker = directory.join("edition-s1s2");
+        if !marker.is_file() {
+            return "s1s2s3";
+        }
+        match std::fs::read_to_string(&marker) {
+            Ok(text) if text.trim().eq_ignore_ascii_case("s1s2s3") => "s1s2s3",
+            Ok(_) | Err(_) => "s1s2",
+        }
+    }
+}
+
+#[cfg(all(test, windows))]
+mod windows_edition_tests {
+    #[test]
+    fn embedded_edition_ignores_legacy_slim_markers() {
+        let directory = std::env::temp_dir().join(format!(
+            "audit-edition-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        let expected = if cfg!(feature = "windows-s1s2") {
+            "s1s2"
+        } else {
+            "s1s2s3"
+        };
+        for content in ["s1s2", "s1s2s3", "\u{feff}s1s2", "invalid"] {
+            std::fs::write(directory.join("edition-s1s2"), content).unwrap();
+            assert_eq!(super::distribution_profile_at(Some(&directory)), expected);
+        }
+        std::fs::remove_dir_all(directory).unwrap();
     }
 }
 
@@ -1868,16 +1904,14 @@ fn start_s1_f1_workflow(state: &AppState, args: &[Value]) -> std::result::Result
     let batch_id = format!("S1F1-{stamp}");
     let run_directory = output_directory.join(format!("S1-F1_审核结果_{stamp}"));
     let planned_result_path = run_directory.join("汇总核查表校验.xlsx");
-    let sidecar_path = if cfg!(windows) {
-        None
-    } else {
-        values
-            .get("sidecar")
-            .and_then(Value::as_str)
-            .filter(|path| !path.trim().is_empty())
-            .map(PathBuf::from)
-            .or_else(find_s1_recalculation_sidecar)
-    };
+    let sidecar_path =
+        if cfg!(windows) {
+            None
+        } else {
+            Some(std::env::current_exe().map_err(|error| {
+                ApiError::internal(format!("定位 Audit 内置计算 worker：{error}"))
+            })?)
+        };
     let settings = crate::app_settings::AppSettings::load();
     let conditional_format_source = settings.s1_conditional_format_source().to_owned();
     let request_preparation_us = request_preparation_started.elapsed().as_micros();
@@ -1963,7 +1997,12 @@ fn start_s1_f1_workflow(state: &AppState, args: &[Value]) -> std::result::Result
         ui.value["s1F1OutputPath"] = json!("");
         ui.value["status"] = json!("S1-F01 启动失败");
         push_error_log(&mut ui.value, format!("启动 S1-F01 失败：{error}"));
-        publish_start_failure(&mut ui.value, "S1-F01", request_preparation_started, &error.to_string());
+        publish_start_failure(
+            &mut ui.value,
+            "S1-F01",
+            request_preparation_started,
+            &error.to_string(),
+        );
         return Err(ApiError::internal(format!("启动 S1-F01 失败：{error}")));
     }
     Ok(json!({"accepted": true}))
@@ -2056,7 +2095,7 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest, task_started
         template_matching_us += template_match_started.elapsed().as_micros();
         let file_report = match template_result {
             Err(error) => {
-            crate::gui_diagnostics::trace_error("run_s1_f1_worker", &error);
+                crate::gui_diagnostics::trace_error("run_s1_f1_worker", &error);
                 skipped += 1;
                 json!({
                     "sourceFile": source_name,
@@ -2207,7 +2246,10 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest, task_started
         let mut ui = state.lock();
         if status.starts_with("skipped") {
             push_detail_log(&mut ui.value, message);
-            push_warn_log(&mut ui.value, format!("跳过：{source_label}，{}",business_failure_reason(reason)));
+            push_warn_log(
+                &mut ui.value,
+                format!("跳过：{source_label}，{}", business_failure_reason(reason)),
+            );
         } else {
             push_detail_log(&mut ui.value, message);
         }
@@ -2407,9 +2449,18 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest, task_started
                 "performanceTimings": performance_timings
             });
             for file in &files {
-                let name = file["sourcePath"].as_str().map(Path::new)
-                    .map(|path| path.strip_prefix(&request.source_directory).unwrap_or(path).to_string_lossy().into_owned())
-                    .unwrap_or_else(|| file["sourceFile"].as_str().unwrap_or("未知文件").to_owned());
+                let name = file["sourcePath"]
+                    .as_str()
+                    .map(Path::new)
+                    .map(|path| {
+                        path.strip_prefix(&request.source_directory)
+                            .unwrap_or(path)
+                            .to_string_lossy()
+                            .into_owned()
+                    })
+                    .unwrap_or_else(|| {
+                        file["sourceFile"].as_str().unwrap_or("未知文件").to_owned()
+                    });
                 let status = file["status"].as_str().unwrap_or("未知状态");
                 let reason = file["reason"].as_str().unwrap_or("");
                 let message = format!(
@@ -2425,13 +2476,29 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest, task_started
                     || normalized_status.contains("waiting_manual_recalc")
                 {
                     push_detail_log(&mut ui.value, message);
-                    let location=file["sourcePath"].as_str().map(Path::new)
-                        .map(|path|path.strip_prefix(&request.source_directory).unwrap_or(path).to_string_lossy().into_owned())
-                        .unwrap_or_else(||name.to_owned());
-                    push_error_log(&mut ui.value,format!("未完成：{location}，{}",business_failure_reason(reason)));
+                    let location = file["sourcePath"]
+                        .as_str()
+                        .map(Path::new)
+                        .map(|path| {
+                            path.strip_prefix(&request.source_directory)
+                                .unwrap_or(path)
+                                .to_string_lossy()
+                                .into_owned()
+                        })
+                        .unwrap_or_else(|| name.to_owned());
+                    push_error_log(
+                        &mut ui.value,
+                        format!("未完成：{location}，{}", business_failure_reason(reason)),
+                    );
                 } else if normalized_status == "partial" {
                     push_detail_log(&mut ui.value, message);
-                    push_warn_log(&mut ui.value,format!("部分审核未完成：{name}，{}",business_failure_reason(reason)));
+                    push_warn_log(
+                        &mut ui.value,
+                        format!(
+                            "部分审核未完成：{name}，{}",
+                            business_failure_reason(reason)
+                        ),
+                    );
                 } else if normalized_status.starts_with("skipped") {
                     push_detail_log(&mut ui.value, message);
                 } else {
@@ -2441,7 +2508,11 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest, task_started
             ui.value["status"] = json!(if output.result_path.is_none() {
                 format!("S1-F01 审核失败（未生成结果）：{} 个待人工重算、{} 个部分审核、{} 个失败；总耗时 {:.1} 秒",
                     output.waiting_manual_recalc, output.partial_files, output.failed_files, end_to_end_total_seconds)
-            } else if output.waiting_manual_recalc > 0 || output.partial_files > 0 || output.failed_files > 0 || skipped > 0 {
+            } else if output.waiting_manual_recalc > 0
+                || output.partial_files > 0
+                || output.failed_files > 0
+                || skipped > 0
+            {
                 format!(
                     "S1-F01 部分完成：{} 个待人工重算、{} 个部分审核、{} 个失败；总用时 {:.1} 秒；已生成结果 {}",
                     output.waiting_manual_recalc,
@@ -2610,13 +2681,25 @@ fn run_s1_f1_worker(state: AppState, request: S1F1PreflightRequest, task_started
                 "error": reason
             });
             for file in &files {
-                let name = file["sourcePath"].as_str().map(Path::new)
-                    .map(|path| path.strip_prefix(&request.source_directory).unwrap_or(path).to_string_lossy().into_owned())
-                    .unwrap_or_else(|| file["sourceFile"].as_str().unwrap_or("未知文件").to_owned());
+                let name = file["sourcePath"]
+                    .as_str()
+                    .map(Path::new)
+                    .map(|path| {
+                        path.strip_prefix(&request.source_directory)
+                            .unwrap_or(path)
+                            .to_string_lossy()
+                            .into_owned()
+                    })
+                    .unwrap_or_else(|| {
+                        file["sourceFile"].as_str().unwrap_or("未知文件").to_owned()
+                    });
                 let status = file["status"].as_str().unwrap_or("未知状态");
                 if status == "review_failed" {
-                    push_detail_log(&mut ui.value,format!("{name}：{reason}"));
-                    push_error_log(&mut ui.value,format!("审核未完成：{name}，{}",business_failure_reason(&reason)));
+                    push_detail_log(&mut ui.value, format!("{name}：{reason}"));
+                    push_error_log(
+                        &mut ui.value,
+                        format!("审核未完成：{name}，{}", business_failure_reason(&reason)),
+                    );
                 } else {
                     push_detail_log(
                         &mut ui.value,
@@ -3594,14 +3677,20 @@ fn execute_s1_f1_workflow(
             }?;
             log_s1_excel_open_repair(state, &item.source, &outcome);
             match &outcome {
-                S1FormulaCopyOutcome::Recalculated(report) => crate::gui_diagnostics::trace("copy_and_recalculation_complete", json!({
+                S1FormulaCopyOutcome::Recalculated(report) => crate::gui_diagnostics::trace(
+                    "copy_and_recalculation_complete",
+                    json!({
                     "file":item.source,"engine":report.recalculation.engine,"editEngine":report.edit.engine.to_string(),
                     "formulaCells":report.formula_cells_prepared,"clearedCaches":report.cached_values_cleared,
                     "importedSheets":report.external_sheets_imported,"editElapsedMs":report.edit.elapsed_ms,
-                    "recalculationElapsedMs":report.recalculation.elapsed_ms})),
-                S1FormulaCopyOutcome::WaitingManualRecalc(report) => crate::gui_diagnostics::trace("calculation_incomplete",json!({
+                    "recalculationElapsedMs":report.recalculation.elapsed_ms}),
+                ),
+                S1FormulaCopyOutcome::WaitingManualRecalc(report) => crate::gui_diagnostics::trace(
+                    "calculation_incomplete",
+                    json!({
                     "file":item.source,"reason":report.reason,"editEngine":report.edit.engine.to_string(),
-                    "formulaCells":report.formula_cells_prepared,"clearedCaches":report.cached_values_cleared})),
+                    "formulaCells":report.formula_cells_prepared,"clearedCaches":report.cached_values_cleared}),
+                ),
             }
             Ok(outcome)
         },
@@ -4524,27 +4613,6 @@ fn web_path_identity(path: &Path) -> String {
     {
         identity
     }
-}
-
-fn find_s1_recalculation_sidecar() -> Option<PathBuf> {
-    if let Some(configured) = std::env::var_os("AUDIT_S1_RECALC_SIDECAR") {
-        let path = PathBuf::from(configured);
-        if path.is_file() {
-            return fs::canonicalize(path).ok();
-        }
-    }
-    let executable = std::env::current_exe().ok()?;
-    let parent = executable.parent()?;
-    let name = if cfg!(windows) {
-        "lo-convert.exe"
-    } else {
-        "lo-convert"
-    };
-    let candidate = parent.join(name);
-    candidate
-        .is_file()
-        .then(|| fs::canonicalize(candidate).ok())
-        .flatten()
 }
 
 fn start_dag_flow(state: &AppState, args: &[Value]) -> std::result::Result<Value, ApiError> {
@@ -5620,7 +5688,8 @@ fn run_s3_explanation_export_worker(
                     started.elapsed().as_millis()
                 ),
             );
-            ui.value["runStatistics"] = json!({"exportedExplanationRows":report.selected_rows,"resultPublished":true});
+            ui.value["runStatistics"] =
+                json!({"exportedExplanationRows":report.selected_rows,"resultPublished":true});
             publish_run_summary(
                 &mut ui.value,
                 "S3-F02",
@@ -6158,7 +6227,9 @@ fn check_central_forms_config(state: &AppState) -> std::result::Result<Value, Ap
     );
     let elapsed_ms = started.elapsed().as_millis();
     let mut ui = state.lock();
-    if ui.value["busy"] != true { begin_run_diagnostics(&mut ui.value, "S3-F05-CONFIG-CHECK"); }
+    if ui.value["busy"] != true {
+        begin_run_diagnostics(&mut ui.value, "S3-F05-CONFIG-CHECK");
+    }
     push_log(
         &mut ui.value,
         format!(
@@ -6218,7 +6289,9 @@ fn check_central_common_config(state: &AppState) -> std::result::Result<Value, A
     );
     let elapsed_ms = started.elapsed().as_millis();
     let mut ui = state.lock();
-    if ui.value["busy"] != true { begin_run_diagnostics(&mut ui.value, "S3-COMMON-CONFIG-CHECK"); }
+    if ui.value["busy"] != true {
+        begin_run_diagnostics(&mut ui.value, "S3-COMMON-CONFIG-CHECK");
+    }
     push_log(
         &mut ui.value,
         format!(
@@ -6283,7 +6356,9 @@ fn check_central_expression_config(state: &AppState) -> std::result::Result<Valu
     );
     let elapsed_ms = started.elapsed().as_millis();
     let mut ui = state.lock();
-    if ui.value["busy"] != true { begin_run_diagnostics(&mut ui.value, "S3-F01-CONFIG-CHECK"); }
+    if ui.value["busy"] != true {
+        begin_run_diagnostics(&mut ui.value, "S3-F01-CONFIG-CHECK");
+    }
     push_log(
         &mut ui.value,
         format!(
@@ -6334,7 +6409,9 @@ fn check_central_cross_formulas(state: &AppState) -> std::result::Result<Value, 
     );
     let elapsed_ms = started.elapsed().as_millis();
     let mut ui = state.lock();
-    if ui.value["busy"] != true { begin_run_diagnostics(&mut ui.value, "S3-F04-CONFIG-CHECK"); }
+    if ui.value["busy"] != true {
+        begin_run_diagnostics(&mut ui.value, "S3-F04-CONFIG-CHECK");
+    }
     push_log(
         &mut ui.value,
         format!(
@@ -6837,7 +6914,9 @@ fn inspect_template_formulas(state: &AppState) -> std::result::Result<Value, Api
     let internal_count = report.internal_names.len();
     let value = serde_json::to_value(report)
         .map_err(|error| ApiError::internal(format!("序列化模板检查结果失败：{error}")))?;
-    if ui.value["busy"] != true { begin_run_diagnostics(&mut ui.value, "S1-TEMPLATE-CHECK"); }
+    if ui.value["busy"] != true {
+        begin_run_diagnostics(&mut ui.value, "S1-TEMPLATE-CHECK");
+    }
     push_log(
         &mut ui.value,
         format!(
@@ -6936,7 +7015,9 @@ fn check_period_audit_config(state: &AppState) -> std::result::Result<Value, Api
         .map_err(|error| ApiError::internal(format!("序列化配置检查结果失败：{error}")))?;
     let mut ui = state.lock();
     ui.value["periodConfigCheck"] = value.clone();
-    if ui.value["busy"] != true { begin_run_diagnostics(&mut ui.value, "S2-CONFIG-CHECK"); }
+    if ui.value["busy"] != true {
+        begin_run_diagnostics(&mut ui.value, "S2-CONFIG-CHECK");
+    }
     push_log(
         &mut ui.value,
         format!(
@@ -7975,7 +8056,9 @@ fn log_timestamp() -> String {
 /// 是开发诊断行（默认隐藏），级别照记以便筛选。
 fn push_log_entry(state: &mut Value, message: String, level: &str, detail: bool) {
     crate::gui_diagnostics::event(state, level, detail, &message);
-    if detail { return; }
+    if detail {
+        return;
+    }
     let is_repeated_tail = state
         .get("log")
         .and_then(Value::as_array)
@@ -8097,18 +8180,39 @@ fn push_error_log(state: &mut Value, message: String) {
 /// This never determines task state, counters, retries or audit conclusions.
 fn business_failure_reason(reason: &str) -> String {
     let lower = reason.to_ascii_lowercase();
-    let message = if reason.contains("生成审核核查表失败") || reason.contains("结果工作簿") && reason.contains("保存失败") {
+    let message = if reason.contains("生成审核核查表失败")
+        || reason.contains("结果工作簿") && reason.contains("保存失败")
+    {
         "结果文件未能保存，请检查输出位置和文件占用情况"
     } else if lower.contains("calamine read failed") || lower.contains("os error 32") {
         "文件无法读取，请检查文件格式和占用情况"
-    } else if reason.contains("公式复制或重算准备失败") || reason.contains("复制保护校验") || reason.contains("导入区域公式") || reason.contains("完整性校验失败") {
+    } else if reason.contains("公式复制或重算准备失败")
+        || reason.contains("复制保护校验")
+        || reason.contains("导入区域公式")
+        || reason.contains("完整性校验失败")
+    {
         "校验内容复制或完整性检查未完成，未发布该文件的审核结果"
-    } else if reason.contains("重算") || reason.contains("公式缓存") || lower.contains("com call") || lower.contains("calculate") {
+    } else if reason.contains("重算")
+        || reason.contains("公式缓存")
+        || lower.contains("com call")
+        || lower.contains("calculate")
+    {
         "公式计算未完成，相关审核尚未完成；请检查可用的计算程序或查看诊断记录"
-    } else if lower.contains("ooxml") || lower.contains("openpyxl") || lower.contains("umya") || lower.contains("excel-core") || lower.contains("no qualified backend") {
+    } else if lower.contains("ooxml")
+        || lower.contains("openpyxl")
+        || lower.contains("umya")
+        || lower.contains("excel-core")
+        || lower.contains("no qualified backend")
+    {
         "文件处理未完成，具体原因请查看诊断记录"
     } else {
-        return reason.lines().next().unwrap_or("处理未完成").chars().take(240).collect();
+        return reason
+            .lines()
+            .next()
+            .unwrap_or("处理未完成")
+            .chars()
+            .take(240)
+            .collect();
     };
     message.to_owned()
 }
@@ -8121,14 +8225,23 @@ fn clear_run_summary(state: &mut Value, feature: &str) {
 
 fn begin_run_diagnostics(state: &mut Value, feature: &str) {
     static RUN_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let id = format!("gui-run-{}-{}-{}", chrono::Local::now().format("%Y%m%dT%H%M%S%.9f"),
-        std::process::id(), RUN_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
+    let id = format!(
+        "gui-run-{}-{}-{}",
+        chrono::Local::now().format("%Y%m%dT%H%M%S%.9f"),
+        std::process::id(),
+        RUN_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    );
     state["runId"] = json!(id);
     state["runFeature"] = json!(feature);
     state["diagnosticSequence"] = json!(0);
     state["diagnosticIncomplete"] = json!(false);
-    let settings_path = PathBuf::from(crate::app_settings::AppSettings::settings_path_for_display());
-    state["diagnosticLogPath"] = json!(settings_path.parent().unwrap_or(Path::new(".")).join("diagnostics").join(format!("{id}.jsonl")));
+    let settings_path =
+        PathBuf::from(crate::app_settings::AppSettings::settings_path_for_display());
+    state["diagnosticLogPath"] = json!(settings_path
+        .parent()
+        .unwrap_or(Path::new("."))
+        .join("diagnostics")
+        .join(format!("{id}.jsonl")));
     let configuration = json!({"event":"run_started", "advancedSettings": state["advancedSettings"],
         "conditionalFormatEvaluator": state["conditionalFormatEvaluator"],
         "conditionalFormatSource": state["s1ConditionalFormatSource"],
@@ -8137,8 +8250,17 @@ fn begin_run_diagnostics(state: &mut Value, feature: &str) {
 }
 
 fn publish_start_failure(state: &mut Value, feature: &str, started: Instant, reason: &str) {
-    state["runStatistics"] = json!({"executionFailed":true,"taskStarted":false,"resultPublished":false});
-    publish_run_summary(state, feature, format!("任务启动失败；结果未生成；总耗时 {}；原因：{}", format_elapsed(started.elapsed()), reason));
+    state["runStatistics"] =
+        json!({"executionFailed":true,"taskStarted":false,"resultPublished":false});
+    publish_run_summary(
+        state,
+        feature,
+        format!(
+            "任务启动失败；结果未生成；总耗时 {}；原因：{}",
+            format_elapsed(started.elapsed()),
+            reason
+        ),
+    );
 }
 
 fn publish_run_summary(state: &mut Value, feature: &str, summary: String) {
@@ -8265,18 +8387,30 @@ mod tests {
     #[test]
     fn startup_failure_summary_does_not_invent_file_outcomes() {
         let mut state = serde_json::json!({"log":[],"logVersion":0});
-        super::publish_start_failure(&mut state, "S3-F05", std::time::Instant::now(), "线程无法启动");
+        super::publish_start_failure(
+            &mut state,
+            "S3-F05",
+            std::time::Instant::now(),
+            "线程无法启动",
+        );
         assert_eq!(state["runStatistics"]["executionFailed"], true);
         assert_eq!(state["runStatistics"]["taskStarted"], false);
         assert!(state["runStatistics"].get("filesFailed").is_none());
-        assert!(state["lastRunSummary"]["text"].as_str().unwrap().contains("总耗时"));
+        assert!(state["lastRunSummary"]["text"]
+            .as_str()
+            .unwrap()
+            .contains("总耗时"));
     }
     #[test]
     fn copy_integrity_failure_is_not_reported_as_calculation_failure() {
-        let reason = super::business_failure_reason("公式复制或重算准备失败：导入区域公式与预期不一致；复制保护校验");
+        let reason = super::business_failure_reason(
+            "公式复制或重算准备失败：导入区域公式与预期不一致；复制保护校验",
+        );
         assert!(reason.contains("复制或完整性"));
         assert!(!reason.contains("公式计算未完成"));
-        let locked = super::business_failure_reason("公式复制或重算准备失败：读取 S1 重算源公式：Calamine read failed (os error 32)");
+        let locked = super::business_failure_reason(
+            "公式复制或重算准备失败：读取 S1 重算源公式：Calamine read failed (os error 32)",
+        );
         assert!(locked.contains("文件无法读取"));
         assert!(!locked.contains("公式计算未完成"));
     }
@@ -8309,23 +8443,37 @@ mod tests {
     };
 
     fn captured_run_logs(state: &serde_json::Value) -> Vec<serde_json::Value> {
-        assert!(crate::gui_diagnostics::flush(), "diagnostic writer must finish before capture");
+        assert!(
+            crate::gui_diagnostics::flush(),
+            "diagnostic writer must finish before capture"
+        );
         let mut entries = state["log"].as_array().unwrap().clone();
-        assert!(entries.iter().all(|entry| entry["detail"] != true), "technical events must not enter the GUI log");
+        assert!(
+            entries.iter().all(|entry| entry["detail"] != true),
+            "technical events must not enter the GUI log"
+        );
         if let Some(path) = state["diagnosticLogPath"].as_str() {
             let text = fs::read_to_string(path).expect("persistent developer journal");
             for line in text.lines() {
-                let event: serde_json::Value = serde_json::from_str(line).expect("diagnostic JSONL");
-                assert_eq!(event["runId"],state["runId"]);
+                let event: serde_json::Value =
+                    serde_json::from_str(line).expect("diagnostic JSONL");
+                assert_eq!(event["runId"], state["runId"]);
                 if event["technical"] == true {
-                    entries.push(json!({"text":event["message"],"detail":true,"level":event["level"]}));
+                    entries.push(
+                        json!({"text":event["message"],"detail":true,"level":event["level"]}),
+                    );
                 }
             }
             if let Some(directory) = std::env::var_os("AUDIT_LOGGING_TEST_CAPTURE") {
-                let directory=PathBuf::from(directory); fs::create_dir_all(&directory).unwrap();
-                let id=state["runId"].as_str().unwrap();
-                fs::write(directory.join(format!("{id}.state.json")),serde_json::to_vec_pretty(state).unwrap()).unwrap();
-                fs::write(directory.join(format!("{id}.jsonl")),text).unwrap();
+                let directory = PathBuf::from(directory);
+                fs::create_dir_all(&directory).unwrap();
+                let id = state["runId"].as_str().unwrap();
+                fs::write(
+                    directory.join(format!("{id}.state.json")),
+                    serde_json::to_vec_pretty(state).unwrap(),
+                )
+                .unwrap();
+                fs::write(directory.join(format!("{id}.jsonl")), text).unwrap();
             }
         }
         entries
@@ -8431,16 +8579,19 @@ mod tests {
         let path = root.join("gui-run-separation.jsonl");
         let mut state = json!({"log":[], "logVersion":0,"runId":"separation","runFeature":"S1-F01",
             "diagnosticLogPath":path,"showRunDetailLogs":true,"currentWork":{"sheet":"真实工作表"}});
-        super::push_detail_log(&mut state,"worker/cache/COM technical event".to_owned());
-        push_log(&mut state,"开始审核".to_owned());
+        super::push_detail_log(&mut state, "worker/cache/COM technical event".to_owned());
+        push_log(&mut state, "开始审核".to_owned());
         assert!(crate::gui_diagnostics::flush());
-        let records: Vec<serde_json::Value> = std::fs::read_to_string(&path).unwrap().lines()
-            .map(|line|serde_json::from_str(line).unwrap()).collect();
-        assert_eq!(state["log"].as_array().unwrap().len(),1);
-        assert_eq!(state["log"][0]["text"],"开始审核");
-        assert_eq!(records.len(),2);
-        assert_eq!(records[0]["runId"],"separation");
-        assert_eq!(records[0]["currentWork"]["sheet"],"真实工作表");
+        let records: Vec<serde_json::Value> = std::fs::read_to_string(&path)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(state["log"].as_array().unwrap().len(), 1);
+        assert_eq!(state["log"][0]["text"], "开始审核");
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0]["runId"], "separation");
+        assert_eq!(records[0]["currentWork"]["sheet"], "真实工作表");
         assert!(records[0]["technical"].as_bool().unwrap());
         std::fs::remove_dir_all(root).unwrap();
     }

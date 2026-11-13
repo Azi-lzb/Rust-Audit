@@ -7,15 +7,17 @@
 # 布局（用户解压即可双击运行）：
 #   <root>/
 #     AuditTools.exe            双击即启动界面（无参数默认 serve）
-#     config-real/*.xlsx        真实配置（S1S2 版只含 1./2.）
-#     libexec/.../openpyxl_worker.py
+#     config/*.xlsx    新版默认配置；启动时仅补齐 config-real 缺失项
+#     libexec/audittools/openpyxl/worker/openpyxl_worker.py
+#     libexec/audittools/openpyxl/runtime/python.exe + Python/Openpyxl runtime
 #     使用说明.docx
-#     创建快捷方式.bat         双击后加到开始菜单/桌面
-#     [edition-s1s2]            仅 S1S2 版：界面只显示 S1/S2
+#     版次内置于 EXE，不分发外部标记文件
 
 param(
     [ValidateSet('full', 's1s2')]
-    [string]$Edition = 'full'
+    [string]$Edition = 'full',
+    [switch]$ValidateOnly,
+    [string]$PythonExecutable = 'python'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -38,13 +40,6 @@ $s1s2ConfigFiles = @(
     '2.报表采集系统_配置.xlsx'
 )
 
-foreach ($name in $configFiles) {
-    $source = Join-Path $configSource $name
-    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
-        throw "Required configuration is missing: $source"
-    }
-}
-
 # GUI 默认绑定（settings.json 播种）依赖这两项随包分发：
 # S1/S2 的「大集中系统数据」外部文件与 S1 模板文件目录。
 $externalSource = Join-Path $configSource '外部文件-大集中相关数据.xlsx'
@@ -66,9 +61,48 @@ if ($Edition -eq 's1s2') {
     $editionTag = 'full'
 }
 
+# Validate only the configuration files this edition actually ships.
+foreach ($name in $includedConfigs) {
+    $source = Join-Path $configSource $name
+    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
+        throw "Required configuration is missing: $source"
+    }
+}
+
+foreach ($required in @(
+    (Join-Path $dist 'AuditTools.exe'),
+    (Join-Path $root 'bundle_openpyxl_runtime.py'),
+    (Join-Path $root 'crates\excel-editor\python\openpyxl_worker.py'),
+    (Join-Path $dist 'AuditTools.build.json')
+)) {
+    if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
+        throw "Required package input is missing: $required"
+    }
+}
+
+# Build metadata is local packaging evidence, never shipped in the archive.
+$buildInfo = Get-Content -LiteralPath (Join-Path $dist 'AuditTools.build.json') -Raw | ConvertFrom-Json
+$hashStream = [IO.File]::OpenRead((Join-Path $dist 'AuditTools.exe'))
+$hasher = [Security.Cryptography.SHA256]::Create()
+try {
+    $exeHash = [BitConverter]::ToString($hasher.ComputeHash($hashStream)).Replace('-', '')
+} finally {
+    $hashStream.Dispose()
+    $hasher.Dispose()
+}
+if ($buildInfo.schema_version -ne 1 -or $buildInfo.edition -ine $Edition -or $buildInfo.sha256 -ine $exeHash) {
+    throw "EXE edition/hash does not match package. Run build-release.bat $Edition first."
+}
+
 $guide = Join-Path $docsDir $guideName
 if (-not (Test-Path -LiteralPath $guide -PathType Leaf)) {
     throw "使用说明缺失：$guide（先运行 probe/make_docs.py）"
+}
+
+# Resource preflight only: no temporary stage, archive, runtime execution or publication.
+if ($ValidateOnly) {
+    Write-Output "Validation passed: edition=$editionTag; configs=$($includedConfigs.Count); binary=AuditTools.exe"
+    return
 }
 
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
@@ -80,7 +114,7 @@ if (Test-Path -LiteralPath $archive) {
 $stage = Join-Path ([IO.Path]::GetTempPath()) ('audit-package-' + [Guid]::NewGuid().ToString('N'))
 try {
     New-Item -ItemType Directory -Path $stage -Force | Out-Null
-    $stageConfig = Join-Path $stage 'config-real'
+    $stageConfig = Join-Path $stage 'config'
     New-Item -ItemType Directory -Path $stageConfig -Force | Out-Null
     $stageWorker = Join-Path $stage 'libexec\audittools\openpyxl\worker'
     New-Item -ItemType Directory -Path $stageWorker -Force | Out-Null
@@ -88,18 +122,27 @@ try {
     Copy-Item -LiteralPath (Join-Path $dist 'AuditTools.exe') -Destination $stage
     Copy-Item -LiteralPath (Join-Path $root 'crates\excel-editor\python\openpyxl_worker.py') `
         -Destination (Join-Path $stageWorker 'openpyxl_worker.py')
+    # Mandatory offline runtime: fail the package rather than ship a worker-only fallback.
+    $stageRuntime = Join-Path $stage 'libexec\audittools\openpyxl\runtime'
+    & $PythonExecutable (Join-Path $root 'bundle_openpyxl_runtime.py') --dest $stageRuntime
+    if ($LASTEXITCODE -ne 0) {
+        throw "Bundling Python/Openpyxl failed (exit $LASTEXITCODE); no archive created."
+    }
+    $runtimePython = Join-Path $stageRuntime 'python.exe'
+    if (-not (Test-Path -LiteralPath $runtimePython -PathType Leaf)) {
+        throw "Bundled Python interpreter is missing: $runtimePython"
+    }
+    # Verify from the destination layout using the same isolated mode as the worker.
+    & $runtimePython -I -c "import struct, openpyxl, et_xmlfile; assert struct.calcsize('P') == 8, 'Windows x64 runtime required'"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Bundled Python/Openpyxl validation failed; no archive created."
+    }
     Copy-Item -LiteralPath $guide -Destination (Join-Path $stage '使用说明.docx')
-    # 开始菜单 / 桌面快捷方式创建脚本（免安装布局，仅写当前用户）。
-    Copy-Item -LiteralPath (Join-Path $root '创建快捷方式.bat') -Destination $stage
     foreach ($name in $includedConfigs) {
         Copy-Item -LiteralPath (Join-Path $configSource $name) -Destination $stageConfig
     }
     Copy-Item -LiteralPath $externalSource -Destination $stageConfig
     Copy-Item -LiteralPath $templateDirSource -Destination $stageConfig -Recurse
-
-    if ($Edition -eq 's1s2') {
-        Set-Content -LiteralPath (Join-Path $stage 'edition-s1s2') -Value 's1s2' -NoNewline -Encoding utf8
-    }
 
     Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $archive
     $sizeMb = [math]::Round((Get-Item -LiteralPath $archive).Length / 1MB, 1)

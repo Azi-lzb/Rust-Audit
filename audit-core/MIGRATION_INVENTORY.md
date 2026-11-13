@@ -1,5 +1,13 @@
 # Open-Data-Audit 功能迁移清单
 
+### 2026-11-13 后续验证：S2 数值安全与桌面部署
+
+后续验证补充，不覆盖下方各轮历史记录：S2 表达式/规则/单位换算针对性测试分别 9/5/6 项通过；Windows 配置保留与旧版次标记处理单测各 1 项、发布预检 9 项通过。当前 Windows Release 已构建并交付全量 ZIP，内置 Python 3.12.10/Openpyxl 3.1.5，隔离导入、内存工作簿数值/公式文本读写及 worker 启动通过，来源 32 份配置/模板 SHA256 未变；不是公式重算/GUI 全业务重新验收。Windows 新版默认资源目录为 `config`，`config-real` 仅补缺，打包不覆盖实际配置；EXE 内置全量/精简版次，忽略旧 edition 标记，包不分发该标记或快捷方式脚本。Linux 延续现有版次标记，配置默认资源与实际文件分离，保存/恢复/重试/保存失败测试有 WSL 证据，真实 dpkg/麒麟仍 NOT_TESTED。内置 LO 模块已通过 Windows 类型编译与 Release 构建，实际 LO/批量/超时/进程清理及 Linux 集成仍 NOT_TESTED，不能继承旧 sidecar 通过结论。精简版 feature 的独立 Release 尚未构建验收。详细文件与证据见 GPT 修改记录 20261113 各任务记录。
+
+### 2026-11-13 增量：独立 LO 辅助项目移除
+
+按用户要求删除 sidecar/lo-convert 四个版本控制文件，LO 批量重算与必要输出校验迁至 src/libreoffice_worker.rs / libreoffice_batch.rs；原重算集成/吞吐测试迁至 tests/libreoffice_worker.rs。GUI/Linux 改由本程序内部 worker，Windows COM 热会话保持。独立格式转换/旧 PowerShell 辅助实现随该未接入正式 GUI 的工具项目删除；不扩展 Audit 的格式转换功能。实现及静态检查与运行验收分开：本轮未编译/测试/打包，旧证据不继承为当前通过。历史性能脚本保留，仅供旧版本证据，不再用于当前二进制验证。
+
 > 当前产品仅保留 S1/S2/S3。S5 UI、CLI、API、业务模块和专属测试代码已按用户决定移除；下文 S5 条目均为带日期的历史开发/验收记录，不代表当前产品仍包含 S5。
 
 > **历史证据档案（截至 2026-10-28）**：以下条目和状态是原工作区不同时间的记录，不作为当前进度或操作指令。当前功能状态和验收口径以 [独立项目开发目标](../DEVELOPMENT_GOAL.md) 及 [V2 需求](AUDIT_RUST_V2_BUSINESS_REQUIREMENTS.md) 为准；本文件保留旧证据，不自动要求全面对拍或编译。

@@ -1,0 +1,34 @@
+移除独立 lo-convert，LibreOffice 重算调用移入 AuditTools
+
+时间：2026-11-13；执行者：Codex。
+仓库：C:\Users\AZI\Desktop\VibeCode\Rust-Audit；分支 main；修改前 HEAD d201943；本轮未提交、未 push。
+已有 WIP：frontend/web/index.html 及先前修改记录/性能材料保留，HTML Git blob 561ebb41a287a924ae8b0881d97f86d2d4abe597 未变。
+
+目的：按用户要求不再保留或依赖独立 lo-convert EXE/项目；确保 Linux 原有 LO 重算入口不因删除组件而直接断开。
+
+修改/新增：
+- Cargo.toml、Cargo.lock：移除 standalone 包及 workspace 成员。
+- audit-core/src/libreoffice_worker.rs（新）：本程序 __audit-lo-worker 私有入口；保留批量缓存清理、公式/缓存/错误常量校验及不覆盖发布；单本也通过同一实现处理。每本使用独立校验临时目录。
+- audit-core/src/libreoffice_batch.rs（新）：迁移原 XLSX 一批一次 soffice/独立 profile 路径与进程清理；没有新增 UNO、Python 或新的 Office 依赖。
+- audit-core/src/lib.rs、bin/open-data-audit.rs：注册内置 worker，正常 GUI 参数解析前分发。旧命令行重算参数仅兼容请求，路径值不再选择外部辅助程序。
+- audit-core/src/s1_recalculation.rs：LO 单本/批量调用本程序 worker；Windows 单本 API 对齐现有内置原生 COM。LO 工作输入与输出分离，避免原先请求同一候选路径导致自覆盖拒绝。
+- audit-core/src/web_bridge.rs：Linux 使用 current_exe，移除旁路 EXE/环境变量自动发现；Windows COM 主路径保持。
+- audit-core/packaging/deb/build.sh、README.md：只构建/安装主程序，修正当前 AuditTools bin 名，不构建或打包独立 converter。
+- audit-core/tests/libreoffice_worker.rs（新）：迁移原 LO 集成与忽略的 2/10/33 本手动基准，改为 AuditTools 内部入口；强制真实 LO 测试开关 AUDIT_REQUIRE_LO_TEST。新增非法请求不启动 GUI 测试。原 9 个公式/缓存/URI/发布校验单测迁移至 worker 模块，另加输出占位/重复路径保护单测。
+- DEVELOPMENT_GOAL.md、audit-core/MIGRATION_INVENTORY.md：登记实现及未验收状态。
+- rules/13_Rust_Excel读写修改与引擎路由规范.md、audit-core/rules/02_核心架构与跨平台.md、03_Excel与OOXML边界.md、13_表格读写技术选型与主动优化.md：顶部增加现状覆盖说明，旧独立辅助程序描述作为历史保留。
+
+删除清单（仅四个原组件版本控制文件）：
+- sidecar/lo-convert/Cargo.toml
+- sidecar/lo-convert/src/main.rs
+- sidecar/lo-convert/src/lo_batch.rs
+- sidecar/lo-convert/tests/recalculate_libreoffice.rs
+
+未接入正式 Audit GUI 的旧通用格式转换/Word/PowerShell 辅助实现随独立项目移除；没有删除现有 S1/S2/S3 审核业务。历史基准脚本、验收报告、Git 历史和目标编译缓存保留，不把它们当当前可运行入口。没有修改真实工作簿、配置、原 Python 或 Rust-Tools。
+
+验证：TOML 可解析、workspace 路径存在；7 份 Rust 文件 rustfmt 语法解析通过，新文件格式检查通过，git diff --check 通过。证据 F:/RustBuild/audit/tmp/remove-loconvert-20261113/static-check.json。静态检查不等于类型检查。
+未执行：Cargo build/check/test/run、Windows COM/LO 实跑、WSL/Linux、打包；当前用户仅授权移除与接线，遵守根 AGENTS.md 的当前请求构建授权规则。迁移后的测试均为 written/unrun，不继承旧组件通过结论。
+
+已知边界：内置的是调用与隔离逻辑，LibreOffice 软件本身未内置；仍需可用 soffice 才能执行 LO 外部重算。批量路径是单次 convert-to，不是常驻 UNO。原批量引擎调用失败仍按原恢复逻辑处理，没有扩展公式/格式支持。此前全量的其他 9 个失败不在本任务修复范围。
+【组件版本】AuditTools 0.1.0 未升级；此变更待编译及 Windows/Linux 实际验收。
+回滚提示：按上述明确文件范围对照 d201943 人工恢复，必须保留其他 WIP；不要 reset/checkout 整个工作区。

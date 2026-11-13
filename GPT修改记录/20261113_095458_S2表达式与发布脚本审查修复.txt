@@ -1,0 +1,67 @@
+S2 表达式与发布脚本静态审查问题修复
+
+仓库：C:\Users\AZI\Desktop\VibeCode\Rust-Audit
+分支：main；本轮基线 HEAD：d201943（用户审查来自较早的 999c543）。
+状态：修复与本轮授权的定向验证完成；未执行全量、打包、安装或Git提交。
+
+授权与保护
+已读根及 audit-core/AGENTS.md、测试发布与修改记录规则，按本地实际源码核实，不假定旧审查结论仍成立。
+初始存在19个已跟踪 WIP（包括4个原LO组件删除），以及LO worker/测试、UI、性能和历史材料。没有 checkout/reset、创建分支或worktree；不自动暂存、提交或推送。此前LO迁移、HTML修改及真实配置保留。
+本轮只做限定修复、针对性 Rust 编译/测试、脚本语法与资源预检；不运行 cargo clean、全量测试、真实发布打包或安装，不升级任何依赖，不修改 vendor。
+
+逐项核实、根因与修改
+1. 布尔短路：本地仍存在。s2_expression.rs 原 parse_and/parse_or 先计算右侧，再按真假选择返回值，保护分母的规则因此产生假执行错误。增加解析时 evaluating 状态，短路分支仍完整解析语法，但不执行除法、幂、函数或名称解析。嵌套分支退出后恢复原状态；链式比较也按前一比较结果短路。AND/OR 函数参数维持原来的急切求值，不把函数偷偷改成语言操作符。
+2. 负数指标：本地仍直接拼文本。s2_rule_engine.rs 将实际数值作为带括号的一个操作数代入，阈值同样处理；负数展示增加必要括号。测试覆盖 Decimal/Integer/Number/Text、正负数、平方/立方、负幂和嵌套一元负号。不修改真实规则、配置或取反语义。
+3. 巨大指数：unit_conversion 原解析只保存紧凑 tuple，本身不展开；危险在 s2_expression 的 decimal_plain 与 decimal_power，旧代码先填充零再检查幂范围。新增 unit_conversion::decimal_plain_limited，用i128计算完整输出长度，在容量分配/填充前检查；S2代入输出最多100000字符（含符号和小数点）。幂指数直接检查tuple，仅接受-10000..10000的整数，不生成指数普通字符串；2.0这样的整数型小数也正确识别，2.5仍拒绝。大指数测试只使用短输入，含i64指数两端，拒绝发生在扩展前；最大允许输出测试仅100KB，不执行内存耗尽负载。
+4. Windows旧打包入口：本地 package-windows.bat 确实读取 open-data-audit.exe。现在安全委托 package.bat → package-windows.ps1，使用当前 AuditTools.exe，传递参数与退出码，保留旧入口。当前入口增加参数转发；旧exe不能满足预检，不再回退打包旧产物。
+5. Linux edition：full包名audittools，S1S2包名audittools-s1s2，均安装同一 /opt/audittools/AuditTools、/usr/bin/audittools、桌面及图标路径。原Conflicts/Replaces只声明旧Python包，未互斥对方。现在双方添加对另一edition的Conflicts与Replaces，保留包名、版本传参及安装路径。临时stage内清理旧edition标记/配置后，仅放入当前edition资源；所选二进制覆盖产品资源目录中可能陈旧的同名文件。
+6. edition配置：Windows在选择edition前校验全部六份配置，S1S2缺S3也被拒；改为选定includedConfigs后校验，2份/6份分别检查。Linux CONFIG_SRC确实定义未使用，并用&&/||true容忍缺配置；改为显式CONFIG_SRC优先、无效不悄悄回退，缺必要文件失败。两版均保留S1/S2共同依赖的外部数据文件、模板目录及对应说明。Linux未指定CONFIG_SRC时依次找产品目录、产品上级、当前仓库config-real。真实业务配置未复制到仓库或改写。
+
+脚本验证边界
+Windows新增 -ValidateOnly，Linux新增 --validate-only，仅验证资源/计划，在创建stage、压缩、调用dpkg前返回。自动化使用临时目录的明确假文件；不是可供业务使用的Excel/EXE。未打包或安装。
+新增 audit-core/tests/compare/test_release_script_preflight.py，Windows6项、WSL/Linux5项分别运行。包括S1S2无S3可过、full缺S3拒绝、缺必需配置/外部文件/模板拒绝、CONFIG_SRC优先且错误不回退、互斥/替换计划、旧exe拒绝、BAT代理及完整入口参数/退出码转发。每次断言没有zip/deb输出。
+package-linux-deb.sh 使用LF，新增 .gitattributes 精确固定该脚本LF，避免Windows checkout后WSL读取CRLF出错。
+
+必要编译解阻（已保留原WIP意图）
+首轮定向编译失败，不是测试通过：之前未编译的LO迁移丢失 S1_CALC_ENGINES 常量，迁入单测直接引用未声明的rust_xlsxwriter。仅在s1_recalculation.rs补回原常量；libreoffice_worker.rs及其集成测试改用已有excel_writer::Workbook再导出，不新增/升级依赖，也未改LO算法。随后定向编译通过。这不代表LO真实运行验收。
+首轮负数回归还暴露2.0整数型幂指数被原文本转整数拒绝；已用tuple检查修正，保留失败日志，不删测试。
+
+本轮直接改动文件
+- audit-core/src/s2_expression.rs、s2_rule_engine.rs、unit_conversion.rs（实现及单测）
+- package-windows.bat、package.bat、package-windows.ps1、package-linux-deb.sh
+- .gitattributes（新）
+- audit-core/tests/compare/test_release_script_preflight.py（新）
+- audit-core/src/s1_recalculation.rs（共享WIP中仅补原常量）
+- audit-core/src/libreoffice_worker.rs、audit-core/tests/libreoffice_worker.rs（共享WIP中仅替换测试导入）
+- 本记录
+
+最终结果（实际执行）
+当前源码：表达式7通过、规则引擎4通过、单位换算6通过；筛选执行，未跑全部lib测试。
+Windows脚本6通过/5个平台不适用跳过；WSL脚本5通过/6个平台不适用跳过。脚本语法检查与git diff --check通过。跳过不是通过。
+两个现有基线：2通过/0失败（仅 --test unit_conversion_parity 与 --test s2_rule_engine_parity），未改Python基线或夹具。加上17项单测，本轮当前版本19项Rust测试通过，未跑全量。
+证据：F:/RustBuild/audit/tmp/s2-review-fixes-20261113；早期失败和最终日志分别保留。测试依赖编译耗时不作为业务性能结论。
+
+BetterOffice验证建议（本轮不执行）
+根Cargo.toml明确exclude vendor/betteroffice-xlsx-model和betteroffice-xlsx-calc。workspace测试只编译所用库，不运行这两个依赖自身的#[cfg(test)]及显式[[test]]。将来如授权单独验证，应分别从vendor manifest选择与修改相关的测试，并确认本地model patch与独立Cargo.lock一致，避免误测registry版本。本次没有执行vendor测试，也不将其说成通过。
+
+升级与人工验收
+同edition按同包名/版本常规升级；本轮未提升版本号，同版本重装需遵循包管理器重装流程。不同edition互斥，APT可以安排替换另一版；直接dpkg若提示冲突，先正常卸载另一版，不能用--force-overwrite掩盖归属问题。用户状态目录/安装路径未改变。
+Windows：后续经授权构建后，用合成S2输入A=-2/B=0验证保护分母、负数平方/嵌套负号、错误语法及原有正常规则；关注规则命中和数据质量错误分开。两个edition可先用-ValidateOnly检验本地配置，实际打包需另行授权；解压新目录检查EXE/配置/导航匹配。
+麒麟/UOS：本轮只运行WSL脚本测试，未做目标系统Rust运行或真实deb。后续产包后检查control中的Package/Conflicts/Replaces，full↔s1s2切换、同版升级、dpkg文件归属、edition标记及GUI配置加载；确认只安装一个edition且安装路径不变。外部引擎/LO恢复、真实工作簿全量对拍本轮均NOT_TESTED。
+【组件版本】AuditTools 0.1.0 未升级；S2求值缺陷与发布脚本修复。未改现有S1/S2/S3范围、GUI、BetterOffice或配置数据。
+回滚提示：仅按上述文件与本次意图人工撤回；共享WIP不要整份恢复到HEAD，禁止破坏性Git操作。
+
+
+最终证据索引
+- final-expression-tests.log/exit：7 passed / 0 failed。
+- rule-engine-tests-r2.log/exit：4 passed / 0 failed。
+- final-unit-conversion-tests.log/exit：6 passed / 0 failed。
+- targeted-parity-tests.log/exit：两个目标各1 passed / 0 failed，总退出0。
+- windows-script-tests-final.log/exit：6实际通过，5不适用跳过；总退出0。
+- linux-script-tests-final.log/exit：5实际通过，6不适用跳过；总退出0。
+- PowerShell语法、Bash -n、新改Rust文件rustfmt --check、git diff --check通过。
+- verification.json记录当前源文件和已执行测试二进制SHA-256；源码未在最终单测之后变更。
+- 初始expression-tests.log为BUILD_FAILED、早期rule-engine-tests.log为3通过/1失败，均已修复并保留，不混入最终成功统计。
+- 没有实际生成zip/deb，没有安装或更新dist Release，也没有运行vendor测试、全量测试或真实业务GUI。
+
+最终Git：main，HEAD仍为d201943；无暂存、提交、推送。已保留原未提交UI、LO迁移、规则与性能材料；HTML blob仍为561ebb41a287a924ae8b0881d97f86d2d4abe597。本轮测试编译包含当前未提交源码，但不能以此宣称此前LO业务已完成真实验收。

@@ -942,21 +942,13 @@ pub fn recalculate_s1_formula_copy_batch(
             pending_pairs.push((index, input.clone(), output.clone()));
         }
     }
-    // 仅剩被 betteroffice 拒绝的工作簿需要外部引擎。
-    let refusal_summary: Vec<String> = betteroffice_reasons.iter().flatten().cloned().collect();
-    let sidecar_missing = if refusal_summary.is_empty() {
-        "betteroffice 校验区域重算不可用，且未配置公式重算 sidecar（Excel COM / LibreOffice）"
-            .to_owned()
-    } else {
-        format!(
-            "betteroffice 校验区域重算不可用（{}），且未配置公式重算 sidecar（Excel COM / LibreOffice）",
-            refusal_summary.join("；")
-        )
+    // The host executable contains the LO worker; no sibling executable is required.
+    let sidecar_path = match sidecar_path {
+        Some(path) => path.to_path_buf(),
+        None => std::env::current_exe().context("定位 Audit 内置计算 worker")?,
     };
-    let sidecar_path = sidecar_path.context(sidecar_missing)?;
-    let sidecar_path = fs::canonicalize(sidecar_path)
-        .with_context(|| format!("读取公式重算 sidecar：{}", sidecar_path.display()))?;
-    ensure!(sidecar_path.is_file(), "公式重算 sidecar 不是文件");
+    let sidecar_path = fs::canonicalize(&sidecar_path).context("读取 Audit 内置计算 worker")?;
+    ensure!(sidecar_path.is_file(), "Audit 内置计算 worker 不是文件");
     for (input, output) in pairs {
         ensure!(
             input.is_file(),
@@ -990,6 +982,7 @@ pub fn recalculate_s1_formula_copy_batch(
     }
     let pairs_file = unique_pairs_file(&pending)?;
     let command = Command::new(&sidecar_path)
+        .arg(crate::libreoffice_worker::WORKER_COMMAND)
         .arg("recalculate-batch")
         .arg("--pairs")
         .arg(&pairs_file)
@@ -1091,16 +1084,8 @@ fn unique_pairs_file(pairs: &[(PathBuf, PathBuf)]) -> Result<PathBuf> {
     Ok(path)
 }
 
-/// Recalculate an existing S1 formula copy through the separately built
-/// `lo-convert` sidecar, then publish the validated output without overwriting.
-///
-/// `lo-convert` selects the configured native Office COM channel on Windows
-/// and LibreOffice Calc on Linux. Automatic Windows mode tries the supported
-/// COM engine before LibreOffice. The sidecar validates formula/cache
-/// presence; the original copied workbook remains untouched.
-/// Sidecar `--engine` values accepted for S1 formula recalculation. `auto`
-/// keeps the platform default order, `excel`/`wps` force one COM application,
-/// `lo` forces LibreOffice headless.
+/// Recalculate an independent S1 copy through the Audit executable's owned worker.
+/// Windows uses native COM; LibreOffice batches use the internal LO entry point.
 pub const S1_CALC_ENGINES: [&str; 4] = ["auto", "excel", "wps", "lo"];
 
 pub fn recalculate_s1_formula_copy(
@@ -1113,11 +1098,25 @@ pub fn recalculate_s1_formula_copy(
         S1_CALC_ENGINES.contains(&engine_request),
         "S1 公式重算引擎必须是 auto、excel、wps 或 lo：{engine_request}"
     );
+    #[cfg(windows)]
+    if matches!(engine_request, "auto" | "excel" | "wps") {
+        let mut session = match sidecar_path {
+            Some(executable) => {
+                S1RecalculationSession::new_native_with_executable(executable, engine_request)?
+            }
+            None => S1RecalculationSession::new_native(engine_request)?,
+        };
+        return if engine_request == "auto" {
+            session.recalculate(input_path, output_path)
+        } else {
+            session.recalculate_platform(input_path, output_path)
+        };
+    }
     // Excel COM 打开修复：与 GUI 主路径（execute_s1_formula_copy_*）同一口径。
     // 本函数也被 CLI/诊断入口直接调用，若不在此修复，shared formula 的 ref
     // 错位会让重算守卫误判「重算改变公式」。
     // betteroffice（纯 Rust）优先——Windows 与 Linux 同一路由：
-    // betteroffice → 本函数既有 sidecar（Windows COM / Linux LibreOffice）。
+    // betteroffice → Audit 内置 worker（Windows COM / LibreOffice）。
     let bo_config = crate::bo_calc::BoCalcConfig::from_app();
     let mut bo_fallback_reason: Option<String> = None;
     if bo_config.enabled && engine_request == "auto" {
@@ -1132,20 +1131,12 @@ pub fn recalculate_s1_formula_copy(
             }
         }
     }
-    // 至此 betteroffice 不可用；没有 sidecar 就没有任何可用引擎。
-    // 把 betteroffice 的拒绝原因带进最终错误，否则用户只看到「缺 sidecar」，
-    // 完全不知道真正原因（预算耗尽 / #NAME? / 循环引用 / 打不开）。
-    let sidecar_missing = match &bo_fallback_reason {
-        Some(reason) => format!(
-            "betteroffice 校验区域重算不可用（{reason}），且未配置公式重算 sidecar（Excel COM / LibreOffice）"
-        ),
-        None => "betteroffice 校验区域重算不可用，且未配置公式重算 sidecar（Excel COM / LibreOffice）"
-            .to_owned(),
+    let sidecar_path = match sidecar_path {
+        Some(path) => path.to_path_buf(),
+        None => std::env::current_exe().context("定位 Audit 内置计算 worker")?,
     };
-    let sidecar_path = sidecar_path.context(sidecar_missing)?;
-    let sidecar_path = fs::canonicalize(sidecar_path)
-        .with_context(|| format!("读取公式重算 sidecar：{}", sidecar_path.display()))?;
-    ensure!(sidecar_path.is_file(), "公式重算 sidecar 不是文件");
+    let sidecar_path = fs::canonicalize(&sidecar_path).context("读取 Audit 内置计算 worker")?;
+    ensure!(sidecar_path.is_file(), "Audit 内置计算 worker 不是文件");
     let started = Instant::now();
     let (input_path, output_path, staging) =
         prepare_recalculation_paths(input_path.as_ref(), output_path.as_ref())?;
@@ -1156,11 +1147,10 @@ pub fn recalculate_s1_formula_copy(
     std::fs::copy(&input_path, &baseline)
         .with_context(|| format!("为 sidecar 重算准备基线副本：{}", baseline.display()))?;
     let _ = crate::excel_open_repair::repair_audit_copy_for_excel(&baseline);
-    std::fs::copy(&baseline, &candidate)
-        .with_context(|| format!("为 sidecar 重算准备工作副本：{}", candidate.display()))?;
-    let sidecar_input = sidecar_io_path(&candidate);
+    let sidecar_input = sidecar_io_path(&baseline);
     let sidecar_output = sidecar_io_path(&candidate);
     let command = Command::new(&sidecar_path)
+        .arg(crate::libreoffice_worker::WORKER_COMMAND)
         .arg("recalculate")
         .arg("--input")
         .arg(&sidecar_input)

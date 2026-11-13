@@ -17,8 +17,7 @@ command -v dpkg-deb >/dev/null 2>&1 || { echo "dpkg-deb is required" >&2; exit 1
 
 export CARGO_TARGET_DIR
 cd "$PROJECT_ROOT"
-cargo build --offline --locked --release --target "$TARGET" -p audit-core --bin open-data-audit
-cargo build --offline --locked --release --target "$TARGET" -p lo-convert
+cargo build --offline --locked --release --target "$TARGET" -p audit-core --bin AuditTools
 
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
@@ -29,11 +28,8 @@ mkdir -p \
     "$STAGE/usr/share/open-data-audit/config"
 
 install -m 0755 \
-    "$CARGO_TARGET_DIR/$TARGET/release/open-data-audit" \
+    "$CARGO_TARGET_DIR/$TARGET/release/AuditTools" \
     "$STAGE/usr/bin/open-data-audit"
-install -m 0755 \
-    "$CARGO_TARGET_DIR/$TARGET/release/lo-convert" \
-    "$STAGE/usr/bin/lo-convert"
 if [[ -d "$PROJECT_ROOT/audit-core/config/默认配置" ]]; then
     cp -a "$PROJECT_ROOT/audit-core/config/默认配置" \
         "$STAGE/usr/share/open-data-audit/config/"

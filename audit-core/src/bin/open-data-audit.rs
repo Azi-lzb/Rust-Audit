@@ -370,12 +370,12 @@ struct S1AuditDirectoryArgs {
     #[arg(long)]
     formula_manifest: PathBuf,
 
-    /// Recalculate existing formula copies. On Linux this supplies the calculation sidecar;
-    /// on Windows this legacy option requests the native COM route instead.
+    /// Legacy recalculation request flag. Its path value is ignored;
+    /// calculation uses this Audit executable's internal worker on both platforms.
     #[arg(long, requires = "recalculated_copy_dir")]
     recalculate_sidecar: Option<PathBuf>,
 
-    /// Recalculate on Windows using a native COM batch session, without lo-convert.
+    /// Recalculate on Windows using a native COM batch session, through the Audit executable itself.
     #[arg(
         long,
         requires = "recalculated_copy_dir",
@@ -777,6 +777,13 @@ struct S2CliOutput {
 }
 
 fn main() {
+    if let Some(result) = audit_core::libreoffice_worker::maybe_run_worker() {
+        if let Err(error) = result {
+            eprintln!("LibreOffice 计算工作进程失败：{error:#}");
+            std::process::exit(2);
+        }
+        return;
+    }
     #[cfg(windows)]
     if let Some(result) = audit_core::native_recalculation::maybe_run_native_com_worker() {
         if let Err(error) = result {
@@ -2323,16 +2330,14 @@ fn run_s1_audit_directory(arguments: S1AuditDirectoryArgs) -> Result<()> {
         .transpose()?;
     let recalculation_sidecar = if cfg!(windows) {
         // The legacy flag still requests recalculation, but Windows no longer
-        // launches or requires the lo-convert executable.
+        // launches or requires a separate conversion executable.
         None
     } else {
+        // The legacy option requests calculation; no external helper is loaded.
         arguments
             .recalculate_sidecar
-            .as_deref()
-            .map(|path| {
-                fs::canonicalize(path)
-                    .with_context(|| format!("读取公式重算 sidecar {}", path.display()))
-            })
+            .as_ref()
+            .map(|_| std::env::current_exe().context("定位 Audit 内置计算 worker"))
             .transpose()?
     };
     if let Some(sidecar) = recalculation_sidecar.as_deref() {

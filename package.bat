@@ -9,7 +9,7 @@ if not exist "%DIST_DIR%\AuditTools.exe" (
 )
 if not exist "%PROJECT_ROOT%audit-core\config-real" (
     echo Missing local real configuration directory: %PROJECT_ROOT%audit-core\config-real
-    echo Copy the six S1, S2, and S3 configuration workbooks there before packaging.
+    echo Required files are checked for the selected edition by package-windows.ps1.
     exit /b 4
 )
 if not exist "%PROJECT_ROOT%package-windows.ps1" (
@@ -17,5 +17,5 @@ if not exist "%PROJECT_ROOT%package-windows.ps1" (
     exit /b 5
 )
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_ROOT%package-windows.ps1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_ROOT%package-windows.ps1" %*
 exit /b %ERRORLEVEL%

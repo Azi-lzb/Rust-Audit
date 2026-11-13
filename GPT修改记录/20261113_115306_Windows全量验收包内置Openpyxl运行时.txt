@@ -1,0 +1,19 @@
+执行者：Codex
+时间：2026-11-13T11:53:06
+Git前后：main d201943b1d82ec499134211a302b54c5cd6d0a80；无暂存、提交、push。原有WIP保持。
+目的：按用户要求基于当前工作区重新构建Windows GUI人工验收包，内置Openpyxl并保留已修改配置。
+源码变化：本轮无业务/脚本源码修改，仅新增本记录；更新ignored dist/AuditTools.exe及worker，新增ZIP，旧ZIP未删除。
+执行：build-release.bat（release/offline/locked，CARGO_TARGET_DIR=F:/RustBuild/audit）成功；package.bat -Edition full成功。
+交付：C:\Users\AZI\Desktop\VibeCode\Rust-Audit\dist\AuditTools-windows-x64-full-20261113-114948.zip
+大小：43919375 bytes
+ZIP SHA256：73d4232eca858527c2364e8522c9244d3a235c538ecf9d993ce108e60569720f
+EXE SHA256：05c524ef9ccf6b831c5fee35f9854dd58d91e9c84bf04e65f6d2137673845706
+运行时：Python 3.12.10 / Openpyxl 3.1.5，64位。
+验收：ZIP完整性通过；EXE哈希与dist及release目标一致；full版次标记正确；内置运行时解压后在剔除Python环境变量和PATH Python的环境下，用-I隔离模式启动，sys.prefix与openpyxl模块均来自包内；内存工作簿数值/公式文本读写通过；包内worker --help启动成功。此处不代表真实公式计算成功。
+配置：包只含config-defaults的32个配置/模板，不含config-real实际文件；32个原配置/模板打包前后SHA256全部一致，包内默认文件逐个与来源一致。Windows新EXE启动只补齐config-real缺失文件，不覆盖已有值；用户须关闭旧程序再覆盖解压/启动，避免仍使用旧进程。
+未运行：真实GUI业务人工验收、完整业务测试/全量回归、Linux构建/安装。本轮只做构建、打包及包内容/运行时检查。
+证据：F:/RustBuild/audit/tmp/windows-release-20261113（build.log、package.log、smoke-final.log、package-verification.json）。首次临时验证脚本因SYSTEMROOT键名大小写出错；修正验证脚本后最终通过，保留smoke.log，不涉及产品源码。
+配置/VBA：未改原配置、模板、Excel公式或VBA。
+【组件版本】AuditTools 0.1.0，未升级依赖。
+删除清单：无项目文件删除；打包脚本清理其自身临时stage，验收解压副本留F盘。
+回滚提示：旧ZIP仍保留；不要整文件回退共享WIP。

@@ -638,6 +638,49 @@ const BUNDLED_CONFIG_DEFAULTS: &[(&str, &str)] = &[
     ("centralFormsConfig", "3.3大集中指标比较拆分_配置.xlsx"),
 ];
 
+/// Seed only missing files. Windows release archives contain config, never active
+/// config-real files, so extracting an upgrade cannot overwrite user changes.
+#[cfg(any(windows, test))]
+fn seed_missing_config_files(source: &std::path::Path, target: &std::path::Path) -> Result<()> {
+    if !source.is_dir() {
+        return Ok(());
+    }
+    std::fs::create_dir_all(target)?;
+    for entry in std::fs::read_dir(source)? {
+        let entry = entry?;
+        let destination = target.join(entry.file_name());
+        let kind = entry.file_type()?;
+        if kind.is_dir() {
+            seed_missing_config_files(&entry.path(), &destination)?;
+        } else if kind.is_file() {
+            let mut input = std::fs::File::open(entry.path())?;
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&destination)
+            {
+                Ok(mut output) => {
+                    if let Err(error) =
+                        std::io::copy(&mut input, &mut output).and_then(|_| output.sync_all())
+                    {
+                        drop(output);
+                        let _ = std::fs::remove_file(&destination);
+                        return Err(error.into());
+                    }
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(error) => return Err(error.into()),
+            }
+        } else {
+            anyhow::bail!(
+                "Unsupported configuration entry: {}",
+                entry.path().display()
+            );
+        }
+    }
+    Ok(())
+}
+
 /// 定位真实配置目录 config-real：
 /// - `AUDIT_CONFIG_REAL_DIR` 显式覆盖（测试/自定义部署）；
 /// - 发行包布局：`<exe 目录>/config-real/`；
@@ -656,6 +699,20 @@ pub fn config_real_directory() -> Option<PathBuf> {
         .and_then(|executable| executable.parent().map(std::path::Path::to_path_buf));
     let mut directories = Vec::new();
     if let Some(exe_directory) = &executable_directory {
+        #[cfg(windows)]
+        {
+            let source = if is_config_real_directory(&exe_directory.join("config")) {
+                exe_directory.join("config")
+            } else {
+                // Compatibility with the preceding Windows package layout.
+                exe_directory.join("config-defaults")
+            };
+            if let Err(error) =
+                seed_missing_config_files(&source, &exe_directory.join("config-real"))
+            {
+                eprintln!("[config] Unable to seed missing bundled configuration: {error:#}");
+            }
+        }
         directories.push(exe_directory.join("config-real"));
         directories.push(exe_directory.join("../audit-core/config-real"));
         directories.push(exe_directory.join("../../audit-core/config-real"));
@@ -1155,5 +1212,58 @@ mod tests {
             std::env::set_var("AUDIT_CONFIG_REAL_DIR", previous);
         }
         fs::remove_dir_all(root).expect("remove seed test directory");
+    }
+}
+
+#[cfg(test)]
+mod config_upgrade_tests {
+    use super::seed_missing_config_files;
+    #[test]
+    fn upgrade_preserves_active_files_and_seeds_only_missing_defaults() {
+        let root = std::env::temp_dir().join(format!(
+            "audit-config-upgrade-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let defaults = root.join("config");
+        let active = root.join("config-real");
+        std::fs::create_dir_all(defaults.join("templates")).unwrap();
+        std::fs::write(defaults.join("s1.xlsx"), b"new default").unwrap();
+        std::fs::write(defaults.join("s3.xlsx"), b"new s3").unwrap();
+        std::fs::write(
+            defaults.join("templates/template.xlsx"),
+            b"default template",
+        )
+        .unwrap();
+        seed_missing_config_files(&defaults, &active).unwrap();
+        std::fs::write(active.join("s1.xlsx"), b"user edited").unwrap();
+        std::fs::write(active.join("templates/template.xlsx"), b"user template").unwrap();
+        // S1S2 release does not delete retained S3 files; returning to full seeds new ones.
+        std::fs::remove_file(defaults.join("s3.xlsx")).unwrap();
+        seed_missing_config_files(&defaults, &active).unwrap();
+        assert_eq!(std::fs::read(active.join("s3.xlsx")).unwrap(), b"new s3");
+        std::fs::write(defaults.join("s1.xlsx"), b"newer default").unwrap();
+        std::fs::write(defaults.join("s3-new.xlsx"), b"added full config").unwrap();
+        seed_missing_config_files(&defaults, &active).unwrap();
+        assert_eq!(
+            std::fs::read(active.join("s1.xlsx")).unwrap(),
+            b"user edited"
+        );
+        assert_eq!(
+            std::fs::read(active.join("templates/template.xlsx")).unwrap(),
+            b"user template"
+        );
+        assert_eq!(
+            std::fs::read(defaults.join("s1.xlsx")).unwrap(),
+            b"newer default"
+        );
+        assert_eq!(
+            std::fs::read(active.join("s3-new.xlsx")).unwrap(),
+            b"added full config"
+        );
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

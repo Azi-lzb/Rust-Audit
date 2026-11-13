@@ -1,5 +1,7 @@
 # Excel、OOXML 与历史 Python/Office 边界
 
+> 2026-11-13 当前实现覆盖说明：独立 `sidecar/lo-convert` 已移除；下文该路径、独立转换器及旧候选命令属于历史记录，不再作为开发/构建指令。Windows 用 Audit 内置原生 COM；LibreOffice 重算由主程序内部 worker 承接，一批一次隔离 profile 的转换调用，并非常驻 UNO。LibreOffice 软件仍是可选外部能力。新 worker 尚未完成编译/真实环境验收。
+
 > 本文件保留 Open-Data-Audit 的 OOXML 结构保护和旧 Python 实现背景。当前读取/写入/修改路由以根 `AGENTS.md` 和 [workspace 规则 13](../../rules/13_Rust_Excel读写修改与引擎路由规范.md) 为准；openpyxl 除旧实现/测试基线外，仅在根规则 13 明确限定的隔离 ExcelModifier worker 中作为可选修改后端。
 
 ## 1. 决策顺序

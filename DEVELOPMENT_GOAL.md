@@ -1,5 +1,9 @@
 # Rust-Audit 独立开发目标与状态
 
+**2026-11-13 后续验证与 Windows 交付（覆盖下条的当前验证状态）。** S2 修复短路求值、负数完整操作数代入、小数与零比较及指数/数值展开安全；针对性表达式 9、规则引擎 5、单位换算 6 项测试通过。内置 LO worker 已随当前 Windows Debug 测试目标及 Release 成功编译，但真实 LibreOffice、Linux 和麒麟安装切换仍未验收。Windows 全量包已内置 Python 3.12.10/Openpyxl 3.1.5，默认配置放 `config`，启动仅补齐 `config-real` 缺失文件，不覆盖用户已有配置；32 份来源资源哈希未变。Windows 版次由 EXE feature 决定，默认全量，`windows-s1s2` 为精简构建，不再读取目录旧 edition 标记；构建元数据仅用于本地打包核对，不入 ZIP。全量包不含快捷方式脚本/edition 文件。Linux 继续原标记方式，包资源保持 `config-defaults`，维护脚本保存/恢复实际配置，WSL 文件操作测试不替代真实 dpkg 验收。最新 Windows 配置/版次单测各 1 项、预检 9 项通过，Release 构建、ZIP/隔离运行时和覆盖解压检查通过；GUI 人工验收待用户完成。旧包首次迁移需先同版升级或先备份，防止旧包独立卸载发生在新 preinst 前。没有启动 Slint 迁移或创建 Worktree。
+
+**2026-11-13：移除独立 lo-convert（实现，未编译验收）。** 独立 crate/EXE、workspace/lock 条目、GUI 外部辅助程序自动查找和 deb 构建/安装引用已移除。保留 LO 现有批量重算代码及校验，迁至 Audit 主程序内部 `__audit-lo-worker`；Windows 继续内置原生 COM。LibreOffice 本体仍是可选外部软件，不是内置 Office/常驻 UNO。9 个校验单测及原 LO 集成/2、10、33 本手动测试已迁移，新增 worker 请求与不覆盖校验。当前仅静态检查，Windows/Linux 编译、真实 LO/COM 回归、打包均未执行。历史 lo-convert 验收记录不代表新 worker 已通过。
+
 **自动识别模板不切换——修复（2026-11-10，现场反馈）**
 
 现象：源数据目录整个换掉后，再点「自动识别模板」，模板框仍停留在旧目录识别出的

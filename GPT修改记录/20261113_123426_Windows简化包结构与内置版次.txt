@@ -1,0 +1,35 @@
+执行者：Codex
+时间：2026-11-13T12:34:26
+Git前后：main d201943b1d82ec499134211a302b54c5cd6d0a80；无暂存/提交/push，保留原有LO/UI/S2/发布等WIP。
+修改目的：Windows全量包移除快捷方式脚本、edition外部标记，默认配置目录改config，保留实际配置和Openpyxl离线运行时。
+修改文件：
+- audit-core/Cargo.toml
+- audit-core/src/web_bridge.rs
+- audit-core/src/app_settings.rs
+- build-release.bat
+- package-windows.ps1
+- audit-core/tests/compare/test_release_script_preflight.py
+另新增本记录；dist产物为本地ignored文件。
+
+逻辑：Windows版次按EXE构建feature决定，默认full，windows-s1s2为精简版。Windows不再读取旧edition-s1s2，即使旧文件存在或不可写也不影响版次；不强制删除旧目录中的文件。Linux保留原有标记逻辑。本次并非改审核算法或GUI布局。
+build-release.bat [full|s1s2]保留原默认入口，默认full；成功后生成仅供打包校验的dist/AuditTools.build.json（版次+EXE SHA256）。打包验证版次/哈希匹配，拒绝误装残留EXE；此JSON不入包。哈希用.NET，避免依赖宿主缺失的Get-FileHash命令。
+Windows两个edition均不再分发快捷方式脚本或edition文件。源码快捷方式脚本未删除。config-defaults改为config；启动优先使用config补齐config-real，仅create_new，不覆盖已有文件，兼容前版config-defaults回退。Linux资源目录未更名。
+Openpyxl运行时继续内置libexec/audittools/openpyxl/runtime；worker位于同级worker目录，libexec并非Linux专用，不能删除。
+web_bridge.rs执行过rustfmt，包含现有代码格式整理；无其他业务语义改动，既有功能/LO差异保留。
+
+实测：Windows版次残留单测1通过；config目录配置保留单测1通过；Windows打包预检9通过（含错误EXE版次/哈希拒绝、无需快捷方式文件）。预检初轮4失败因宿主Get-FileHash不可用，改.NET后最终9通过；初轮日志保留。
+Release offline/locked构建通过；package.bat -Edition full成功。
+ZIP：C:\Users\AZI\Desktop\VibeCode\Rust-Audit\dist\AuditTools-windows-x64-full-20261113-123057.zip
+大小：43916788 bytes
+SHA256：57e6b32e0aac19a1eac980fdb275b445e006e17f622ccfb37ad2a8af024ef991
+EXE SHA256：b541c8941a35d688f23592c067ba8fcf36c5e8f36f3238a08b030ffa8c37a88f
+包检查：ZIP CRC通过，EXE与dist/release及构建元数据哈希一致；无快捷方式、edition、构建元数据、config-defaults和实际config-real文件；config中32份资源逐个匹配来源。
+覆盖模拟：在临时目录先放旧精简版标记和已修改的config-real，再解压ZIP，实际配置未被覆盖；旧标记的忽略行为由Windows单测验证，非真实GUI验收。
+隔离运行时：解压后的Python 3.12.10/Openpyxl 3.1.5在无PATH Python、清除Python环境变量、-I模式下通过导入/前缀检查、内存工作簿数值及公式文本读写、worker --help启动。不是公式重算验收。
+源配置/模板32份SHA256前后不变，真实源文件未修改。
+未跑：全量测试、S1/S2/S3真实GUI业务、精简版feature的独立Release构建、Linux编译/安装。GUI由用户人工验收。
+证据：F:/RustBuild/audit/tmp/windows-layout-20261113（edition-test.log、config-test.log、preflight-final.log、build.log、package.log、package-smoke.log、package-verification.json、source-hashes.json）。
+配置/VBA：不改实际配置/模板内容、审核公式或VBA。
+【组件版本】AuditTools 0.1.0，未升级依赖。
+删除：无项目源码删除、无旧包删除。临时stage由打包脚本自行清理，验收解压目录留F盘。
+回滚：只回退本轮增量，不整份恢复共享WIP；旧ZIP保留。用户先关闭旧程序，再解压覆盖并打开AuditTools.exe。

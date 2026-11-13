@@ -1,0 +1,42 @@
+时间：2026-11-13T11:14:20
+执行者：Codex
+修改前/后：main d201943b1d82ec499134211a302b54c5cd6d0a80；未暂存、提交或推送。
+现有WIP：保留既有S2、发布脚本、内置LO、UI、规则与性能材料。没有重置/删除既有修改，未修改旧Python项目、实际配置或真实工作簿。
+
+本轮文件：
+- audit-core/src/s2_expression.rs
+- audit-core/src/s2_rule_engine.rs
+- audit-core/src/app_settings.rs
+- package-linux-deb.sh
+- package-windows.ps1
+- .gitattributes
+- audit-core/packaging/config-preservation.sh
+- audit-core/tests/compare/test_release_script_preflight.py
+另新增本记录。
+
+业务口径：用户确认指标占位符是完整数值；A=-2 时 [A]*2=-4，[A]**2=4。用户修改配置保留，新默认配置另存。
+S2：比较单侧零时按另一数的正负判定；数量级用i128防止指数+位数溢出；加减对齐差用i128再检查分配上限；舍入改为可失败的checked指数增量；除法中间指数用i128，规范化后检查i64存储范围，避免拒绝可表示的边界结果。不改变50位精度、half-even、短路/规则命中含义。规则引擎增加小数代入与乘法回归。
+配置：新版包只拥有config-defaults，用户实际使用config-real不再作为包覆盖对象。Windows启动仅用create_new补缺，绝不覆盖已有文件，复制失败清理本次新建的残件；显式AUDIT_CONFIG_REAL_DIR仍优先，不改记忆路径策略。Linux维护脚本内嵌保存/恢复函数；preinst迁移旧安装配置，prerm在后续移除/切换前保存到/var/lib/audittools/config-real；postinst仅补缺，默认配置保留独立。备份失败非零中止。remove/purge不主动删除保留的配置/备份。full与s1s2均写显式版次标记，防止覆盖升级残留精简版标记。
+Openpyxl：保留上轮内置运行时路径，本轮未生成运行时/包。
+
+实际测试（最终代码）：
+- cargo test -p audit-core --lib s2_expression::tests：9通过。
+- cargo test -p audit-core --lib s2_rule_engine::tests：5通过。
+- cargo test -p audit-core --lib unit_conversion::tests：6通过。
+- cargo test -p audit-core --lib config_upgrade_tests：1通过。
+以上21个Rust测试通过，编译目录F:/RustBuild/audit；未跑全量。
+- Windows脚本预检：7通过，8个平台不适用跳过。
+- WSL Ubuntu脚本：8通过，7个平台不适用跳过。包含实际生成维护脚本后重定向到临时路径执行；桌面缓存命令用临时stub屏蔽，未调用dpkg、安装/卸载、生成包。
+- PowerShell解析、bash -n、sh -n、三个Rust文件rustfmt --check、git diff --check通过（存在原有换行提示）。
+- 初轮表达式测试8通过1失败：测试误把 1eMAX*10 判成必须溢出，但系数10可合法表示；改为 1eMAX*1e1 验证存储指数溢出，并保留 *10 可比较的正向边界。最终9项均通过，没有改为截断/饱和数值。
+证据：F:/RustBuild/audit/tmp/s2-config-fixes-20261113，verification.json保存当前源码SHA256。
+
+未验证与限制：
+未运行全量、BetterOffice vendor测试、真实GUI/业务对拍、实际ZIP/DEB、真实dpkg切换或麒麟。源码和临时目录测试通过不等于实际安装验收。
+旧版不带prerm保护时，若APT先独立卸载旧包、再调用新preinst，旧配置可能已丢失；新版不能恢复事先删除的数据。首次迁移应先同edition升级到新维护脚本版本，再跨edition切换，或事先另行备份。未来新版之间切换由prerm保护。不得对此宣称所有旧包切换已实测通过。
+Windows必须使用含本轮seed逻辑的新EXE再打新布局包；旧dist二进制未更新，不能据当前脚本直接认定旧EXE支持config-defaults。此次未打包。
+新版默认与旧实际配置不自动合并字段/公式，保留用户数据；可在config-defaults人工对照。
+
+配置/VBA迁移：不改配置内容、业务公式、VBA或Excel算法；只改默认资源投放与保存。
+【组件版本】AuditTools 0.1.0，未升级依赖/版本。
+删除清单：无源文件删除；测试只移除自身临时目录。回滚：按本轮增量撤回，勿整文件恢复覆盖共享WIP。

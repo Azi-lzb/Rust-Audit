@@ -637,9 +637,6 @@ table.editor-table{width:100%;border-collapse:collapse;font-size:13px}
 .guide-flow-body{padding:12px 14px}
 .guide-flow-rows{display:flex;flex-direction:column;gap:8px}
 .updates-subtabs{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px;margin-bottom:12px}
-.updates-optional{margin-left:auto;color:var(--muted);font-size:12px}
-.updates-optional summary{cursor:pointer;padding:7px 4px}
-.updates-optional[open] .btn{margin-top:6px}
 .updates-host-info{display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;padding:10px 14px;margin:0 0 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);font-size:12px;color:var(--text-2)}
 .updates-host-info strong{color:var(--text);margin-right:5px}
 .updates-host-info .updates-host-versions{flex-basis:100%;line-height:1.6;color:var(--text-3)}
@@ -1871,6 +1868,13 @@ function settingsAdvancedUnlocked(){
 function applySettingsEggState(){
   const nav=document.getElementById('settingsNav');
   if(nav)nav.classList.toggle('advanced-locked',!settingsAdvancedUnlocked());
+  const loTab=document.getElementById('updatesLibreOfficeTab');
+  if(loTab)loTab.hidden=!settingsAdvancedUnlocked();
+  if(!settingsAdvancedUnlocked()&&UPDATES_SUB==='libreoffice'){
+    UPDATES_SUB='faq';
+    try{localStorage.setItem('updatesSub','faq');}catch(e){}
+    if(currentPage==='settings'&&CFG.tab==='updates')renderUpdates();
+  }
 }
 /* ---- 高级设置页签：连点左侧“设置中心”导航 5 次显示，仅本次运行有效。 ---- */
 /* 前端错误采集：仅存本会话最多 20 条，随"导出本机设置信息"诊断工作簿一并带走，报障定位用。 */
@@ -1911,7 +1915,7 @@ function registerSettingsEggClick(){
   const unlocked=!settingsAdvancedUnlockedSession;
   settingsAdvancedUnlockedSession=unlocked;
   applySettingsEggState();
-  showToast(unlocked?'已显示高级设置':'已隐藏高级设置');
+  showToast(unlocked?'已显示高级设置及 LibreOffice 安装入口':'已隐藏高级设置及 LibreOffice 安装入口');
   if(!unlocked&&CFG.tab==='advanced')setSettingsTab('general');
 }
 /* 轻提示 */
@@ -2064,6 +2068,7 @@ document.getElementById('settingsPane').addEventListener('click',function(e){
 /* ---- 更新与答疑（设置中心页签）：常见问题 + 安装 LibreOffice 两个子页 ---- */
 let UPDATES_SUB=(function(){try{const sub=localStorage.getItem('updatesSub');return ['faq','libreoffice'].includes(sub)?sub:'faq';}catch(e){return 'faq';}})();
 function setUpdatesSub(sub){
+  if(sub==='libreoffice'&&!settingsAdvancedUnlocked())return;
   UPDATES_SUB=sub;
   try{localStorage.setItem('updatesSub',sub);}catch(e){}
   renderUpdates();
@@ -2101,10 +2106,10 @@ function renderCombine(){
 async function renderUpdates(){
   const pane=document.getElementById('settingsPane');
   const configSupported=!!(state&&state.configUpdateSupported);
-  if(!['faq','libreoffice'].includes(UPDATES_SUB))UPDATES_SUB='faq';
+  if(!['faq','libreoffice'].includes(UPDATES_SUB)||(UPDATES_SUB==='libreoffice'&&!settingsAdvancedUnlocked()))UPDATES_SUB='faq';
   const subTabs='<div class="updates-subtabs">'
     +'<button type="button" class="btn tiny'+(UPDATES_SUB==='faq'?' primary':'')+'" onclick="setUpdatesSub(\'faq\')">常见问题</button>'
-    +'<details class="updates-optional"'+(UPDATES_SUB==='libreoffice'?' open':'')+'><summary>可选引擎与安装</summary><button type="button" class="btn tiny'+(UPDATES_SUB==='libreoffice'?' primary':'')+'" onclick="setUpdatesSub(\'libreoffice\')">LibreOffice 安装与管理（Linux）</button></details>'
+    +'<button type="button" id="updatesLibreOfficeTab" class="btn tiny'+(UPDATES_SUB==='libreoffice'?' primary':'')+'"'+(settingsAdvancedUnlocked()?'':' hidden')+' onclick="setUpdatesSub(\'libreoffice\')">LibreOffice 安装与管理（Linux）</button>'
     +(configSupported?'<button type="button" class="btn tiny'+(UPDATES_SUB==='config'?' primary':'')+'" onclick="setUpdatesSub(\'config\')">更新配置</button>':'')
     +'</div>';
   const loRequired=UPDATES_SUB==='libreoffice'?'<div class="updates-lo-required"><strong>可选外部计算引擎</strong><span>默认使用内置 betteroffice 重算，无需安装 LibreOffice。仅在 Linux 上选择外部重算或需要回退时，才需要可用的 LibreOffice；未安装时会明确提示。</span></div>':'';
@@ -2163,7 +2168,7 @@ let LO_INSTALL_POLLING=false;
 let LO_INSTALL_PICKING=false;
 let LO_INSTALL_METHOD='helper';
 function setLibreOfficeInstallMethod(method){LO_INSTALL_METHOD=method==='terminal'?'terminal':'helper';renderLibreOfficeInstall(LO_INSTALL)}
-function libreOfficeInstallVisible(){return currentPage==='settings'&&CFG.tab==='updates'&&UPDATES_SUB==='libreoffice'}
+function libreOfficeInstallVisible(){return settingsAdvancedUnlocked()&&currentPage==='settings'&&CFG.tab==='updates'&&UPDATES_SUB==='libreoffice'}
 async function applyConfigUpdate(){
   const names=[].slice.call(document.querySelectorAll('.cfg-update-item:checked')).map(function(el){return el.value;});
   if(!names.length){showToast('请先勾选要更新的配置文件');return;}
@@ -2526,9 +2531,9 @@ function renderAdvanced(){
       +'</select>'),
     row('空白格命中计入结果','开启时将所选判定方式命中的空白单元格计入异常；COM 显示色模式可计入值为空但显示填充发生变化的单元格。关闭后只保留有值的命中项。',
       toggle('setConditionalFormatIncludeBlankCells',s.conditionalFormatIncludeBlankCells!==false)),
-    row('条件格式判定方式','规则求值（默认）使用内置求值器读取 OOXML 规则，不启动 Office；COM_DISPLAY 使用 Excel/WPS 实际显示填充（仅 Windows，需要可用的 COM 引擎）。两种方式可能存在规则覆盖差异；逐条公式求值 COM_EVALUATE 尚未实现。',
+    row('条件格式判定方式','规则求值（默认）使用内置求值器读取 OOXML 规则，不启动 Office；COM_DISPLAY 使用 Excel/WPS 实际显示填充（仅 Windows，需要可用的 COM 引擎）。两种方式可能存在规则覆盖差异。',
       '<select class="gen-select" id="setConditionalFormatEvaluator" onchange="setConditionalFormatEvaluator(this.value)">'
-      +[['PYTHON','规则求值（内置 Rust）'],['COM_DISPLAY','COM_DISPLAY（Excel/WPS 显示色）'],['COM_EVALUATE','COM_EVALUATE（未实现）']].map(function(pair){return '<option value="'+pair[0]+'"'+(String(s.conditionalFormatEvaluator||'PYTHON')===pair[0]?' selected':'')+'>'+pair[1]+'</option>';}).join('')
+      +[['PYTHON','规则求值（内置 Rust）'],['COM_DISPLAY','COM_DISPLAY（Excel/WPS 显示色）']].map(function(pair){return '<option value="'+pair[0]+'"'+(String(s.conditionalFormatEvaluator||'PYTHON')===pair[0]?' selected':'')+'>'+pair[1]+'</option>';}).join('')
       +'</select>'),
   ].join('');
   const adv=s.advancedSettings||{};

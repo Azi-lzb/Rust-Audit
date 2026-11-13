@@ -1,0 +1,13 @@
+执行者：Codex
+时间：2026-11-13T12:53:30
+用户授权：允许整理已完成修改、提交并推送；真实配置、工作簿、打包产物和归属不明的测试输出不纳入。
+仓库：C:/Users/AZI/Desktop/VibeCode/Rust-Audit，main；开始HEAD d201943，origin/main已在前轮更新至d201943。
+提交一：746a557，S2短路/负数指标代入/小数与零比较/指数与展开长度安全，三份源文件及内联测试。
+提交二：桌面部署、内置LO worker、Windows独立版次、配置保护及内置Openpyxl运行时，含已确认UI修正、发布脚本、针对性测试和历史修改记录；本记录随提交二保存，最终提交号以Git日志为准。
+本轮新增文档修正：DEVELOPMENT_GOAL.md、audit-core/MIGRATION_INVENTORY.md增加后续验证条目，保留原静态检查历史，避免继续将当前Windows源码描述为未编译。没有更改算法、依赖或真实配置。
+来源核对：S2源文件与先前针对性测试记录匹配；Windows最后构建涉及的6份源码/脚本与windows-layout-20261113/source-hashes.json全部匹配。未将已变化的旧哈希声称为当前通过。
+验证：git diff --check和暂存区核对。此轮未运行编译、测试、打包。引用此前S2 20项针对性测试、Windows版次/配置2项与预检9项、Windows Release/包/隔离运行时检查证据；真实LO、Linux/麒麟安装切换、独立精简版Release仍未验收。
+保留本地且不提交：audit-core/probe/reports/s1f1_performance_20261112.md；probe/reports下mem_test、s1f1_bo_parity各输出/状态/manifest、s1f1_diag40、s1f1_perf、wps脚本等未确认归属材料。没有stage -A整个仓库，没有提交实际xlsx/xls/csv或ZIP/EXE。
+删除：只登记此前已确认的sidecar/lo-convert四文件删除，无新增物理删除或破坏性Git操作。
+【组件版本】AuditTools 0.1.0，不升级。
+回滚：依据两个提交范围处理，不reset/clean共享工作区。真实/临时数据保留；未创建Worktree。

@@ -1,0 +1,11 @@
+执行者：Codex
+修改前/后：main d201943b1d82ec499134211a302b54c5cd6d0a80；未提交。
+WIP：保留原有 S2、发布脚本、LO、UI 和测试产物；只增量修改相关打包路径。
+目的：按用户要求，Windows full/S1S2 均内置 Python/Openpyxl，不仅分发 worker。
+修改文件：package-windows.ps1、bundle_openpyxl_runtime.py、audit-core/tests/compare/test_release_script_preflight.py。
+变化：复用现有 bundler，生成 runtime/python.exe 到 worker 相邻布局；校验隔离导入与 x64，失败禁止压缩发布；增加可选 PythonExecutable；ValidateOnly 不生成运行时。修正标准库复制时包含整个 site-packages 的问题，仅另行复制 openpyxl/et_xmlfile。
+测试：git diff --check 通过（存在原有换行提示）。补充缺 bundler 预检测试但未运行。未运行测试套件、Rust 编译、实际打包、运行时生成或干净机器验收。
+已知事项：构建机需有可用 Windows x64 Python 及 openpyxl；本轮未改变 Linux 打包。S2 数值缺陷和配置迁移策略待后续处理。
+配置/VBA：不改变业务配置、公式或 VBA 语义。
+组件版本：未升级依赖或产品版本。
+删除：无。回滚：只撤销本记录对应增量，勿覆盖原有发布脚本 WIP。

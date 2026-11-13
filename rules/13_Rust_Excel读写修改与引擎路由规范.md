@@ -1,5 +1,7 @@
 # Rust Workspace Excel 读写、修改与引擎路由规范
 
+> 2026-11-13 当前实现覆盖说明：独立 `sidecar/lo-convert` 已移除；下文该路径、独立转换器及旧候选命令属于历史记录，不再作为开发/构建指令。Windows 用 Audit 内置原生 COM；LibreOffice 重算由主程序内部 worker 承接，一批一次隔离 profile 的转换调用，并非常驻 UNO。LibreOffice 软件仍是可选外部能力。新 worker 尚未完成编译/真实环境验收。
+
 > 状态：Rust-Audit 独立项目的 Excel 专项规范，保留 2026-10-22/23 的限定范围历史证据。范围：Excel/CSV 读取、新建、修改、转换、页面设置和具体业务所需的验证。
 > 优先级：用户本轮明确要求 > workspace 根 AGENTS.md 的硬约束 > 本规范的 Excel 专项规则 > audit-core/rules/ 下的业务补充与旧项目历史规则。冲突不得静默覆盖业务行为。  
 > 来源：合并 workspace 现行规则、现有 Excel 引擎盘点、Open-Data-Audit 与 py_statistics_tools 的只读规则材料，以及用户提供的建议稿。本文件是执行入口；根目录来源稿保留为输入材料，不是另一份独立规则。
