@@ -273,18 +273,16 @@ def main() -> int:
         validate_config_warnings,
         validate_import,
     )
-    # 双 API 兼容：旧 Python 有 validate_external_warnings（外部取数告警转为
-    # 软性“校验规则”发现）；当前 Python service.py 明确“外部文件取数提示属于
-    # 运行诊断，不纳入审核发现或异常统计”，该函数已移除。语义选择记录在
-    # 决策清单 AL-10，基线生成器按实际可用的 API 生成并标注所采用的契约。
-    try:
-        from base_audit.systems.s2_report_collection.validation import (
-            validate_external_warnings,
-        )
-        external_warnings_contract = "audit_findings"
-    except ImportError:
-        validate_external_warnings = None
-        external_warnings_contract = "run_diagnostics_only"
+    # Match the current Python service orchestration, not the continued
+    # existence of an unused compatibility helper in validation.py.
+    # service.py emits external warnings as progress diagnostics only.
+    from base_audit.systems.s2_report_collection import service
+    import inspect
+    service_source = inspect.getsource(service)
+    if "外部文件取数提示属于运行诊断" not in service_source:
+        raise RuntimeError("Unknown Python external-warning contract; review service orchestration")
+    validate_external_warnings = None
+    external_warnings_contract = "run_diagnostics_only"
 
     fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
     config = config_from_payload(fixture["config"], models)

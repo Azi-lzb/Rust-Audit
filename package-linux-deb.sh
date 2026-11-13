@@ -207,6 +207,7 @@ mkdir -p "$OUT_DIR"
 # 避免连续重打时新旧包混淆——旧包被进程锁定删不掉的场景吃过亏。
 STAMP="$(date +%Y%m%d-%H%M%S)"
 DEB="$OUT_DIR/AuditTools${PKG_SUFFIX}_${VERSION}_${STAMP}_amd64.deb"
-dpkg-deb --root-owner-group --build "$PKG_ROOT" "$DEB" >/dev/null
+# Ubuntu defaults to zstd, which dpkg 1.19 on the glibc 2.28 baseline cannot read.
+dpkg-deb -Zgzip --root-owner-group --build "$PKG_ROOT" "$DEB" >/dev/null
 echo "已生成：$DEB ($(du -h "$DEB" | cut -f1))"
-dpkg-deb --info "$DEB" | head -8
+dpkg-deb --info "$DEB" | sed -n '1,8p'

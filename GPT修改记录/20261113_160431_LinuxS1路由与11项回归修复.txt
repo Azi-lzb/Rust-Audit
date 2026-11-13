@@ -1,0 +1,15 @@
+main / 700fc7a；未暂存、未提交、未push，既有修改保留。
+修正Linux S1批次calc_engine传递；auto优先BetterOffice、显式lo维持LibreOffice。
+两组各2本GUI后台真实执行，关闭外部回退后均由BetterOffice完成（0/2异常）；显式LO两本亦完成。
+修正/usr/bin内置运行时路径、批注保留的合法新增误拒绝、开发者批次开始事件。
+核对旧Python实际service后修正S2基线与CLI错误前缀测试；按审核副本/日志/业务表真实契约更新旧测试。
+各目标最新定向测试共27通过、0失败、2忽略，原11项失败对应测试全部通过。
+历史LO偶现根因未明确，不宣称已消除。没有重跑全workspace、Windows验收、glibc2.28发布构建或打包。
+初次集成构建增量缓存内存分配失败，CARGO_INCREMENTAL=0/-j1重试通过；未清缓存。
+89个输入哈希未变，diff检查通过。
+详见 audit-core/probe/reports/linux_s1_route_and_regression_fix_20261113.txt。
+本次涉及：audit-core/src/{web_bridge,s1_formula_copy}.rs、src/bin/open-data-audit.rs；
+crates/excel-editor/src/openpyxl_backend.rs、crates/ooxml-patch/src/lib.rs；
+audit-core/tests/{s1_audit_directory_cli,s1_conditional_audit_directory_cli,s1_scan_scope_contract,s2_service_parity,s3_explanation_export_cli}.rs；
+tests/compare/run_s2_analysis_baseline.py、probe/reports/s2_analysis_python_baseline.json及本报告。
+package-linux-deb.sh等是上一轮已存在修改，本轮保留。

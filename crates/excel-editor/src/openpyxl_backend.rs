@@ -145,6 +145,12 @@ impl OpenpyxlWorkerConfig {
             // （此前只取 parent().parent()，deb 布局会算成 /opt/libexec/... 而失效。）
             let mut bases: Vec<PathBuf> = Vec::new();
             if let Some(parent) = binary.parent() {
+                // /usr/bin (or /usr/local/bin) uses the sibling libexec directory.
+                if parent.file_name().is_some_and(|name| name == "bin") {
+                    if let Some(prefix) = parent.parent() {
+                        bases.push(prefix.join("libexec").join(product).join("openpyxl"));
+                    }
+                }
                 bases.push(parent.join("libexec").join(product).join("openpyxl"));
                 if let Some(grand_parent) = parent.parent() {
                     bases.push(grand_parent.join("libexec").join(product).join("openpyxl"));

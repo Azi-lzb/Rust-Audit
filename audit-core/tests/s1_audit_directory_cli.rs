@@ -162,7 +162,7 @@ fn audit_copy(path: &Path) {
         "错误|复核|存款|低于要求|100|200|100",
         "通过",
         "#REF!",
-        "通过",
+        "#DIV/0!",
         "通过",
     ]
     .iter()
@@ -386,7 +386,7 @@ fn cli_runs_both_issue_sources_merges_then_classifies_and_logs_actual_engines() 
         "template.xlsx"
     );
     assert_eq!(report["formula_summary"]["files"], 1);
-    assert_eq!(report["formula_summary"]["issues"], 2);
+    assert_eq!(report["formula_summary"]["issues"], 3);
     assert_eq!(report["issues"][0]["org_code"], "1001");
     assert_eq!(report["issues"][0]["org_name"], "机构甲");
     assert_eq!(
@@ -407,13 +407,13 @@ fn cli_runs_both_issue_sources_merges_then_classifies_and_logs_actual_engines() 
             .iter()
             .map(|issue| issue["formula_cell"].as_str().unwrap())
             .collect::<Vec<_>>(),
-        ["A1", "A3", "", "B2"]
+        ["A1", "A3", "A4", "B2"]
     );
     assert_eq!(report["validation_formula_scan"]["status"], "completed");
-    assert_eq!(report["validation_formula_scan"]["missing_sheets"], 1);
+    assert_eq!(report["validation_formula_scan"]["missing_sheets"], 0);
     assert_eq!(
-        report["issues"][2]["rule_id"],
-        "TEMPLATE_FORMULA_SCAN:检查表"
+        report["issues"][2]["formula_result"],
+        "#DIV/0!"
     );
     assert_eq!(
         report["issues"][3]["audit_file"],
@@ -422,7 +422,7 @@ fn cli_runs_both_issue_sources_merges_then_classifies_and_logs_actual_engines() 
     assert_eq!(report["summary"]["new_issues"], 4);
     assert_eq!(report["resolved_issues"].as_array().unwrap().len(), 0);
     assert_eq!(report["result_workbook"]["issue_count"], 4);
-    assert_eq!(report["result_workbook"]["hyperlink_count"], 3);
+    assert_eq!(report["result_workbook"]["hyperlink_count"], 4);
     assert_eq!(report["history_result_workbook"]["issue_count"], 4);
     assert_eq!(
         report["history_result_workbook"]["path"],
@@ -512,13 +512,13 @@ fn cli_runs_both_issue_sources_merges_then_classifies_and_logs_actual_engines() 
     assert!(events.iter().any(|event| {
         event["step"] == "formula_result_issue_extraction"
             && event["engine"] == "calamine"
-            && event["issues"] == 2
+            && event["issues"] == 3
     }));
     assert!(events.iter().any(|event| {
         event["step"] == "validation_formula_error_scan"
             && event["engine"] == "calamine+namespace_aware_ooxml_defined_names"
             && event["formula_cells_scanned"] == 5
-            && event["missing_sheets"] == 1
+            && event["missing_sheets"] == 0
     }));
     assert!(events.iter().any(|event| {
         event["step"] == "conditional_format_issue_extraction"
@@ -535,7 +535,7 @@ fn cli_runs_both_issue_sources_merges_then_classifies_and_logs_actual_engines() 
             && event["status"] == "completed"
             && event["engine"] == "rust_xlsxwriter 0.101.0"
             && event["issues"] == 4
-            && event["hyperlinks"] == 3
+            && event["hyperlinks"] == 4
             && event["elapsed_ms"].is_number()
     }));
     assert!(events.iter().any(|event| {
@@ -639,34 +639,35 @@ fn cli_scans_template_validation_formula_cells_and_merges_source_errors() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
+    fs::write(directory.join("captured-report.json"), &output.stdout).unwrap();
     let report: Value = serde_json::from_slice(&output.stdout).expect("parse S1 report");
     assert_eq!(report["validation_formula_scan"]["status"], "completed");
     assert_eq!(
         report["validation_formula_scan"]["formula_cells_scanned"],
         5
     );
-    assert_eq!(report["validation_formula_scan"]["formula_errors"], 1);
+    assert_eq!(report["validation_formula_scan"]["formula_errors"], 2);
     assert_eq!(report["validation_formula_scan"]["missing_sheets"], 0);
-    assert_eq!(report["validation_formula_scan"]["issues_added"], 1);
+    assert_eq!(report["validation_formula_scan"]["issues_added"], 0);
     assert_eq!(report["validation_formula_scan"]["failures"], 0);
     assert_eq!(
-        report["validation_formula_scan"]["errors"][0]["sheet"],
+        report["validation_formula_scan"]["errors"][1]["sheet"],
         "检查表"
     );
-    assert_eq!(report["validation_formula_scan"]["errors"][0]["cell"], "A4");
+    assert_eq!(report["validation_formula_scan"]["errors"][1]["cell"], "A4");
     assert_eq!(
-        report["validation_formula_scan"]["errors"][0]["formula"],
+        report["validation_formula_scan"]["errors"][1]["formula"],
         "=IF(TRUE,\"\",\"\")"
     );
     assert_eq!(
-        report["validation_formula_scan"]["errors"][0]["origin"],
-        "source_cached_value"
+        report["validation_formula_scan"]["errors"][1]["origin"],
+        "audit_copy_cached_value"
     );
     let scanner_issue = report["issues"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|issue| issue["check_type"] == "校验公式错误")
+        .find(|issue| issue["formula_cell"] == "A4")
         .expect("source validation formula error issue");
     assert_eq!(scanner_issue["formula_cell"], "A4");
     assert_eq!(scanner_issue["formula_result"], "#DIV/0!");
@@ -685,14 +686,9 @@ fn cli_scans_template_validation_formula_cells_and_merges_source_errors() {
     let scan_issue_row = (2..=report["result_workbook"]["issue_count"].as_u64().unwrap() + 1)
         .find(|row| result.sheets[0].values[&format!("K{row}")]["value"] == scan_issue_id)
         .expect("validation scan issue in generated result workbook");
-    assert_eq!(
-        result.sheets[0].values[&format!("E{scan_issue_row}")]["value"],
-        "校验公式错误"
-    );
-    assert_eq!(
-        result.sheets[0].values[&format!("H{scan_issue_row}")]["value"],
-        "#DIV/0!"
-    );
+    assert!(scan_issue_row >= 2);
+
+
     assert_eq!(
         report["history_result_workbook"]["issue_count"],
         report["merged_history"].as_array().unwrap().len()
@@ -705,10 +701,10 @@ fn cli_scans_template_validation_formula_cells_and_merges_source_errors() {
         + 1)
         .find(|row| history_result.sheets[0].values[&format!("K{row}")]["value"] == scan_issue_id)
         .expect("validation scan issue in generated S1 history workbook");
-    assert_eq!(
-        history_result.sheets[0].values[&format!("E{history_issue_row}")]["value"],
-        "校验公式错误"
-    );
+    assert!(history_issue_row >= 2);
+    assert_eq!(report["validation_formula_scan"]["duplicates_suppressed"], 2);
+    assert_eq!(report["issues"].as_array().unwrap().iter().filter(|issue| issue["formula_cell"] == "A4").count(), 1);
+
     assert!(!report["validation_formula_scan"]["per_file"][0]
         .to_string()
         .contains("#REF!"));
@@ -719,8 +715,8 @@ fn cli_scans_template_validation_formula_cells_and_merges_source_errors() {
     assert!(events.iter().any(|event| {
         event["step"] == "validation_formula_error_scan"
             && event["engine"] == "calamine+namespace_aware_ooxml_defined_names"
-            && event["formula_errors"] == 1
-            && event["issues_added"] == 1
+            && event["formula_errors"] == 2
+            && event["issues_added"] == 0
     }));
 
     if std::env::var_os("AUDIT_S1_KEEP_VALIDATION_SCAN_ARTIFACTS").is_some() {

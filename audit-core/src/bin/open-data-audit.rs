@@ -3963,6 +3963,14 @@ fn run_conditional_audit_inputs(
 ) -> Result<()> {
     let batch_started = Instant::now();
     let started_at = chrono::Local::now().to_rfc3339();
+    if developer_view {
+        eprintln!("{}", serde_json::to_string(&serde_json::json!({
+            "type": "progress", "feature": "S1-F01",
+            "step": "conditional_format_issue_extraction", "status": "started",
+            "batch_id": batch_id, "started_at": started_at.as_str(),
+            "files_total": inputs.len()
+        }))?);
+    }
     let (_inputs, structure_preflight, mut report) = match preflight_and_extract_s1_conditionals(
         inputs,
         template_workbook,

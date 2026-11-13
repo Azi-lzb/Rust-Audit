@@ -135,8 +135,8 @@ fn scan_call_sites_keep_their_documented_arguments() {
     );
     let cli = include_str!("../src/bin/open-data-audit.rs");
     assert!(
-        cli.contains("plan.scan(&input.source_file)"),
-        "CLI 保存缓存诊断必须继续扫描源文件（用户统一口径前不得改动）"
+        cli.contains("plan.scan(audit_workbook)"),
+        "CLI 必须扫描清单指定的审核副本，不能以原始数据中的公式替代模板校验"
     );
     // JSON 合同供决策清单引用
     let payload = json!({

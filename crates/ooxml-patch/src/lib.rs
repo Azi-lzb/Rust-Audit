@@ -1550,10 +1550,13 @@ fn restore_legacy_comment_vml_selected(
             let mut output_texts = output_texts;
             source_texts.sort();
             output_texts.sort();
-            ensure!(
-                output_texts == source_texts,
-                "editor output changed comment text while moving comments on worksheet {sheet_name:?}"
-            );
+            // SetComment/ImportRange may add notes. Preserve every original
+            // text (including duplicate multiplicity) without rejecting additions.
+            for source_text in &source_texts {
+                let index = output_texts.iter().position(|text| text == source_text)
+                    .with_context(|| format!("editor output lost or changed comment text on worksheet {sheet_name:?}"))?;
+                output_texts.remove(index);
+            }
             let vml_comment_refs = vml_note_references(&output_vml, &output_vml_part)?;
             ensure!(
                 vml_comment_refs == output_comment_refs,

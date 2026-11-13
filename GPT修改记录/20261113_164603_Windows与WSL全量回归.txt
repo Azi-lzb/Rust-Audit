@@ -1,0 +1,7 @@
+当前main/700fc7a，保留已有修改，未暂存/提交/push。
+Windows全量560/0/25；WSL正常环境全量555/0/21。
+两端发布脚本均9通过、9平台跳过，全部退出0。
+首轮自定义TMPDIR污染造成3项Rust与1项脚本失败，保留证据；恢复原生临时目录后完整重跑通过。
+无业务源码/测试断言改动；前后tracked diff一致，89个输入哈希未变化。
+详见audit-core/probe/reports/full_workspace_regression_20261113.txt。
+证据：F:/RustBuild/audit/tmp/full-regression-20261113-160953

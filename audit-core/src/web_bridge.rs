@@ -3647,6 +3647,7 @@ fn execute_s1_f1_workflow(
                             request.mapping_config.as_deref(),
                             request.external_data.as_deref(),
                             sidecar,
+                            &request.calc_engine,
                             modifier,
                         ),
                     ));

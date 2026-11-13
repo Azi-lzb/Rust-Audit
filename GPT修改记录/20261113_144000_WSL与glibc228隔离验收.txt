@@ -1,0 +1,7 @@
+本轮验证基线 main / 700fc7a。
+实际修改 package-linux-deb.sh；新增定向脚本回归及 Linux 验收报告。
+WSL workspace：544 passed / 11 failed / 21 ignored；没有修改失败测试期望。
+glibc 2.28 Release 编译和隔离 DEB 升级切换/配置保留通过；glibc 2.31 启动通过。
+S1 WSL 两组后台业务验收完成；无 Office 容器中 S1 批次显式 lo 路由缺口已记录。
+详见 audit-core/probe/reports/linux_wsl_glibc228_acceptance_20261113.txt。
+保留既有未跟踪产物；未暂存、未提交、未 push。

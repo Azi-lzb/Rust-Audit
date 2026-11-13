@@ -1,0 +1,50 @@
+Rust-Audit 当前工作区全量回归 — 2026-11-13
+
+仓库 C:\Users\AZI\Desktop\VibeCode\Rust-Audit
+分支 main，HEAD 700fc7a665ad4decf562e80b88054a3a6e5a574d。
+本轮授权：继续检查全量测试。未修改业务源码、基线或测试断言；未提交、push、打包或安装。
+所有已有未提交修改保持原样；运行前后 git diff --binary 内容一致。
+
+最终结果
+Windows workspace：560 passed / 0 failed / 25 ignored，退出0。
+WSL workspace（正常原生临时目录）：555 passed / 0 failed / 21 ignored，退出0。
+Windows 发布脚本 unittest：18项，9通过/0失败/9平台跳过，退出0。
+WSL 发布脚本 unittest：18项，9通过/0失败/9平台跳过，退出0。
+统计来源为完整 Cargo test result 汇总；没有将定向重跑重复累计到全量数字中。
+89个受保护配置和测试夹具 SHA-256 均未改变；git diff --check通过。
+
+执行参数
+cargo test --offline --locked --workspace --no-fail-fast -j1
+CARGO_INCREMENTAL=0，不清理任何缓存。
+Windows CARGO_TARGET_DIR=F:\RustBuild\audit。
+WSL CARGO_TARGET_DIR=/mnt/f/RustBuild/audit/linux-wsl，AUDIT_REQUIRE_LO_TEST=1。
+WSL Ubuntu glibc2.39、LibreOffice24.2.7.2；不是glibc2.28运行时验收。
+Windows/WSL串行构建；WSL定向环境排查仅使用已构建的测试程序。
+状态目录均隔离，未使用用户日常运行状态目录。
+
+首轮环境干扰（保留失败证据，未修改预期）
+本轮首轮WSL把TMPDIR设置到带日期的F盘证据目录，得到552通过/3失败/21忽略。
+1. discovery 无数据期样例从临时目录父路径识别到2026-11，实际目录有日期，与测试无日期前提冲突。
+2. gui_diagnostics 两项flush断言未通过；改用原生/tmp后同程序专项3项通过，完整并发库测试也通过。
+   此现象与临时目录/挂载I/O环境有关，未改flush超时或放宽断言；不宣称证明了所有慢盘场景无风险。
+3. 发布脚本压缩测试首轮1失败，DrvFS返回DEBIAN目录权限777，dpkg拒绝。
+   使用原生/tmp后通过；生产打包命令和测试均未改动。
+随后在正常/tmp及独立/tmp状态目录重跑整个workspace，555/0/21；脚本9/0/9。
+首轮失败日志、定向环境复验和正常环境完整重跑日志分别保留，没有覆盖首轮结果。
+
+范围与限制
+- 包含workspace五个成员的默认单元、集成和文档测试，以及现有两个发布脚本测试文件。
+- vendor/betteroffice-xlsx-model 与 vendor/betteroffice-xlsx-calc 显式排除在workspace之外。
+  它们作为依赖参与编译和业务测试，但自身独立测试套件本轮没有执行。
+- ignored手工、真实样本、性能/环境专用测试未强制启用；平台跳过项不计为通过。
+- 没有执行全套真实机构数据Python/Rust对拍、可见GUI点击、麒麟/UOS桌面验收或重新构建glibc2.28发布包。
+- 历史LO偶现输出存在性失败本轮未复现；本轮WSL全量中的实际LO单本/批次测试通过，仍不将未知根因写成已修复。
+- 本轮测试未发现需要修复的新业务缺陷；原有编译警告保留，没有扩大范围处理无关警告。
+
+本轮新增文件：本报告、GPT修改记录。运行辅助脚本位于忽略目录audit-core/probe/tmp/。
+完整证据目录：F:/RustBuild/audit/tmp/full-regression-20261113-160953
+windows-workspace.log/.exit、windows-script-tests.log/.exit
+wsl-workspace.log/.exit、wsl-script-tests.log/.exit（首轮）
+wsl-neutral-discovery.log、wsl-neutral-journal.log（环境专项复验）
+wsl-neutral-workspace.log/.exit、wsl-neutral-script-tests.log/.exit（最终全量）
+summary.json、input-hashes-before.json、git-status-before/after.txt、worktree-before.diff。

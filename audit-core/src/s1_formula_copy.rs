@@ -483,7 +483,8 @@ fn preserve_prepared_s1_formula_copy(
 }
 
 /// Prepare independent formula copies, recalculate the eligible set through
-/// one LibreOffice batch invocation, then restore each workbook's normal
+/// the selected calculation route (auto prefers BetterOffice; explicit lo uses
+/// one LibreOffice batch invocation), then restore each workbook's normal
 /// audit-copy and manual-recovery semantics. A failed batch keeps the prepared
 /// formula copies for S1-F3 recovery instead of retrying one cold LO process
 /// per workbook.
@@ -492,6 +493,7 @@ pub(crate) fn execute_s1_formula_copy_batch_with_manual_recovery(
     mapping_config: Option<&Path>,
     external_workbook: Option<&Path>,
     sidecar_path: &Path,
+    calc_engine: &str,
     modifier: &ExcelModifier,
 ) -> Vec<Result<S1FormulaCopyOutcome>> {
     let mut outcomes: Vec<Option<Result<S1FormulaCopyOutcome>>> =
@@ -518,7 +520,7 @@ pub(crate) fn execute_s1_formula_copy_batch_with_manual_recovery(
         match crate::s1_recalculation::recalculate_s1_formula_copy_batch(
             Some(sidecar_path),
             &pairs,
-            "lo",
+            calc_engine,
         ) {
             Ok(reports) if reports.len() == prepared.len() => {
                 for ((index, candidate), report) in prepared.into_iter().zip(reports) {

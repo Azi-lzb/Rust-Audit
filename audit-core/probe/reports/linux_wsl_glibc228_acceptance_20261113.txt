@@ -1,0 +1,85 @@
+Rust-Audit Linux 验证报告 — 2026-11-13
+
+结论：已验证 glibc 2.28 二进制可运行、DEB 安装切换保留配置；未达到全量业务回归全绿。
+仓库：C:\Users\AZI\Desktop\VibeCode\Rust-Audit
+分支：main；基线 HEAD：700fc7a665ad4decf562e80b88054a3a6e5a574d。
+本轮没有提交、push、创建 worktree、清理 Cargo 缓存或安装到宿主系统。
+既有 38 项未跟踪报告/样例目录保留；真实 Python 项目未改动。
+
+一、环境和范围
+1. WSL Ubuntu 24.04，实际 glibc 2.39；不是 glibc 2.28 的业务测试环境。
+2. Docker debian:buster-slim：实际 glibc 2.28、x86_64。新建网络禁用的临时容器，安装验证只在容器中进行。
+3. ubuntu:20.04 容器：实际 glibc 2.31，仅验证二进制 --version 启动，不代表全业务通过。
+4. WSL LibreOffice 24.2.7.2；容器内未安装 Python 或 LibreOffice。
+5. Rust 1.99.1，cargo zigbuild + Zig 0.14.1 定向生成 GNU glibc 2.28 Release。
+   Zig 工具仅放任务专用目录/临时目录，未改全局工具链。首次构建耗时不代表业务耗时。
+6. 业务样例为现有生成器制作的合成数据；本轮没有全量跑真实机构数据或完整旧 Python/Rust 对拍。
+7. HTTP/API/acceptance-run 是实际 GUI 后台工作流及完整运行记录，未做可见桌面截图或真实麒麟 GUI 点击验收。
+
+二、已运行结果
+- cargo test --offline --locked --workspace --no-fail-fast -j 2：544 passed / 11 failed / 21 ignored，10 个失败 target，退出非零。
+  audit-core lib 单独汇总：322 passed / 0 failed / 10 ignored。
+  BetterOffice 两个 vendor crate 在 workspace exclude 中；这次 workspace 不运行其自身单元测试。
+- glibc 2.28 Release 编译：通过。ELF x86_64，最高导入符号 GLIBC_2.28。
+- glibc 2.28：安装后 --version、GUI 首页 GET /、POST /api/get_state 均通过。
+  实际返回 distributionProfile 顺序为 s1s2s3 / s1s2s3 / s1s2 / s1s2s3 / s1s2s3。
+- DEB fresh full -> full 升级 -> S1S2 -> full -> 清理旧 slim 包记录 -> 卸载 full -> 重装 full：通过。
+  修改后的 S1/S3 配置、所有现有活动 XLSX 的 SHA-256、自定义 user-only.txt 均保留。
+  新默认配置与活动配置分离；卸载后用户配置和备份保留。
+- 旧版 dpkg-owned config-real 布局的合成包升级到当前包：通过，修改配置哈希不变；新活动配置不再由包负载直接覆盖。
+  该旧布局包仅模拟文件归属迁移，不是旧版程序业务回归。
+- glibc 2.31：同一个 2.28 Release 的 --version 启动通过。
+- Linux 发布脚本既有测试：8 通过 / 9 Windows 专用跳过；新增压缩/尾部展示命令回归：1 通过。
+- WSL LibreOffice 专项初次全量中：单本输出存在性断言失败，批次两本成功。
+  使用同一个已构建测试程序连续复跑三轮：每轮 3 通过 / 0 失败 / 1 忽略。
+  耗时分别 118.73s、18.97s、6.27s；初次失败根因尚未证明，不能称已修复。
+  手动 2/10/33 性能测试未跑。测试期间观察到 WSL uptime 变化，原因未知，不能据此归因。
+- WSL S1 实际 GUI 后台合成验收：每组 2 本。
+  passed 组：completed，公式异常 0、条件格式异常 0，端到端 20022ms。
+  issues 组：completed，公式异常 2、条件格式异常 0，端到端报告 17068ms。
+  这是验证记录，不是 Windows/Python 性能对比；WSL/跨盘/冷启动影响不能排除。
+- glibc 2.28 无 Office 的 S1 两组：未完成，分别保留 2 本待人工重算副本，没有假报完成。
+  代码定位：audit-core/src/s1_formula_copy.rs 批次调用 recalculate_s1_formula_copy_batch(...,"lo")；
+  audit-core/src/s1_recalculation.rs 仅在 engine_request=="auto" 时先试 BetterOffice。
+  因此这一 GUI 批次路径显式 lo 会跳过 BetterOffice；即使高级设置指定 BetterOffice，也不能用本轮证明它在该路径生效。
+  本轮只记录此路由缺口，未修改计算选型/业务流程。后续应针对 auto 与显式 lo 语义修复并定向回归。
+- glibc 2.28 S3-F04 合成运行：completed，2 条当前记录、2 条启用规则、4 条结果行，生成 XLSX。
+- 89 个受保护配置/夹具 SHA-256 全部未变；S1 验收报告逐项输入哈希也保持不变。
+- 收尾未发现本次 AuditTools/soffice worker 残留；临时容器使用 --rm，不影响既有容器。
+
+三、全量失败清单（保留原始失败，不降低标准）
+1. libreoffice_worker::cli_recalculates_formula_and_publishes_validated_xlsx：报告状态/缓存断言通过后 output.is_file() 失败；专项三轮未复现。根因待查。
+2. production_capability_verification：Umya S1 复制路径批注文本校验失败（检查表）；验证器阻止发布。需要批注保真专项定位。
+3. s1_audit_directory_cli::cli_scans_template_validation_formula_cells_and_merges_source_errors：预期 1，实际 0。
+4. s1_audit_directory_cli::cli_runs_both_issue_sources_merges_then_classifies_and_logs_actual_engines：预期 4，实际 3。
+   第 3/4 项需要核对当前“只提取命名校验区域”业务与历史测试期望，不凭数量直接认定漏报或改预期。
+5. s1_conditional_audit_batch_cli：developer_events.len() >= 6 失败，日志事件契约待核对。
+6. s1_conditional_audit_directory_cli：旧预检日志文本断言失败，需与精简日志设计核对。
+7. s1_scan_scope_contract：源代码字符串契约断言失败，提示 CLI 保存缓存诊断扫描范围；尚未证明为真实业务结果错误。
+8. s2_analysis_parity：Rust 8 条、Python baseline 9 条；外部导入提示 Q002 / quality findings 差异，应优先调查，不应忽略。
+9. s2_service_parity：invalid_config 场景错误事件数量预期 1 实际 0；需核对 CLI 错误输出/解析协议。
+10. s3_explanation_export_cli：预期 [说明文件,生成信息]，实际 [说明文件]；需核对开发者视图元数据表约定。
+11. excel-editor::openpyxl_backend::tests::packaged_runtime_uses_an_absolute_internal_path_and_never_path_lookup：
+    未找到运行时时，实际 /usr/bin/libexec/... 与期望 /usr/libexec/... 不符。存在性路由和缺失诊断路径须区别。
+
+四、本次实际修改
+1. package-linux-deb.sh：明确 -Zgzip，避免 Ubuntu 新 dpkg 默认 zstd 包被旧 dpkg 拒绝。
+   已用合成 DEB 在 Debian 10 实际复现默认包读取失败、gzip 包读取成功。
+2. 同文件：尾部 dpkg-deb --info | head -8 改为 sed -n '1,8p'。
+   原命令 PIPESTATUS=141 0，set -euo pipefail 误判失败；修复后四个真实验收包完整生成。
+3. audit-core/tests/compare/test_linux_deb_compression.py：以生产脚本实际命令构建合成包，检查 gzip 成员与 pipefail 下信息展示成功。
+4. 本报告与 GPT 修改记录。没有修改 S1/S2/S3 业务算法、计算引擎或 GUI。
+
+五、尚未验收 / 下一步
+- 全量业务回归仍有上列 11 个失败，不可作为可发布全绿版本；需优先处理 S2 对拍、S1 批次 BetterOffice 路由、Umya 批注及 LO 偶现问题。
+- 未跑 BetterOffice vendor 自身测试、ARM64、离线内置 Python/openpyxl Linux 运行时实测、完整机构业务数据对拍。
+- 没有真实麒麟/UOS 桌面会话，因此原生文件选择器 XDG Portal、D-Bus、中文字体/输入法、浏览器自动启动、桌面图标、文件关联与权限提示须目标机人工验收。
+- Docker Debian 10 能证明该 libc/包管理器基线上的运行，不证明麒麟不同桌面组件与仓库依赖完全相同。
+- 所有 acceptance 版本 DEB 只是隔离验收产物，不作为生产更新包发布。
+
+证据目录（完整日志、HTTP 捕获、运行摘要、哈希、验收包）：
+F:\RustBuild\audit\tmp\linux-current-20261113
+关键文件：workspace-tests.log、binary-abi.txt、glibc228-build.log、deb-runtime.log、legacy-upgrade.log、
+lo-direct-{1,2,3}.log、compression-regression-final.log、final-verification.json、
+native-functional-20261113-143611/{s1-passed,s1-issues}/acceptance-report.{json,md}、
+functional-20261113-063518-1/{s1-passed,s1-issues}/acceptance-report.{json,md}、s3-f04.json。

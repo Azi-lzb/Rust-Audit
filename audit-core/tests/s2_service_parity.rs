@@ -180,7 +180,7 @@ fn s2_service_runs_both_file_based_paths_and_keeps_inputs_unchanged() {
                     cli_log_events.push(value.clone());
                     cli_events.push(serde_json::from_value(value["event"].clone()).unwrap());
                 }
-            } else if let Some(error) = line.strip_prefix("open-data-audit: ") {
+            } else if let Some(error) = line.strip_prefix("AuditTools: ").or_else(|| line.strip_prefix("open-data-audit: ")) {
                 cli_errors.push(error.to_owned());
             }
         }

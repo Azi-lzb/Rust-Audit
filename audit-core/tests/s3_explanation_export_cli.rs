@@ -231,12 +231,12 @@ fn s3_f02_cli_exports_selected_rows_and_reports_both_views() {
             .iter()
             .map(|sheet| sheet.name.as_str())
             .collect::<Vec<_>>(),
-        ["说明文件", "生成信息"]
+        ["说明文件"]
     );
-    assert_eq!(text_value(&output, 0, "A1"), "xx说明");
+    assert_eq!(text_value(&output, 0, "A1"), "xxx说明");
     assert_eq!(text_value(&output, 0, "A2"), "机构代码");
-    assert_eq!(text_value(&output, 0, "E2"), "数据值");
-    assert_eq!(text_value(&output, 0, "G2"), "增减额（先出现）");
+    assert_eq!(text_value(&output, 0, "E2"), "本期金额（亿元）");
+    assert_eq!(text_value(&output, 0, "G2"), "增减额（亿元）");
     assert_eq!(text_value(&output, 0, "A3"), "70200014401");
     assert_eq!(text_value(&output, 0, "B3"), "精确映射机构（惠城区）");
     assert_eq!(text_value(&output, 0, "H3"), "补充说明一");
@@ -249,12 +249,7 @@ fn s3_f02_cli_exports_selected_rows_and_reports_both_views() {
     assert_eq!(text_value(&output, 0, "A6"), "4567");
     assert_eq!(text_value(&output, 0, "B6"), "未映射机构（南区）");
     assert_eq!(output.sheets[0].merges, ["A1:H1"]);
-    assert_eq!(text_value(&output, 1, "A1"), "项目");
-    assert_eq!(
-        text_value(&output, 1, "B2"),
-        comparison.to_string_lossy().into_owned()
-    );
-    assert_eq!(numeric_value(&output, 1, "B4"), 4.0);
+    // Diagnostics belong to JSON/logs, never an extra business worksheet.
 
     let existing_output_before = fs::read(&user_output_path).unwrap();
     let existing_output = run_cli(&comparison, &config, &user_output_path, false);

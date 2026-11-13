@@ -1,0 +1,58 @@
+Linux S1 引擎路由与定向回归修复记录（2026-11-13）
+仓库 C:\Users\AZI\Desktop\VibeCode\Rust-Audit，main，基线 700fc7a。
+保留本轮前 package-linux-deb.sh 修改及未跟踪产物；没有提交、push 或生成发布包。
+
+程序修改：
+- s1_formula_copy.rs / web_bridge.rs：批次传递 request.calc_engine，不再硬编码 lo。
+  auto 进入既有 BetterOffice 优先与受控回退；显式 lo 不插入 BetterOffice。没有改公式计算算法。
+- excel-editor/openpyxl_backend.rs：Linux bin 布局优先同前缀的 libexec，修正缺少运行时时的解析路径。
+- ooxml-patch/lib.rs：原批注文本按重复数量逐项保留，允许 SetComment/ImportRange 合法新增；仍校验 VML 与批注坐标一致。
+  没有放松原批注丢失/改写检测；外部模板导入恢复的严格分支不变。
+- bin/open-data-audit.rs：在实际条件格式批次开始时补齐开发者事件，仅 developer_view 输出。
+
+业务与测试契约核对：
+1. S2 Python service.py 将外部导入提示作为运行诊断；兼容 helper 虽存在但未在 service 中调用。
+   修正基线生成器不再根据 helper 存在性决定口径。保留服务源码契约检查，未知口径明确失败。
+   重建两组合成基线并记录当前 Python 源码 SHA-256；没有修改旧 Python 项目。
+2. S2 CLI 错误前缀由 open-data-audit 改为 AuditTools，测试解析器兼容两者。
+3. S1 缓存诊断扫描清单指定的审核副本，原文件并非复制后的模板校验结果。
+   测试在审核副本 A4 中设置 #DIV/0!，保留 A3 的 #REF!，核对实际位置、值、原始来源文件和结果落盘。
+   两条均由主提取器提取，扫描器重复识别不再新增：formula_errors=2、issues_added=0、duplicates_suppressed=2。
+   最终 A4 只出现一次，结果和历史工作簿均保留对应记录；没有修改生产去重/提取逻辑。
+   综合样例最终 4 条记录均有实际位置和超链接，不再期待原文件缺表造成的虚假占位项。
+4. S1 结构测试保留用户可见拒绝原因，同时直接断言业务预检通过1/跳过1，不要求用户日志包含技术耗时。
+5. S3-F02 当前 Rust 与旧 Python 均使用 xxx说明 标题、本期/上期金额及增减额单位列头。
+   仅含说明文件业务表，不附生成信息诊断表。测试按此验证，仍检查具体数据、机构映射、合并和覆盖保护。
+
+已实际验收：
+- GUI 后台 acceptance-run，自动引擎、BetterOffice 启用、外部回退 none：两组各2本，均 completed。
+  正常组0异常，异常组2异常，实际引擎均 betteroffice (pure Rust)，输入哈希保持不变。
+- GUI 后台显式 LibreOffice：2本 completed、0异常，实际引擎 LibreOffice。
+- 运行时路径定向单元测试：1 passed。
+- production_capability_verification：2 passed。
+- s1_conditional_audit_batch_cli：2 passed。
+- s1_conditional_audit_directory_cli：8 passed。
+- s2_analysis_parity：1 passed；s2_service_parity：1 passed。
+- s1_scan_scope_contract：2 passed。
+- libreoffice_worker：3 passed、1 ignored，含单本和批次实际重算。
+- s3_explanation_export_cli：1 passed，完整导出和开发者视图断言通过。
+- S1 综合 CLI 最终状态：6 passed / 0 failed / 1 ignored。最终 fix-last.exit=0，S3 同轮1 passed。
+- 本轮各目标最新结果合计27 passed / 0 failed / 2 ignored（非全量套件；不重复累计同一目标的重跑）。
+
+构建情况：
+- Linux WSL 原生编译；首次集成重编译写入 F 盘增量 query-cache.bin 返回 Cannot allocate memory。
+- 改为 CARGO_INCREMENTAL=0、-j1 后继续成功构建并运行定向测试；未删除任何缓存、未执行 cargo clean。
+- 未重跑整个 workspace 全量套件。上一轮544/11/21属于历史基线，不改写为本轮全绿。
+- 本轮未重新交付 glibc2.28 Release/DEB，未进行 Windows 实机或麒麟桌面验收。
+
+保留风险：
+- 历史 LO 全量运行中“报告成功但输出存在性断言失败”本轮未复现。
+  更新后专项3通过不等于已找到根因；保留为偶现风险，未删除断言或弱化输出验证。
+- 当前路由验收为小型合成样例，不替代129本真实工作簿、所有模板或大规模性能验收。
+
+完整运行证据：F:\RustBuild\audit\tmp\linux-current-20261113
+fix-focused.log / fix-retry.log / fix-after.log / fix-last.log
+fixed-route-20261113-153456/{s1-passed,s1-issues}/acceptance-report.{json,md}
+fixed-explicit-lo-20261113-153618/s1-passed/acceptance-report.{json,md}
+失败过程与修正后的日志均保留；最新最终状态见后续收尾记录。
+收尾：89个受保护输入文件SHA-256均未变化；git diff --check通过。

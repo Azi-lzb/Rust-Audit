@@ -314,7 +314,8 @@ fn directory_cli_reads_template_defined_names_and_applies_configured_areas() {
     assert!(override_report["total_elapsed_ms"].as_u64().is_some());
     let user_logs = String::from_utf8_lossy(&override_output.stderr);
     assert!(user_logs.contains("表结构未通过"));
-    assert!(user_logs.contains("表结构预检完成：通过 1 个，跳过 1 个；模板读取"));
+    assert_eq!(override_report["structure_preflight"]["files_accepted"], 1);
+    assert_eq!(override_report["structure_preflight"]["files_rejected"], 1);
 
     fs::remove_dir_all(directory).expect("remove temporary input directory");
 }
