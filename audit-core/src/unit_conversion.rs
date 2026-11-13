@@ -14,6 +14,46 @@ pub const AMOUNT_DATA_TYPES: &[&str] = &["余额", "累发"];
 const UNIT_POWERS_OF_TEN: &[(&str, i64)] = &[("元", 0), ("万元", 4), ("亿元", 8)];
 const MAX_EXACT_XLSX_INTEGER: f64 = 9_007_199_254_740_992.0;
 
+/// Render exact decimal text only after checking the complete expanded length.
+/// i128 arithmetic covers every i64 exponent without overflowing or allocating padding.
+pub(crate) fn decimal_plain_limited(
+    value: &DecimalTuple,
+    limit: usize,
+) -> Result<String, UnitConversionError> {
+    let digits_len = value.digits.len() as i128;
+    let exponent = i128::from(value.exponent);
+    let point = digits_len + exponent;
+    let magnitude_len = if exponent >= 0 {
+        digits_len + exponent
+    } else if point > 0 {
+        digits_len + 1
+    } else {
+        2 - point + digits_len
+    };
+    let length = magnitude_len + i128::from(value.sign == 1);
+    if length > limit as i128 {
+        return Err(UnitConversionError::ExpandedValueTooLong { limit });
+    }
+    let mut text = String::with_capacity(length as usize);
+    if value.sign == 1 {
+        text.push('-');
+    }
+    if exponent < 0 && point <= 0 {
+        text.push_str("0.");
+        text.extend(std::iter::repeat_n('0', (-point) as usize));
+    }
+    for (index, digit) in value.digits.iter().enumerate() {
+        if exponent < 0 && point > 0 && index as i128 == point {
+            text.push('.');
+        }
+        text.push(char::from(b'0' + *digit));
+    }
+    if exponent >= 0 {
+        text.extend(std::iter::repeat_n('0', exponent as usize));
+    }
+    Ok(text)
+}
+
 /// Source-format normalization used by the existing S2 importer before its
 /// Decimal conversion. `.xls` values follow xlrd-compatible numeric semantics;
 /// OOXML values follow the source project's openpyxl-compatible normalization.
@@ -39,11 +79,15 @@ pub enum UnitConversionError {
     NonFiniteAmount(String),
     UnsupportedUnit(String),
     ExponentOutOfRange(String),
+    ExpandedValueTooLong { limit: usize },
 }
 
 impl fmt::Display for UnitConversionError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::ExpandedValueTooLong { limit } => {
+                write!(formatter, "数值展开长度超出安全上限（最多 {limit} 个字符）")
+            }
             Self::InvalidAmount(value) => {
                 write!(formatter, "金额不是有效数值：{}", python_string_repr(value))
             }
@@ -187,6 +231,7 @@ fn decimal_from_cell(
         }
         Err(error @ UnitConversionError::ExponentOutOfRange(_)) => Err(error),
         Err(error @ UnitConversionError::UnsupportedUnit(_)) => Err(error),
+        Err(error @ UnitConversionError::ExpandedValueTooLong { .. }) => Err(error),
     }
 }
 
@@ -375,6 +420,41 @@ mod tests {
         AmountSourceFormat, DecimalTuple,
     };
     use excel_reader::CellValue;
+
+    #[test]
+    fn decimal_expansion_checks_size_and_i64_boundaries_before_allocation() {
+        for value in [
+            "1e100001",
+            "1e-100001",
+            "1e9223372036854775807",
+            "1e-9223372036854775808",
+        ] {
+            let number = as_decimal(value).unwrap();
+            assert!(super::decimal_plain_limited(&number, 100_000)
+                .unwrap_err()
+                .to_string()
+                .contains("安全上限"));
+        }
+        for (value, limit, expected) in [
+            ("1e3", 4, "1000"),
+            ("1e-3", 5, "0.001"),
+            ("-12.30", 6, "-12.30"),
+            ("12.30", 5, "12.30"),
+        ] {
+            let number = as_decimal(value).unwrap();
+            assert_eq!(
+                super::decimal_plain_limited(&number, limit).unwrap(),
+                expected
+            );
+            assert!(super::decimal_plain_limited(&number, limit - 1).is_err());
+        }
+        assert_eq!(
+            super::decimal_plain_limited(&as_decimal("1e99999").unwrap(), 100_000)
+                .unwrap()
+                .len(),
+            100_000
+        );
+    }
 
     #[test]
     fn unit_scaling_preserves_arbitrary_precision_and_decimal_scale() {

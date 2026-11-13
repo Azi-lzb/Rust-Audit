@@ -475,12 +475,12 @@ fn evaluate_rule(
             .any(|code| amount_codes.contains(code))
         {
             threshold = convert_amount(
-                &decimal_plain(&threshold),
+                &decimal_plain(&threshold)?,
                 "万元",
                 &config.unit_settings.output_file_unit,
             )?;
         }
-        expression = replace_thd_token(&expression, &decimal_plain(&threshold));
+        expression = replace_thd_token(&expression, &format!("({})", decimal_plain(&threshold)?));
     }
 
     let result = evaluate(&expression);
@@ -574,8 +574,17 @@ fn substitute_placeholders(
         };
         match expression_number(record) {
             Ok((number_text, shown)) => {
+                // A substituted value is one operand, including its sign (e.g. (-2) ** 2).
+                evaluable.push('(');
                 evaluable.push_str(&number_text);
-                display.push_str(&shown);
+                evaluable.push(')');
+                if number_text.starts_with('-') {
+                    display.push('(');
+                    display.push_str(&shown);
+                    display.push(')');
+                } else {
+                    display.push_str(&shown);
+                }
             }
             Err(error) => {
                 errors.push(error);
@@ -619,7 +628,11 @@ fn expression_number(record: &IndicatorRecord) -> std::result::Result<(String, S
             let text = python_float_repr(number);
             Ok((text, format!("{number:.2}")))
         }
-        ImportedValue::Decimal(value) => Ok((decimal_plain(value), decimal_fixed(value, 2))),
+        ImportedValue::Decimal(value) => Ok((
+            decimal_plain(value)
+                .map_err(|error| format!("指标 {} 无法代入：{error}", record.indicator_code))?,
+            decimal_fixed(value, 2),
+        )),
         ImportedValue::Number(value) | ImportedValue::DateTimeSerial(value) => {
             let text = python_float_repr(*value);
             Ok((text, format!("{value:.2}")))
@@ -892,6 +905,91 @@ fn finding_id(parts: &[&str]) -> String {
 #[cfg(test)]
 mod tests {
     use super::{indicator_code, split_cumulative_codes};
+
+    fn record(code: &str, value: super::ImportedValue) -> super::IndicatorRecord {
+        serde_json::from_value(serde_json::json!({
+            "institution_id":"test", "institution_name":"合成机构", "social_credit_code":"test",
+            "institution_type":"", "handling_branch":"", "region":"", "form_code":"test",
+            "indicator_code":code, "indicator_name":code, "period":"2026-07", "source_date":"2026-07-31",
+            "value":value, "value_type":"数值", "source_unit":"元", "normalized_unit":"元", "normalized_value":value,
+            "source":{"source_file":"synthetic.xlsx","source_sheet":"Data","source_row":1}
+        })).unwrap()
+    }
+
+    fn run_expression(expression: &str, value: super::ImportedValue, expected_hit: bool) {
+        let config: super::S2RuleEngineConfig = serde_json::from_value(serde_json::json!({
+            "rules":[{"rule_id":"test", "rule_type":"表达式", "description":"合成测试", "expression":expression}]
+        })).unwrap();
+        let (findings, quality) = super::evaluate_rules(
+            &[
+                record("A", value),
+                record("B", super::ImportedValue::Integer(0)),
+            ],
+            &[],
+            &config,
+        )
+        .unwrap();
+        assert!(quality.is_empty(), "{expression}: {quality:?}");
+        assert_eq!(findings.len(), usize::from(expected_hit), "{expression}");
+    }
+
+    #[test]
+    fn signed_indicator_substitution_preserves_operand_precedence() {
+        for value in [
+            super::ImportedValue::Integer(-2),
+            super::ImportedValue::Number(-2.0),
+            super::ImportedValue::Decimal(super::as_decimal("-2").unwrap()),
+            super::ImportedValue::Text("-2".to_owned()),
+        ] {
+            for expression in [
+                "[A] ** 2 = 4",
+                "[A] * 2 = -4",
+                "[A] ** 3 = -8",
+                "-[A] ** 2 = -4",
+                "(-[A]) ** 2 = 4",
+                "--[A] ** 2 = 4",
+                "2 ** -[A] = 4",
+                "2 ** [A] = 0.25",
+            ] {
+                run_expression(expression, value.clone(), true);
+            }
+        }
+        run_expression("[A] ** 2 = 4", super::ImportedValue::Integer(2), true);
+        run_expression("[A] + 2 * 3 = 8", super::ImportedValue::Integer(2), true);
+    }
+
+    #[test]
+    fn substituted_fractional_values_compare_correctly_with_zero() {
+        run_expression(
+            "[A] > [B]",
+            super::ImportedValue::Decimal(super::as_decimal("0.1").unwrap()),
+            true,
+        );
+        run_expression(
+            "[B] < [A]",
+            super::ImportedValue::Decimal(super::as_decimal("0.1").unwrap()),
+            true,
+        );
+        run_expression(
+            "[A] > [B]",
+            super::ImportedValue::Decimal(super::as_decimal("-0.1").unwrap()),
+            false,
+        );
+    }
+
+    #[test]
+    fn substituted_zero_divisor_guards_do_not_create_quality_errors() {
+        run_expression(
+            "[B] != 0 and [A] / [B] > 0.1",
+            super::ImportedValue::Integer(2),
+            false,
+        );
+        run_expression(
+            "[B] = 0 or [A] / [B] > 0.1",
+            super::ImportedValue::Integer(2),
+            true,
+        );
+    }
 
     #[test]
     fn legacy_eight_segment_indicator_code_selects_fourth_segment() {

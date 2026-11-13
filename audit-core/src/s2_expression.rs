@@ -66,6 +66,7 @@ pub(crate) fn evaluate(expression: &str) -> Result<bool> {
     let mut parser = Parser {
         tokens,
         position: 0,
+        evaluating: true,
     };
     let value = parser.parse_or()?;
     if parser.peek() != &Token::End {
@@ -228,6 +229,7 @@ fn tokenize(input: &str) -> Result<Vec<Token>> {
 struct Parser {
     tokens: Vec<Token>,
     position: usize,
+    evaluating: bool,
 }
 
 impl Parser {
@@ -245,11 +247,24 @@ impl Parser {
         format!("{:?}", self.peek())
     }
 
+    // Skipped branches are still parsed, but perform no runtime operations.
+    fn parse_with_evaluation(
+        &mut self,
+        enabled: bool,
+        parse: fn(&mut Self) -> Result<Value>,
+    ) -> Result<Value> {
+        let previous = self.evaluating;
+        self.evaluating = previous && enabled;
+        let result = parse(self);
+        self.evaluating = previous;
+        result
+    }
+
     fn parse_or(&mut self) -> Result<Value> {
         let mut left = self.parse_and()?;
         while matches!(self.peek(), Token::Identifier(word) if word.eq_ignore_ascii_case("or")) {
             self.take();
-            let right = self.parse_and()?;
+            let right = self.parse_with_evaluation(!left.truthy(), Self::parse_and)?;
             if !left.truthy() {
                 left = right;
             }
@@ -261,7 +276,7 @@ impl Parser {
         let mut left = self.parse_not()?;
         while matches!(self.peek(), Token::Identifier(word) if word.eq_ignore_ascii_case("and")) {
             self.take();
-            let right = self.parse_not()?;
+            let right = self.parse_with_evaluation(left.truthy(), Self::parse_not)?;
             if left.truthy() {
                 left = right;
             }
@@ -293,8 +308,10 @@ impl Parser {
             };
             let Some(operation) = operation else { break };
             self.take();
-            let right = self.parse_sum()?;
-            matches &= compare_values(&left, &right, operation)?;
+            let right = self.parse_with_evaluation(matches, Self::parse_sum)?;
+            if self.evaluating && matches {
+                matches = compare_values(&left, &right, operation)?;
+            }
             left = right;
             compared = true;
         }
@@ -315,7 +332,9 @@ impl Parser {
             };
             self.take();
             let right = self.parse_product()?;
-            left = arithmetic(left, right, operation)?;
+            if self.evaluating {
+                left = arithmetic(left, right, operation)?;
+            }
         }
         Ok(left)
     }
@@ -330,7 +349,9 @@ impl Parser {
             };
             self.take();
             let right = self.parse_unary()?;
-            left = arithmetic(left, right, operation)?;
+            if self.evaluating {
+                left = arithmetic(left, right, operation)?;
+            }
         }
         Ok(left)
     }
@@ -343,7 +364,11 @@ impl Parser {
             }
             Token::Minus => {
                 self.take();
-                let mut number = self.parse_unary()?.decimal()?;
+                let value = self.parse_unary()?;
+                if !self.evaluating {
+                    return Ok(Value::Boolean(false));
+                }
+                let mut number = value.decimal()?;
                 if number.digits.iter().any(|digit| *digit != 0) {
                     number.sign ^= 1;
                 }
@@ -357,8 +382,14 @@ impl Parser {
         let left = self.parse_primary()?;
         if self.peek() == &Token::Power {
             self.take();
-            let exponent = self.parse_unary()?.decimal()?;
-            return Ok(Value::Decimal(decimal_power(left.decimal()?, &exponent)?));
+            let exponent = self.parse_unary()?;
+            if !self.evaluating {
+                return Ok(Value::Boolean(false));
+            }
+            return Ok(Value::Decimal(decimal_power(
+                left.decimal()?,
+                &exponent.decimal()?,
+            )?));
         }
         Ok(left)
     }
@@ -389,7 +420,13 @@ impl Parser {
                     if self.take() != Token::RightParen {
                         bail!("函数调用缺少右括号");
                     }
-                    call_function(&name, &arguments)
+                    if self.evaluating {
+                        call_function(&name, &arguments)
+                    } else {
+                        Ok(Value::Boolean(false))
+                    }
+                } else if !self.evaluating {
+                    Ok(Value::Boolean(false))
                 } else {
                     bail!("name '{name}' is not defined")
                 }
@@ -468,9 +505,9 @@ fn negate(mut value: DecimalTuple) -> DecimalTuple {
 
 fn decimal_add(left: &DecimalTuple, right: &DecimalTuple) -> Result<DecimalTuple> {
     let exponent = left.exponent.min(right.exponent);
-    let left_shift = usize::try_from(left.exponent - exponent)
+    let left_shift = usize::try_from(i128::from(left.exponent) - i128::from(exponent))
         .map_err(|_| anyhow!("Decimal 指数差超出可处理范围"))?;
-    let right_shift = usize::try_from(right.exponent - exponent)
+    let right_shift = usize::try_from(i128::from(right.exponent) - i128::from(exponent))
         .map_err(|_| anyhow!("Decimal 指数差超出可处理范围"))?;
     if left_shift > MAX_SCALE_SHIFT || right_shift > MAX_SCALE_SHIFT {
         bail!("Decimal 指数差超出可处理范围");
@@ -488,11 +525,11 @@ fn decimal_add(left: &DecimalTuple, right: &DecimalTuple) -> Result<DecimalTuple
             Ordering::Less => (right.sign, subtract_abs(&right_digits, &left_digits)),
         }
     };
-    Ok(round_context(DecimalTuple {
+    round_context(DecimalTuple {
         sign,
         digits,
         exponent,
-    }))
+    })
 }
 
 fn decimal_multiply(left: &DecimalTuple, right: &DecimalTuple) -> Result<DecimalTuple> {
@@ -507,11 +544,11 @@ fn decimal_multiply(left: &DecimalTuple, right: &DecimalTuple) -> Result<Decimal
             exponent,
         });
     }
-    Ok(round_context(DecimalTuple {
+    round_context(DecimalTuple {
         sign: left.sign ^ right.sign,
         digits: multiply_abs(&left.digits, &right.digits),
         exponent,
-    }))
+    })
 }
 
 fn decimal_divide(left: &DecimalTuple, right: &DecimalTuple) -> Result<DecimalTuple> {
@@ -532,13 +569,10 @@ fn decimal_divide(left: &DecimalTuple, right: &DecimalTuple) -> Result<DecimalTu
     let coefficient_exponent = left_digits.len() as i64
         - right_digits.len() as i64
         - i64::from(left_significand < right_significand);
-    let exponent_difference = left
-        .exponent
-        .checked_sub(right.exponent)
-        .ok_or_else(|| anyhow!("Decimal 指数超出可处理范围"))?;
-    let result_order = coefficient_exponent
-        .checked_add(exponent_difference)
-        .ok_or_else(|| anyhow!("Decimal 指数超出可处理范围"))?;
+    // Keep intermediate order wider than the stored exponent: normalization may
+    // bring it back into i64 (e.g. 1e<i64::MIN> / 1).
+    let exponent_difference = i128::from(left.exponent) - i128::from(right.exponent);
+    let result_order = i128::from(coefficient_exponent) + exponent_difference;
     let numerator_shift = PRECISION as i64 - 1 - coefficient_exponent;
     let mut numerator = left_digits;
     let mut denominator = right_digits;
@@ -560,7 +594,7 @@ fn decimal_divide(left: &DecimalTuple, right: &DecimalTuple) -> Result<DecimalTu
     {
         increment_digits(&mut quotient);
     }
-    let mut exponent = result_order - (PRECISION as i64 - 1);
+    let mut exponent = result_order - (PRECISION as i128 - 1);
     if quotient.len() > PRECISION {
         quotient.pop();
         exponent += 1;
@@ -572,18 +606,12 @@ fn decimal_divide(left: &DecimalTuple, right: &DecimalTuple) -> Result<DecimalTu
     Ok(DecimalTuple {
         sign: left.sign ^ right.sign,
         digits: quotient,
-        exponent,
+        exponent: i64::try_from(exponent).map_err(|_| anyhow!("Decimal 指数超出可处理范围"))?,
     })
 }
 
 fn decimal_power(base: DecimalTuple, exponent: &DecimalTuple) -> Result<DecimalTuple> {
-    let exponent_text = decimal_plain(exponent);
-    let power = exponent_text
-        .parse::<i64>()
-        .map_err(|_| anyhow!("Decimal power currently requires an integer exponent"))?;
-    if power.unsigned_abs() > 10_000 {
-        bail!("Decimal power exceeds supported exponent range");
-    }
+    let power = bounded_integer_power(exponent)?;
     if power < 0 && is_zero(&base) {
         bail!("DivisionByZero");
     }
@@ -606,11 +634,51 @@ fn decimal_power(base: DecimalTuple, exponent: &DecimalTuple) -> Result<DecimalT
     }
 }
 
-fn round_context(mut value: DecimalTuple) -> DecimalTuple {
+/// Inspect the compact Decimal tuple directly; do not expand exponent padding.
+fn bounded_integer_power(exponent: &DecimalTuple) -> Result<i64> {
+    if is_zero(exponent) {
+        return Ok(0);
+    }
+    let digits = if exponent.exponent < 0 {
+        let fractional = usize::try_from(exponent.exponent.unsigned_abs())
+            .map_err(|_| anyhow!("Decimal power currently requires an integer exponent"))?;
+        if fractional > exponent.digits.len()
+            || exponent.digits[exponent.digits.len() - fractional..]
+                .iter()
+                .any(|digit| *digit != 0)
+        {
+            bail!("Decimal power currently requires an integer exponent");
+        }
+        &exponent.digits[..exponent.digits.len() - fractional]
+    } else {
+        &exponent.digits[..]
+    };
+    let mut power = 0_i64;
+    for digit in digits {
+        power = power * 10 + i64::from(*digit);
+        if power > 10_000 {
+            bail!("Decimal power exceeds supported exponent range (-10000..10000)");
+        }
+    }
+    if exponent.exponent > 0 {
+        if exponent.exponent > 4 {
+            bail!("Decimal power exceeds supported exponent range (-10000..10000)");
+        }
+        for _ in 0..exponent.exponent {
+            power *= 10;
+            if power > 10_000 {
+                bail!("Decimal power exceeds supported exponent range (-10000..10000)");
+            }
+        }
+    }
+    Ok(if exponent.sign == 1 { -power } else { power })
+}
+
+fn round_context(mut value: DecimalTuple) -> Result<DecimalTuple> {
     let mut digits = normalized_digits(&value.digits);
     if digits.len() <= PRECISION {
         value.digits = digits;
-        return value;
+        return Ok(value);
     }
     let dropped = digits.len() - PRECISION;
     let first = digits[PRECISION];
@@ -625,19 +693,41 @@ fn round_context(mut value: DecimalTuple) -> DecimalTuple {
         digits.pop();
         digits.fill(0);
         digits[0] = 1;
-        value.exponent += dropped as i64 + 1;
+        value.exponent = value
+            .exponent
+            .checked_add(i64::try_from(dropped)?)
+            .and_then(|e| e.checked_add(1))
+            .ok_or_else(|| anyhow!("Decimal 指数超出可处理范围"))?;
     } else {
-        value.exponent += dropped as i64;
+        value.exponent = value
+            .exponent
+            .checked_add(i64::try_from(dropped)?)
+            .ok_or_else(|| anyhow!("Decimal 指数超出可处理范围"))?;
     }
     value.digits = digits;
-    value
+    Ok(value)
 }
 
 fn compare_decimal(left: &DecimalTuple, right: &DecimalTuple) -> Ordering {
     let left_zero = is_zero(left);
     let right_zero = is_zero(right);
-    if left_zero && right_zero {
-        return Ordering::Equal;
+    match (left_zero, right_zero) {
+        (true, true) => return Ordering::Equal,
+        (true, false) => {
+            return if right.sign == 1 {
+                Ordering::Greater
+            } else {
+                Ordering::Less
+            }
+        }
+        (false, true) => {
+            return if left.sign == 1 {
+                Ordering::Less
+            } else {
+                Ordering::Greater
+            }
+        }
+        _ => {}
     }
     match (left.sign, right.sign) {
         (0, 1) => Ordering::Greater,
@@ -656,8 +746,8 @@ fn compare_decimal(left: &DecimalTuple, right: &DecimalTuple) -> Ordering {
 fn compare_abs_decimal(left: &DecimalTuple, right: &DecimalTuple) -> Ordering {
     let left_digits = normalized_digits(&left.digits);
     let right_digits = normalized_digits(&right.digits);
-    let left_order = left.exponent + left_digits.len() as i64;
-    let right_order = right.exponent + right_digits.len() as i64;
+    let left_order = i128::from(left.exponent) + left_digits.len() as i128;
+    let right_order = i128::from(right.exponent) + right_digits.len() as i128;
     match left_order.cmp(&right_order) {
         Ordering::Equal => {
             let count = left_digits.len().max(right_digits.len());
@@ -679,28 +769,9 @@ fn is_zero(value: &DecimalTuple) -> bool {
     value.digits.iter().all(|digit| *digit == 0)
 }
 
-pub(crate) fn decimal_plain(value: &DecimalTuple) -> String {
-    let mut digits = digits_string(&value.digits);
-    let exponent = value.exponent;
-    if exponent >= 0 {
-        digits.extend(std::iter::repeat_n('0', exponent as usize));
-    } else {
-        let point = digits.len() as i64 + exponent;
-        if point > 0 {
-            digits.insert(point as usize, '.');
-        } else {
-            let zeros = usize::try_from(-point).unwrap_or(usize::MAX);
-            let mut text = String::from("0.");
-            text.extend(std::iter::repeat_n('0', zeros));
-            text.push_str(&digits);
-            digits = text;
-        }
-    }
-    if value.sign == 1 {
-        format!("-{digits}")
-    } else {
-        digits
-    }
+pub(crate) fn decimal_plain(value: &DecimalTuple) -> Result<String> {
+    crate::unit_conversion::decimal_plain_limited(value, MAX_SCALE_SHIFT)
+        .map_err(|error| anyhow!("{error}"))
 }
 
 pub(crate) fn python_float_repr(value: f64) -> String {
@@ -931,6 +1002,117 @@ fn divide_abs(numerator: &[u8], denominator: &[u8]) -> (Vec<u8>, Vec<u8>) {
 #[cfg(test)]
 mod tests {
     use super::evaluate;
+
+    #[test]
+    fn decimal_zero_comparisons_cover_both_signs_and_orders() {
+        for expression in [
+            "0.1 > 0",
+            "0 < 0.1",
+            "-0.1 < 0",
+            "0 > -0.1",
+            "0.000001 > -0",
+            "-0 = 0",
+            "0e100 = 0e-100",
+            "1e-9223372036854775808 > 0",
+            "-1e-9223372036854775808 < 0",
+            "1e9223372036854775807 > 1",
+            "1 > 1e-9223372036854775808",
+        ] {
+            assert!(evaluate(expression).unwrap(), "{expression}");
+        }
+        for expression in ["0.1 <= 0", "0 >= 0.1", "-0.1 >= 0", "0 < -0.1"] {
+            assert!(!evaluate(expression).unwrap(), "{expression}");
+        }
+    }
+
+    #[test]
+    fn extreme_exponent_arithmetic_returns_errors_without_overflow() {
+        for expression in [
+            "1e9223372036854775807 + 1e-9223372036854775808",
+            "1e-9223372036854775808 - 1e9223372036854775807",
+            "1e9223372036854775807 * 1e1",
+            "1e-9223372036854775808 / 10",
+            "1e9223372036854775807 / 1e-9223372036854775808",
+            "999999999999999999999999999999999999999999999999999e9223372036854775807 + 0e9223372036854775807",
+        ] {
+            assert!(evaluate(expression).is_err(), "{expression}");
+        }
+        assert!(evaluate("1e100 + 1e100 = 2e100").unwrap());
+        assert!(evaluate("1e9223372036854775807 * 10 > 1e9223372036854775807").unwrap());
+        assert!(evaluate("1e-9223372036854775808 / 1 = 1e-9223372036854775808").unwrap());
+        assert!(evaluate("1e9223372036854775807 / 1 = 1e9223372036854775807").unwrap());
+        assert!(evaluate("1e-100 / 10 = 1e-101").unwrap());
+        assert!(evaluate("True or 1e-9223372036854775808 / 10").unwrap());
+    }
+
+    #[test]
+    fn boolean_operators_short_circuit_runtime_errors() {
+        for expression in [
+            "False and 1 / 0",
+            "0 != 0 and 10 / 0 > 0.1",
+            "False and missing(1/0)",
+        ] {
+            assert!(!evaluate(expression).unwrap(), "{expression}");
+        }
+        for expression in ["True or 1 / 0", "True or missing(1/0)", "1 or 0 ** -1"] {
+            assert!(evaluate(expression).unwrap(), "{expression}");
+        }
+        assert!(evaluate("True and 1 / 0").is_err());
+        assert!(evaluate("False or 1 / 0").is_err());
+        // Function arguments remain eager; only language boolean operators short circuit.
+        assert!(evaluate("AND(False, 1 / 0)").is_err());
+    }
+
+    #[test]
+    fn short_circuit_chains_and_nested_branches_restore_evaluation() {
+        for expression in [
+            "False and 1/0 and 2/0 or True",
+            "True or 1/0 or 2/0",
+            "(False and (True or 1/0)) or (True and not False)",
+            "False and 1/0 or 2 == 2",
+            "(True or 1/0) and 2 == 2",
+        ] {
+            assert!(evaluate(expression).unwrap(), "{expression}");
+        }
+        assert!(!evaluate("3 < 2 < 1/0").unwrap());
+        assert!(!evaluate("True and False and 1/0").unwrap());
+        assert!(evaluate("(False and 1/0) or 1/0").is_err());
+    }
+
+    #[test]
+    fn skipped_branches_still_require_valid_syntax() {
+        for expression in [
+            "False and",
+            "True or (1 +)",
+            "False and (1/0",
+            "True or f(,)",
+            "True or (1 2)",
+            "False and @",
+        ] {
+            assert!(evaluate(expression).is_err(), "{expression}");
+        }
+    }
+
+    #[test]
+    fn power_exponents_are_bounded_before_decimal_expansion() {
+        for expression in [
+            "2 ** 1e100001",
+            "2 ** 1e9223372036854775807",
+            "2 ** 1e-9223372036854775807",
+            "2 ** 10001",
+            "2 ** -10001",
+        ] {
+            assert!(evaluate(expression).is_err(), "{expression}");
+        }
+        assert!(evaluate("1 ** 10000 = 1").unwrap());
+        assert!(evaluate("1 ** -10000 = 1").unwrap());
+        assert!(evaluate("2 ** 2 = 4").unwrap());
+        assert!(evaluate("2 ** 2.0 = 4").unwrap());
+        assert!(evaluate("2 ** 2.5").is_err());
+        assert!(evaluate("True or 2 ** 1e100001").unwrap());
+        assert!(evaluate("-2 ** 2 = -4").unwrap());
+        assert!(evaluate("(-2) ** 2 = 4").unwrap());
+    }
 
     #[test]
     fn decimal_balance_and_comparison_aliases_match_python_expression_semantics() {
