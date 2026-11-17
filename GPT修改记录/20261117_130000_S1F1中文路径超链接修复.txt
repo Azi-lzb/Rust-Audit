@@ -1,0 +1,8 @@
+时间：2026-11-17；执行者：Codex；修改前后 HEAD 均为 02f7813（未提交）。
+WIP：已有 Aspose 实验和本地探针等未跟踪文件，均保留。
+目的：修复 S1-F1 本期结果表定位单元格链接在 Windows Excel 打开中文路径失败。
+修改：audit-core/src/s1_result_workbook.rs；Windows 盘符和 UNC 文件 URI 保留 Unicode 字符，继续编码 ASCII 空格和 URI 特殊字符；POSIX 编码不变。更新相关单元测试断言并补充混合字符测试。原有超链接补丁和审核副本路径未更改。
+证据：本机 Excel 16.0.20527.20196、专用 COM 实例、隔离合成副本：百分号编码中文 URI 产生乱码并报无法打开；保留中文的 URI 成功打开指定工作簿并定位测试表 B9；包含中文、空格、#、% 与 & 的路径也成功定位。该实验使用 Python/openpyxl 生成合成文件，不是已编译 Rust 产物验证。
+未执行：Cargo 编译/测试、完整 GUI、实际业务结果文件、WPS、UNC、Linux 或发布包验证。用户现有旧结果文件不会自动修复。样本目录 F:/RustBuild/audit/tmp/s1-hyperlink-diagnosis-20261117。
+删除：无。回滚：仅撤销本记录及 s1_result_workbook.rs 本次编码与单元测试改动。
+【组件版本】：S1-F01 修复，未升级版本。

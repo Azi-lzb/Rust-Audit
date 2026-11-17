@@ -334,7 +334,7 @@ fn absolute_file_uri_from_path(path: &str) -> Result<String> {
         );
         Ok(format!(
             "file://{authority}/{}",
-            percent_encode_uri_path(share_path)
+            percent_encode_windows_uri_path(share_path)
         ))
     } else if path.as_bytes().get(1) == Some(&b':') {
         ensure!(
@@ -342,11 +342,31 @@ fn absolute_file_uri_from_path(path: &str) -> Result<String> {
                 && path.as_bytes().get(2) == Some(&b'/'),
             "Windows 审核副本路径必须是绝对盘符路径"
         );
-        Ok(format!("file:///{}", percent_encode_uri_path(&path)))
+        Ok(format!(
+            "file:///{}",
+            percent_encode_windows_uri_path(&path)
+        ))
     } else {
         ensure!(path.starts_with('/'), "审核副本路径必须是绝对文件系统路径");
         Ok(format!("file://{}", percent_encode_uri_path(&path)))
     }
+}
+
+// In the tested Windows Excel, percent-encoded UTF-8 path bytes were decoded
+// into mojibake. Preserve Unicode while escaping ASCII delimiters and spaces.
+fn percent_encode_windows_uri_path(path: &str) -> String {
+    let mut result = String::with_capacity(path.len());
+    for character in path.chars() {
+        if !character.is_ascii()
+            || character.is_ascii_alphanumeric()
+            || matches!(character, '-' | '.' | '_' | '~' | '/' | ':')
+        {
+            result.push(character);
+        } else {
+            result.push_str(&format!("%{:02X}", character as u32));
+        }
+    }
+    result
 }
 
 fn percent_encode_uri_path(path: &str) -> String {
@@ -436,7 +456,10 @@ fn cell_address(row: usize, column: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{absolute_file_uri_from_path, percent_encode_uri_path, python_plain_value};
+    use super::{
+        absolute_file_uri_from_path, percent_encode_uri_path, percent_encode_windows_uri_path,
+        python_plain_value,
+    };
     use serde_json::json;
 
     #[test]
@@ -451,7 +474,7 @@ mod tests {
     fn normalizes_windows_drive_and_extended_file_paths() {
         assert_eq!(
             absolute_file_uri_from_path("C:/Audit/检查.xlsx").unwrap(),
-            "file:///C:/Audit/%E6%A3%80%E6%9F%A5.xlsx"
+            "file:///C:/Audit/检查.xlsx"
         );
         assert_eq!(
             absolute_file_uri_from_path("//?/C:/Audit/a%?.xlsx").unwrap(),
@@ -463,7 +486,15 @@ mod tests {
     fn normalizes_unc_paths_as_file_uris() {
         assert_eq!(
             absolute_file_uri_from_path("//audit-server/shared/审计副本.xlsx").unwrap(),
-            "file://audit-server/shared/%E5%AE%A1%E8%AE%A1%E5%89%AF%E6%9C%AC.xlsx"
+            "file://audit-server/shared/审计副本.xlsx"
+        );
+    }
+
+    #[test]
+    fn windows_uri_preserves_unicode_and_escapes_ascii_delimiters() {
+        assert_eq!(
+            percent_encode_windows_uri_path("C:/审核 副本/报表#1%&.xlsx"),
+            "C:/审核%20副本/报表%231%25%26.xlsx"
         );
     }
 
