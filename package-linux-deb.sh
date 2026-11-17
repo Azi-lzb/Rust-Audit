@@ -8,7 +8,9 @@
 # 用法（在 Linux/WSL 中执行）；加 --validate-only 仅校验资源，不创建 deb：
 #   ./package-linux-deb.sh <binary> <product-dir> <version> [out-dir] [full|s1s2] [docs-dir]
 #
-# 产物：AuditTools_<version>_amd64.deb（无需用户安装 Python/Office/JVM）
+# 默认从 <product-dir>/libexec/audittools/openpyxl/runtime 读取已准备的隔离运行时；
+# 也可通过 OPENPYXL_RUNTIME_DIR 指定运行时目录（不得依赖用户安装 Python）。
+# 产物：AuditTools_<version>_amd64.deb（内置 Python/openpyxl，无需用户安装 Python/Office/JVM）
 set -euo pipefail
 
 VALIDATE_ONLY=0
@@ -66,8 +68,18 @@ fi
 GUIDE="$DOCS_DIR/$GUIDE_NAME"
 [[ -f "$GUIDE" ]] || { echo "缺少使用说明：$GUIDE" >&2; exit 7; }
 [[ -f "$PRODUCT_DIR/assets/app-icon.png" ]] || { echo "缺少程序图标：$PRODUCT_DIR/assets/app-icon.png" >&2; exit 7; }
+OPENPYXL_RUNTIME_DIR="${OPENPYXL_RUNTIME_DIR:-$PRODUCT_DIR/libexec/audittools/openpyxl/runtime}"
+OPENPYXL_STAGER="$SCRIPT_DIR/packaging/openpyxl/stage-runtime.sh"
+OPENPYXL_WORKER="$SCRIPT_DIR/crates/excel-editor/python/openpyxl_worker.py"
+[[ -f "$OPENPYXL_STAGER" ]] || { echo "缺少 openpyxl 运行时暂存脚本：$OPENPYXL_STAGER" >&2; exit 7; }
+[[ -f "$OPENPYXL_WORKER" ]] || { echo "缺少 openpyxl worker：$OPENPYXL_WORKER" >&2; exit 7; }
+[[ -f "$OPENPYXL_RUNTIME_DIR/bin/python3" && -x "$OPENPYXL_RUNTIME_DIR/bin/python3" ]] || {
+  echo "缺少隔离的 Linux openpyxl 运行时：$OPENPYXL_RUNTIME_DIR（可设置 OPENPYXL_RUNTIME_DIR）" >&2
+  exit 7
+}
 if [[ "$VALIDATE_ONLY" == "1" ]]; then
   printf 'Validation passed: edition=%s; configs=%s; source=%s\n' "$EDITION" "${#CONFIG_FILES[@]}" "$CONFIG_SRC"
+  printf 'openpyxl runtime source: %s (resource check only)\n' "$OPENPYXL_RUNTIME_DIR"
   printf 'Package: audittools%s\nConflicts: %s\nReplaces: %s\n' "$PKG_SUFFIX" "$OTHER_EDITION" "$OTHER_EDITION"
   exit 0
 fi
@@ -75,12 +87,25 @@ command -v dpkg-deb >/dev/null || { echo "需要 dpkg-deb（apt install dpkg）"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
+# Copy and validate the runtime before packaging. stage-runtime.sh verifies
+# isolated imports, worker startup, symlinks, dependencies and glibc symbols.
+mkdir -p "$WORK/openpyxl-check"
+bash "$OPENPYXL_STAGER" audittools "$OPENPYXL_RUNTIME_DIR" "$WORK/openpyxl-check"
+
 PKG_ROOT="$WORK/pkg"
 mkdir -p "$PKG_ROOT/DEBIAN" "$PKG_ROOT/opt/audittools" \
          "$PKG_ROOT/usr/bin" "$PKG_ROOT/usr/share/applications" \
          "$PKG_ROOT/usr/share/icons/hicolor/256x256/apps"
 
 cp -a "$PRODUCT_DIR"/. "$PKG_ROOT/opt/audittools/"
+# Replace any stale product copy with the independently validated runtime and
+# the worker from this source tree. Never follow a product-supplied symlink.
+[[ ! -L "$PKG_ROOT/opt/audittools/libexec" && ! -L "$PKG_ROOT/opt/audittools/libexec/audittools" ]] || {
+  echo "产品 libexec 目录不能是符号链接" >&2; exit 7;
+}
+mkdir -p "$PKG_ROOT/opt/audittools/libexec/audittools"
+rm -rf -- "$PKG_ROOT/opt/audittools/libexec/audittools/openpyxl"
+mv "$WORK/openpyxl-check/usr/libexec/audittools/openpyxl" "$PKG_ROOT/opt/audittools/libexec/audittools/openpyxl"
 # The selected binary and edition resources win over stale product-directory contents.
 install -m 0755 "$BINARY" "$PKG_ROOT/opt/audittools/AuditTools"
 rm -rf -- "$PKG_ROOT/opt/audittools/config-real" "$PKG_ROOT/opt/audittools/config-defaults"

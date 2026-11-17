@@ -1,0 +1,9 @@
+时间：2026-11-17 16:17；执行者：Codex；仓库 main、HEAD 0b068ad。未提交、未 push；保留并发 AGENTS.md 更改和原有未跟踪材料。
+目的：验证 Linux 打包脚本默认内置 openpyxl，并重新生成 S1/S2 与全量 DEB。
+实际代码修改：packaging/openpyxl/stage-runtime.sh 清除 ldd 输出首部空白，修复将正常 libc 误判为外部库的错误；原 Linux 打包脚本、预检测试、版本及 README 修改为前一轮未提交工作，保留。新增本记录。
+预检：WSL LinuxPreflight 定向 7/7 通过，0 失败。首次真实打包因 ldd 制表符解析错误停止，未覆盖旧包；修复后两版候选打包成功，自动暂存 Python 3.12.16、openpyxl 3.1.5、et-xmlfile 2.0.0、当前 worker；glibc 上限 2.28。Release 二进制复用前次已构建版本，SHA256 96d9d7a704a31d135428bfd6be1648d99f52c3cbf250e60d3e07778dd927b27a，与原包提取出的 EXE 一致；本轮未执行 Cargo 编译。
+容器验证：Debian 10 glibc 2.28，断网；旧全量升级新全量、切换 S1/S2、再切换全量均成功，两个模拟修改的配置及自定义文件未丢失。两版内置 worker 实际修改并读回合成 XLSX；应用选择 openpyxl_worker 处理两本合成 S1-F1 成功；BetterOffice 独立合成 S1-F1 审核完成。
+输出：dist-linux/AuditTools_26.3.0.0_20261117-161413_amd64.deb，SHA256 52057fbf5b3ccc05a805c1fffb26ee6d78cb83471730de15735ec490646d3129；dist-linux/AuditTools-s1s2_26.3.0.0_20261117-161441_amd64.deb，SHA256 cf955288b47a3daa5e1ba08a15aefd9c1348b60612809afc9e053c73c7006c15。之前每种版次的 3 个路径均覆盖为新内容；旧包已备份 F:/RustBuild/audit/tmp/linux-openpyxl-pkg-test-20261117-161220/old-packages。
+64 个真实配置/模板 SHA256 未变；无真实业务数据写入容器。证据：F:/RustBuild/audit/tmp/linux-openpyxl-pkg-test-20261117-161220/ 内 preflight-final.log、package-candidates.log、package-candidates-retry.log、verify.log、publication.json。
+未运行：Cargo 全量测试、真实麒麟/UOS 桌面、真实业务样本或批量。pywin32 属于 Windows，Linux 包不包含；Excel/WPS 不随包分发。
+【组件版本】AuditTools 26.3.0.0 未升级。删除：无；配置未修改。回滚：仅撤销本轮 ldd 输出去空白修复，旧包可从备份恢复，不触碰并发工作。

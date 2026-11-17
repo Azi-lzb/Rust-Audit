@@ -128,10 +128,19 @@ class WindowsPreflight(Fixtures):
 
 @unittest.skipUnless(os.name == 'posix' and shutil.which('bash'), 'Linux/WSL Bash only')
 class LinuxPreflight(Fixtures):
+    def setUp(self):
+        super().setUp()
+        # --validate-only checks resource presence and never executes this stub.
+        self.runtime = self.root / 'product/libexec/audittools/openpyxl/runtime'
+        python = self.runtime / 'bin/python3'
+        touch(python)
+        python.chmod(0o755)
+
     def run_check(self, edition, config=None):
         # The test invokes only the explicit resource-validation mode.
         env = os.environ.copy()
         env['CONFIG_SRC'] = str(self.config if config is None else config)
+        env.pop('OPENPYXL_RUNTIME_DIR', None)
         result = subprocess.run(['bash', str(REPO / 'package-linux-deb.sh'), '--validate-only',
                                  str(self.root / 'dist/AuditTools.exe'), str(self.root / 'product'), '0.1.0',
                                  str(self.root / 'output'), edition, str(self.root / 'docs')],
@@ -139,6 +148,33 @@ class LinuxPreflight(Fixtures):
         self.no_packages()
         self.assertFalse((self.root / 'output').exists())
         return result
+
+    def test_missing_bundled_runtime_is_rejected_for_both_editions(self):
+        for name in S3:
+            touch(self.config / name)
+        (self.runtime / 'bin/python3').unlink()
+        for edition in ['s1s2', 'full']:
+            result = self.run_check(edition)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('OPENPYXL_RUNTIME_DIR', result.stderr)
+
+    def test_explicit_runtime_source_is_used(self):
+        env = os.environ.copy()
+        env['CONFIG_SRC'] = str(self.config)
+        env['OPENPYXL_RUNTIME_DIR'] = str(self.runtime)
+        result = subprocess.run(['bash', str(REPO / 'package-linux-deb.sh'), '--validate-only',
+                                 str(self.root / 'dist/AuditTools.exe'), str(self.root / 'product'), '0.1.0',
+                                 str(self.root / 'output'), 's1s2', str(self.root / 'docs')],
+                                env=env, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(str(self.runtime), result.stdout)
+        env['OPENPYXL_RUNTIME_DIR'] = str(self.root / 'missing-runtime')
+        failed = subprocess.run(['bash', str(REPO / 'package-linux-deb.sh'), '--validate-only',
+                                 str(self.root / 'dist/AuditTools.exe'), str(self.root / 'product'), '0.1.0',
+                                 str(self.root / 'output'), 's1s2', str(self.root / 'docs')],
+                                env=env, capture_output=True, text=True)
+        self.assertNotEqual(failed.returncode, 0)
+        self.no_packages()
 
     def test_s1s2_external_config_source_is_used(self):
         # No config-real exists beside product; only CONFIG_SRC contains the fixtures.

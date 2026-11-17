@@ -25,6 +25,12 @@ source_root=$(realpath -e -- "$(dirname -- "$0")/../..")
 worker_source="$source_root/crates/excel-editor/python/openpyxl_worker.py"
 [[ -f "$worker_source" ]] || fail "worker source is missing: $worker_source"
 expected_python_version=$(tr -d '\r\n' < "$source_root/packaging/openpyxl/python-version.txt")
+expected_openpyxl_version=$(sed -n 's/^openpyxl==//p' "$source_root/packaging/openpyxl/requirements.txt" | tr -d '\r')
+expected_et_xmlfile_version=$(sed -n 's/^et-xmlfile==//p' "$source_root/packaging/openpyxl/requirements.txt" | tr -d '\r')
+[[ -n "$expected_openpyxl_version" && -n "$expected_et_xmlfile_version" ]] || fail "pinned package versions are missing"
+command -v ldd >/dev/null 2>&1 || fail "ldd is required to inspect runtime dependencies"
+command -v objdump >/dev/null 2>&1 || fail "objdump is required to check the glibc baseline"
+command -v readelf >/dev/null 2>&1 || fail "readelf is required to inspect runtime binaries"
 
 product_libexec="$staging_root/usr/libexec/$product_id"
 [[ ! -L "$product_libexec" ]] || fail "product libexec path must not be a symlink"
@@ -46,7 +52,7 @@ esac
 actual_python_version=$("$python" -I -c 'import sys; print(sys.version.split()[0])')
 [[ "$actual_python_version" == "$expected_python_version" ]] || fail "expected Python $expected_python_version, got $actual_python_version"
 
-"$python" -I -c 'import openpyxl; print("openpyxl", openpyxl.__version__)' || fail "isolated runtime cannot import openpyxl"
+"$python" -I -c 'import sys, openpyxl, et_xmlfile; assert openpyxl.__version__ == sys.argv[1], "openpyxl version mismatch"; assert et_xmlfile.__version__ == sys.argv[2], "et-xmlfile version mismatch"' "$expected_openpyxl_version" "$expected_et_xmlfile_version" || fail "isolated runtime cannot import the pinned openpyxl/et-xmlfile versions"
 "$python" -I "$temporary/worker/openpyxl_worker.py" --help >/dev/null || fail "worker cannot start in isolated mode"
 
 while IFS= read -r -d '' link; do
@@ -57,13 +63,18 @@ while IFS= read -r -d '' link; do
   esac
 done < <(find "$temporary/runtime" -type l -print0)
 
+LC_ALL=C readelf -h "$resolved_python" | grep -q 'Advanced Micro Devices X86-64' || fail "runtime interpreter must be an x86_64 ELF binary"
 if command -v ldd >/dev/null 2>&1; then
   while IFS= read -r -d '' object; do
+    # Python distributions may also contain scripts such as python3.12-config.
+    readelf -h "$object" >/dev/null 2>&1 || continue
     dependencies=$(ldd "$object" 2>&1) || fail "ldd could not inspect $object: $dependencies"
     if grep -q 'not found' <<<"$dependencies"; then
       fail "unresolved dynamic dependency in $object: $dependencies"
     fi
     while IFS= read -r dependency_line; do
+      # ldd indents entries with tabs or spaces; normalize before matching.
+      dependency_line="${dependency_line#"${dependency_line%%[![:space:]]*}"}"
       dependency_name=${dependency_line%% *}
       dependency_path=
       if [[ "$dependency_line" == *" => "* ]]; then
@@ -79,7 +90,7 @@ if command -v ldd >/dev/null 2>&1; then
         "$temporary/runtime"/*) ;;
         *)
           case "$dependency_name" in
-            libc.so.*|libm.so.*|libpthread.so.*|libdl.so.*|librt.so.*|libutil.so.*|libresolv.so.*|ld-linux-x86-64.so.*) ;;
+            libc.so.*|libm.so.*|libpthread.so.*|libdl.so.*|librt.so.*|libutil.so.*|libresolv.so.*|libcrypt.so.1|ld-linux-x86-64.so.*) ;;
             *) fail "non-glibc dependency is outside the bundled runtime: $dependency_name -> $resolved_dependency" ;;
           esac
           ;;

@@ -1,20 +1,46 @@
-# Isolated openpyxl runtime staging
+# Linux DEB 内置 openpyxl 运行时
 
-`stage-runtime.sh` prepares the openpyxl worker subtree inside an existing deb staging root. It does not build a Python runtime, install packages, create a deb, or modify product route capabilities.
+`package-linux-deb.sh` 为全量版和 S1/S2 版都要求提供已准备好的隔离运行时，
+并把当前源码中的 `openpyxl_worker.py` 一起放入 DEB。运行时缺失或校验失败时，
+打包会直接失败，不会生成缺少 openpyxl 的包。BetterOffice 仍编译在 AuditTools 中。
 
-The supplied relocatable runtime must already contain `bin/python3`, openpyxl, and et-xmlfile. The intended pinned versions are Python 3.8.10 (`python-version.txt`), openpyxl 3.1.5, and et-xmlfile 2.0.0 (`requirements.txt`). The staging script rejects a different Python version, then copies it to:
+默认运行时来源为：
 
 ```text
-<deb-root>/usr/libexec/<product>/openpyxl/runtime/
-<deb-root>/usr/libexec/<product>/openpyxl/worker/openpyxl_worker.py
+<product-dir>/libexec/audittools/openpyxl/runtime/
 ```
 
-This matches `OpenpyxlWorkerConfig::for_product_binary` for `/usr/bin/<product>`. The runtime must resolve its interpreter and internal symlinks within the staged runtime tree. Staging checks `python -I`, imports openpyxl, starts the worker help path, and rejects unresolved dynamic dependencies found by `ldd`.
+也可以使用 `OPENPYXL_RUNTIME_DIR` 指定其他运行时目录；无论使用哪种来源，
+目录都必须包含可执行的 `bin/python3`、完整标准库及固定版本的 Python 包：
 
-Example:
+- Python 版本见 `python-version.txt`。
+- openpyxl 和 et-xmlfile 版本见 `requirements.txt`。
+- 运行时应可搬迁，面向 x86_64 Linux，且兼容 glibc 2.28。
+
+运行时本身不提交到仓库。应从可信来源提前准备并校验完整性；打包脚本不联网下载，
+也不会用开发机上 PATH 中的系统 Python 代替。示例：
 
 ```sh
-bash packaging/openpyxl/stage-runtime.sh open-data-audit /opt/build/python-runtime deb-staging/open-data-audit
+OPENPYXL_RUNTIME_DIR=/path/to/isolated-runtime \
+  bash package-linux-deb.sh /path/to/AuditTools /path/to/product 26.3.0.0 ./dist-linux full
 ```
 
-No Python 3.8.10 product runtime artifact is committed by this repository. Historical worker tests used Python 3.12.3/openpyxl 3.1.5; they are not a production runtime assertion. Before release, source an offline relocatable Python 3.8.10 runtime containing the pinned wheels, inspect GLIBC symbols for the interpreter and extension modules, and run the staged worker on both glibc 2.28 and glibc 2.31 systems. Historical Windows/WSL synthetic tests do not prove relocatability or target Linux compatibility. The independent-project staging path fixes have not yet been exercised on Linux.
+`--validate-only` 只检查资源是否存在，不执行 Python 或验证运行时兼容性。
+正式打包时，`stage-runtime.sh` 会复制运行时并检查解释器及库版本、隔离导入、
+worker 启动、符号链接、动态库和 glibc 符号上限。打包后的布局是：
+
+```text
+/opt/audittools/libexec/audittools/openpyxl/runtime/bin/python3
+/opt/audittools/libexec/audittools/openpyxl/worker/openpyxl_worker.py
+```
+
+`stage-runtime.sh` 也可单独用于传统 `/usr/libexec/<product>` 暂存布局：
+
+```sh
+bash packaging/openpyxl/stage-runtime.sh audittools /path/to/isolated-runtime /path/to/staging-root
+```
+
+运行时使用的 `libcrypt.so.1` 属于目标系统依赖；实际目标机器仍需验证其可用性。
+静态依赖检查和构建机上的导入检查不能代替 glibc 2.28 环境的离线安装、worker
+操作及真实麒麟/UOS 桌面验收。openpyxl 不负责计算公式；候选工作簿仍须通过
+现有写后校验。

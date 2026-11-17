@@ -1,0 +1,8 @@
+时间：2026-11-17 16:09；执行者：Codex；仓库 main、HEAD 0b068ad，未提交、未 push。既有 Aspose 实验等未跟踪文件保留；并发会话修改的 AGENTS.md 未触碰。
+目的：Linux 全量版和 S1/S2 版打包默认强制内置隔离 Python/openpyxl worker，缺少运行时不得静默出包。
+修改：package-linux-deb.sh、packaging/openpyxl/stage-runtime.sh、packaging/openpyxl/python-version.txt、packaging/openpyxl/README.md、audit-core/tests/compare/test_release_script_preflight.py、.gitattributes，以及本记录。
+设计：默认读取 product/libexec/audittools/openpyxl/runtime，也可设置 OPENPYXL_RUNTIME_DIR；强制验证并暂存源码 worker。正式打包调用现有 stage-runtime，检查 x86_64、Python 3.12.16、openpyxl 3.1.5、et-xmlfile 2.0.0、隔离导入、worker、符号链接、动态依赖和 glibc 2.28 上限；--validate-only 仅检查资源存在，不执行运行时。预先排查符号链接后只替换受控暂存目录中的旧运行时。规定 helper 使用 LF，避免 WSL CRLF 解析错误。
+依赖：不联网、不从 PATH 自动选系统 Python；运行时资源需由打包者提前准备，缺失时停止；libcrypt.so.1 如被标准库调用需目标系统提供。未改业务算法、配置、VBA、公式引擎或引入 pywin32。
+静态检查：bash -n package-linux-deb.sh 和 bash -n packaging/openpyxl/stage-runtime.sh 通过；Python 测试文件 ast.parse 通过；git diff --check 通过（Git 报 CRLF 转换提醒）。新增的预检测试未运行。
+未执行：测试套件、Rust 编译、实际打包、安装、真实麒麟验收；此前其他版本的 DEB 验收不代表本次脚本验证。现有发行包未覆盖。需用户授权后用已准备的 3.12.16 隔离运行时验证实际打包和目标环境。
+【组件版本】：打包脚本变更，产品版本未升级。删除：无。回滚：仅撤销上述脚本、版本配置、文档、测试及属性文件本次改动，不覆盖并发 AGENTS.md。

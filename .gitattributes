@@ -1,3 +1,4 @@
 # Keep the Linux release entry usable from a Windows checkout under WSL.
 package-linux-deb.sh text eol=lf
 audit-core/packaging/config-preservation.sh text eol=lf
+packaging/openpyxl/stage-runtime.sh text eol=lf
